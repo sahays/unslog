@@ -175,6 +175,16 @@ async fn save(
         updated_at: chrono::Utc::now(),
     };
     settings_store::save(&state.db, &next).await?;
+    tracing::info!(
+        event = "settings.save",
+        critique_model = %next.critique_model,
+        research_model = %next.research_model,
+        stt_model = %next.stt_model,
+        tts_model = %next.tts_model,
+        tts_voice = %next.tts_voice,
+        tts_speed = ?next.tts_speed,
+        "settings updated",
+    );
 
     Ok(Redirect::to("/settings").into_response())
 }

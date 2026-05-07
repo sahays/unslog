@@ -75,6 +75,14 @@ async fn start(
         .collection::<Session>(Session::COLLECTION)
         .insert_one(&session)
         .await?;
+    tracing::info!(
+        event = "session.start",
+        session_id = %session.id,
+        company_id = %session.company_id,
+        critique_model = %session.model_snapshot.critique,
+        research_model = %session.model_snapshot.research,
+        "session started",
+    );
 
     Ok(Redirect::to(&format!("/sessions/{}", session.id)).into_response())
 }
@@ -229,11 +237,8 @@ async fn maybe_tts_question(
     if !state.openrouter.configured() {
         return Err(AppError::OpenRouterNotConfigured);
     }
-    let dir = crate::recordings::session_dir(
-        &state.config.data_dir,
-        &session.company_id,
-        &session.id,
-    );
+    let dir =
+        crate::recordings::session_dir(&state.config.data_dir, &session.company_id, &session.id);
     crate::recordings::ensure_dir(&dir).await?;
     let path = dir.join(format!("question_{}.mp3", question.id));
     let voice = if session.model_snapshot.tts_voice.is_empty() {
@@ -377,7 +382,10 @@ async fn transcribe(
         let fname = field.name().unwrap_or("").to_string();
         if fname == "file" || fname == "audio" {
             if let Some(orig) = field.file_name() {
-                if let Some(e) = std::path::Path::new(orig).extension().and_then(|s| s.to_str()) {
+                if let Some(e) = std::path::Path::new(orig)
+                    .extension()
+                    .and_then(|s| s.to_str())
+                {
                     ext = e.to_lowercase();
                 }
             }
@@ -420,11 +428,8 @@ async fn maybe_tts_critique(
     if !state.openrouter.configured() {
         return Err(AppError::OpenRouterNotConfigured);
     }
-    let dir = crate::recordings::session_dir(
-        &state.config.data_dir,
-        &session.company_id,
-        &session.id,
-    );
+    let dir =
+        crate::recordings::session_dir(&state.config.data_dir, &session.company_id, &session.id);
     crate::recordings::ensure_dir(&dir).await?;
     let path = dir.join(format!("critique_{question_id}_v{attempt_n}.mp3"));
     let voice = if session.model_snapshot.tts_voice.is_empty() {
@@ -460,16 +465,21 @@ async fn toggle_voice(
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
 
-async fn end(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<Response, AppError> {
+async fn end(State(state): State<AppState>, Path(id): Path<String>) -> Result<Response, AppError> {
     let session = load_session(&state, &id).await?;
     if session.status == SessionStatus::Active {
         let company = load_company(&state, &session.company_id).await?;
+        tracing::info!(
+            event = "session.end",
+            session_id = %id,
+            company_id = %session.company_id,
+            "ending session, generating summary",
+        );
         // Best-effort: if the LLM call fails (no key, model down), still let
         // the session end so the user isn't stuck with an unkillable session.
-        if let Err(e) = summary::generate_and_save(&state.openrouter, &state.db, &session, &company).await {
+        if let Err(e) =
+            summary::generate_and_save(&state.openrouter, &state.db, &session, &company).await
+        {
             tracing::warn!(error = %e, session_id = %id, "summary generation failed; ending session anyway");
         }
     }

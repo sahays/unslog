@@ -4,7 +4,11 @@ use mongodb::Database;
 
 use crate::error::AppError;
 use crate::models::{Asset, Attempt, Company, Critique, ResearchPacket, Session};
-use crate::services::{assets as asset_svc, openrouter::{ChatMessage, OpenRouter}, prompt_store};
+use crate::services::{
+    assets as asset_svc,
+    openrouter::{ChatMessage, OpenRouter},
+    prompt_store,
+};
 
 const MAX_BOOK_CHARS: usize = 200_000;
 const MAX_PRIOR_SUMMARIES: usize = 3;
@@ -112,6 +116,17 @@ pub async fn run(
     prior_attempts: &[Attempt],
     prior_summary_narratives: &[String],
 ) -> Result<Critique, AppError> {
+    let attempt_n = (prior_attempts.len() as u32) + 1;
+    let span = tracing::info_span!(
+        "critique",
+        session_id = %session.id,
+        company_id = %company.id,
+        model = %session.model_snapshot.critique,
+        attempt_n,
+    );
+    let _enter = span.enter();
+    let start = std::time::Instant::now();
+
     let messages = build_messages(
         db,
         session,
@@ -128,11 +143,20 @@ pub async fn run(
         .await?;
 
     let critique: Critique = crate::services::openrouter::parse_json(&raw).map_err(|e| {
+        tracing::warn!(error = %e, raw_preview = %preview(&raw, 240), "critique JSON parse failed");
         AppError::Upstream(format!(
             "critique returned invalid JSON: {e} — raw: {}",
             preview(&raw, 280)
         ))
     })?;
+
+    tracing::info!(
+        op = "critique",
+        duration_ms = start.elapsed().as_millis() as u64,
+        avg_score = critique.scores.average(),
+        citations_n = critique.citations.len(),
+        "critique done",
+    );
 
     Ok(critique)
 }
@@ -150,7 +174,8 @@ async fn load_primary_asset_text(db: &Database) -> Result<String, AppError> {
 
     let text = asset_svc::read_extracted(&primary).await?;
     if text.chars().count() > MAX_BOOK_CHARS {
-        Ok(text.chars().take(MAX_BOOK_CHARS).collect::<String>() + "\n\n[…truncated for context length]")
+        Ok(text.chars().take(MAX_BOOK_CHARS).collect::<String>()
+            + "\n\n[…truncated for context length]")
     } else {
         Ok(text)
     }

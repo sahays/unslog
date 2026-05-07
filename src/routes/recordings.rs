@@ -39,7 +39,13 @@ async fn serve(
 }
 
 fn mime_for(p: &std::path::Path) -> &'static str {
-    match p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase().as_str() {
+    match p
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
         "mp3" => "audio/mpeg",
         "webm" => "audio/webm",
         "ogg" => "audio/ogg",

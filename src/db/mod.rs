@@ -11,13 +11,17 @@ pub async fn connect(uri: &str, db_name: &str) -> anyhow::Result<Database> {
 }
 
 pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
-    use mongodb::IndexModel;
     use mongodb::options::IndexOptions;
+    use mongodb::IndexModel;
 
     let assets: Collection<Asset> = db.collection(Asset::COLLECTION);
     let primary_idx = IndexModel::builder()
         .keys(bson::doc! { "primary": 1 })
-        .options(IndexOptions::builder().name("primary_1".to_string()).build())
+        .options(
+            IndexOptions::builder()
+                .name("primary_1".to_string())
+                .build(),
+        )
         .build();
     assets.create_index(primary_idx).await?;
 
@@ -59,7 +63,11 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
     let sessions: Collection<Session> = db.collection(Session::COLLECTION);
     let s_idx = IndexModel::builder()
         .keys(bson::doc! { "company_id": 1, "started_at": -1 })
-        .options(IndexOptions::builder().name("company_started".to_string()).build())
+        .options(
+            IndexOptions::builder()
+                .name("company_started".to_string())
+                .build(),
+        )
         .build();
     sessions.create_index(s_idx).await?;
 
@@ -87,7 +95,11 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
     let evals: Collection<Evaluation> = db.collection(Evaluation::COLLECTION);
     let e_idx = IndexModel::builder()
         .keys(bson::doc! { "session_id": 1 })
-        .options(IndexOptions::builder().name("session_id".to_string()).build())
+        .options(
+            IndexOptions::builder()
+                .name("session_id".to_string())
+                .build(),
+        )
         .build();
     evals.create_index(e_idx).await?;
     let e_idx2 = IndexModel::builder()

@@ -35,7 +35,9 @@ fn describe(name: &str) -> &'static str {
     match name {
         "critique" => "Grades each answer against the book's frameworks and the company packet.",
         "research" => "Builds the per-company packet — values, role JD, sample questions, sources.",
-        "summary" => "End-of-session debrief with strengths, recurring weaknesses, and blind spots.",
+        "summary" => {
+            "End-of-session debrief with strengths, recurring weaknesses, and blind spots."
+        }
         _ => "",
     }
 }
@@ -112,7 +114,15 @@ async fn save(
     if form.body.trim().is_empty() {
         return Err(AppError::BadRequest("prompt body cannot be empty".into()));
     }
-    store::save_version(&state.db, &name, form.body, None).await?;
+    let body_chars = form.body.chars().count();
+    let version = store::save_version(&state.db, &name, form.body, None).await?;
+    tracing::info!(
+        event = "prompt.save",
+        prompt = %name,
+        version_id = %version.id,
+        body_chars,
+        "prompt new version saved",
+    );
     Ok(Redirect::to(&format!("/prompts/{name}")).into_response())
 }
 
@@ -199,7 +209,14 @@ async fn restore(
             "version does not belong to this prompt".into(),
         ));
     }
-    store::save_version(&state.db, &name, target.body, Some(target.id)).await?;
+    let restored = store::save_version(&state.db, &name, target.body, Some(target.id.clone())).await?;
+    tracing::info!(
+        event = "prompt.restore",
+        prompt = %name,
+        new_version_id = %restored.id,
+        restored_from = %target.id,
+        "prompt restored from older version",
+    );
     Ok(Redirect::to(&format!("/prompts/{name}/history")).into_response())
 }
 

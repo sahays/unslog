@@ -83,6 +83,7 @@ async fn create(
 
     coll.insert_one(&company).await?;
     question_bank::ensure_for(&state.db, &company.id).await?;
+    let agent_questions_n = agent_questions.len();
     if !agent_questions.is_empty() {
         question_bank::append_questions(
             &state.db,
@@ -92,6 +93,15 @@ async fn create(
         )
         .await?;
     }
+    tracing::info!(
+        event = "company.create",
+        company_id = %company.id,
+        company_name = %company.name,
+        role = %company.role,
+        has_packet = company.research_packet.is_some(),
+        agent_questions_n,
+        "company created",
+    );
     Ok(Redirect::to(&format!("/companies/{}", company.id)).into_response())
 }
 

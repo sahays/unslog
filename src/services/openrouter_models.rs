@@ -119,8 +119,8 @@ impl ModelsCache {
 
 async fn fetch_models(or: &OpenRouter) -> Result<Vec<ModelInfo>, AppError> {
     let raw = or.list_models_raw().await?;
-    let parsed: ModelsResponse =
-        serde_json::from_value(raw).map_err(|e| AppError::Upstream(format!("/models parse: {e}")))?;
+    let parsed: ModelsResponse = serde_json::from_value(raw)
+        .map_err(|e| AppError::Upstream(format!("/models parse: {e}")))?;
     let mut models = parsed.data;
     models.sort_by(|a, b| a.id.to_lowercase().cmp(&b.id.to_lowercase()));
     Ok(models)

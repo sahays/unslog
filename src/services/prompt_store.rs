@@ -81,7 +81,10 @@ pub async fn get_prompt(db: &Database, name: &str) -> Result<Option<Prompt>, App
     Ok(prompts.find_one(bson::doc! { "_id": name }).await?)
 }
 
-pub async fn get_version(db: &Database, version_id: &str) -> Result<Option<PromptVersion>, AppError> {
+pub async fn get_version(
+    db: &Database,
+    version_id: &str,
+) -> Result<Option<PromptVersion>, AppError> {
     let versions = db.collection::<PromptVersion>(PromptVersion::COLLECTION);
     Ok(versions.find_one(bson::doc! { "_id": version_id }).await?)
 }

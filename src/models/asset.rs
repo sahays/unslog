@@ -35,7 +35,12 @@ pub struct Asset {
 impl Asset {
     pub const COLLECTION: &'static str = "assets";
 
-    pub fn new(name: String, kind: AssetKind, original_filename: String, original_path: String) -> Self {
+    pub fn new(
+        name: String,
+        kind: AssetKind,
+        original_filename: String,
+        original_path: String,
+    ) -> Self {
         Self {
             id: uuid::Uuid::now_v7().to_string(),
             name,

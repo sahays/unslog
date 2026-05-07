@@ -1,10 +1,10 @@
 use axum::extract::DefaultBodyLimit;
+use axum::middleware::from_fn;
 use axum::Router;
 use mongodb::Database;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
-use tower_http::trace::TraceLayer;
 
 /// Cap upload body at 50 MB. Audio answers and the book PDF both fit comfortably
 /// under this; well above that and either we have a very long-winded answer or
@@ -61,10 +61,10 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         .nest_service("/static", ServeDir::new(static_dir))
         .fallback(crate::error::not_found_handler)
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
-        .layer(TraceLayer::new_for_http());
+        .layer(from_fn(crate::middleware::request_context_middleware));
 
     let addr = state.config.addr();
-    tracing::info!("starting unslog on http://{addr}");
+    tracing::info!(addr = %addr, "starting unslog");
     let listener = TcpListener::bind(&addr).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

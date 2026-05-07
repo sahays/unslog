@@ -70,7 +70,12 @@ pub struct Evaluation {
 impl Evaluation {
     pub const COLLECTION: &'static str = "evaluations";
 
-    pub fn new(session_id: String, company_id: String, question_id: String, question_text: String) -> Self {
+    pub fn new(
+        session_id: String,
+        company_id: String,
+        question_id: String,
+        question_text: String,
+    ) -> Self {
         Self {
             id: uuid::Uuid::now_v7().to_string(),
             session_id,

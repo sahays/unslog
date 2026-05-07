@@ -24,11 +24,20 @@ pub async fn run(
     company_name: &str,
     role: &str,
 ) -> Result<ResearchPacket, AppError> {
+    let settings = settings_store::load(db).await?;
+    let span = tracing::info_span!(
+        "research",
+        company = %company_name,
+        role,
+        model = %settings.research_model,
+    );
+    let _enter = span.enter();
+    let start = std::time::Instant::now();
+
     let prompt = prompt_store::get_prompt(db, "research")
         .await?
         .ok_or_else(|| AppError::NotFound("research prompt".into()))?;
     let body = prompt_store::get_current_body(db, "research").await?;
-    let settings = settings_store::load(db).await?;
 
     let user = format!(
         "Company: {company_name}\nRole: {role}\n\nProduce the research packet now. Return only the JSON object specified, no other text."
@@ -43,11 +52,20 @@ pub async fn run(
         .await?;
 
     let out: AgentOutput = parse_json(&raw).map_err(|e| {
+        tracing::warn!(error = %e, raw_preview = %preview(&raw, 240), "research JSON parse failed");
         AppError::Upstream(format!(
             "research agent returned invalid JSON: {e} — raw: {}",
             preview(&raw, 240)
         ))
     })?;
+
+    tracing::info!(
+        op = "research",
+        duration_ms = start.elapsed().as_millis() as u64,
+        sample_questions_n = out.sample_questions.len(),
+        sources_n = out.sources.len(),
+        "research done",
+    );
 
     Ok(ResearchPacket {
         summary: out.summary,

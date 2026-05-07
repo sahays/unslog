@@ -51,7 +51,12 @@ pub async fn save_upload(
     let path = original_path_for(data_dir, &asset_id, &ext);
     tokio::fs::write(&path, bytes).await?;
 
-    let mut asset = Asset::new(name, kind, original_filename, path.to_string_lossy().into_owned());
+    let mut asset = Asset::new(
+        name,
+        kind,
+        original_filename,
+        path.to_string_lossy().into_owned(),
+    );
     asset.id = asset_id;
     Ok(asset)
 }
@@ -84,7 +89,11 @@ pub async fn extract(
         let _ = tokio::fs::create_dir_all(parent).await;
     }
     if let Err(e) = tokio::fs::write(&target, text.as_bytes()).await {
-        return (ExtractionStatus::Failed, None, Some(format!("failed to write extracted markdown: {e}")));
+        return (
+            ExtractionStatus::Failed,
+            None,
+            Some(format!("failed to write extracted markdown: {e}")),
+        );
     }
 
     (

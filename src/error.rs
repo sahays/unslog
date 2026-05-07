@@ -75,7 +75,9 @@ pub async fn not_found_handler(HxRequest(is_htmx): HxRequest) -> Response {
         )
             .into_response()
     } else {
-        let html = NotFoundTemplate.render().unwrap_or_else(|_| "Not Found".into());
+        let html = NotFoundTemplate
+            .render()
+            .unwrap_or_else(|_| "Not Found".into());
         (StatusCode::NOT_FOUND, Html(html)).into_response()
     }
 }

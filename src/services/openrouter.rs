@@ -6,6 +6,8 @@
 //!
 //! All four go through `reqwest::Client` with the OPENROUTER_API_KEY bearer.
 
+use std::time::Instant;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -49,6 +51,7 @@ impl OpenRouter {
     pub async fn list_models_raw(&self) -> Result<serde_json::Value, AppError> {
         let key = self.require_key()?;
         let url = format!("{BASE_URL}/models");
+        let start = Instant::now();
         let resp = self
             .http
             .get(&url)
@@ -57,14 +60,33 @@ impl OpenRouter {
             .header("X-Title", "unslog")
             .send()
             .await?;
+        let duration_ms = start.elapsed().as_millis() as u64;
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
+            tracing::warn!(
+                op = "openrouter.list_models",
+                http_status = status.as_u16(),
+                duration_ms,
+                "openrouter /models failed",
+            );
             return Err(AppError::Upstream(format!(
                 "openrouter /models {status}: {text}"
             )));
         }
-        Ok(resp.json().await?)
+        let value = resp.json::<serde_json::Value>().await?;
+        let count = value
+            .get("data")
+            .and_then(|d| d.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        tracing::info!(
+            op = "openrouter.list_models",
+            duration_ms,
+            count,
+            "openrouter /models ok",
+        );
+        Ok(value)
     }
 
     /// Plain chat completion. `messages` and `model` are caller-controlled.
@@ -77,6 +99,8 @@ impl OpenRouter {
     ) -> Result<String, AppError> {
         let key = self.require_key()?;
 
+        let prompt_chars: usize = messages.iter().map(|m| m.content.chars().count()).sum();
+
         let mut body = serde_json::json!({
             "model": model,
             "messages": messages,
@@ -86,6 +110,7 @@ impl OpenRouter {
         }
 
         let url = format!("{BASE_URL}/chat/completions");
+        let start = Instant::now();
         let resp = self
             .http
             .post(&url)
@@ -95,10 +120,19 @@ impl OpenRouter {
             .json(&body)
             .send()
             .await?;
+        let duration_ms = start.elapsed().as_millis() as u64;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
+            tracing::warn!(
+                op = "openrouter.chat",
+                model,
+                http_status = status.as_u16(),
+                duration_ms,
+                prompt_chars,
+                "openrouter chat failed",
+            );
             return Err(AppError::Upstream(format!(
                 "openrouter chat {status}: {text}"
             )));
@@ -110,6 +144,16 @@ impl OpenRouter {
             .into_iter()
             .next()
             .ok_or_else(|| AppError::Upstream("openrouter returned no choices".into()))?;
+        let response_chars = choice.message.content.chars().count();
+        tracing::info!(
+            op = "openrouter.chat",
+            model,
+            duration_ms,
+            prompt_chars,
+            response_chars,
+            force_json,
+            "openrouter chat ok",
+        );
         Ok(choice.message.content)
     }
 
@@ -123,6 +167,7 @@ impl OpenRouter {
     ) -> Result<bytes::Bytes, AppError> {
         let key = self.require_key()?;
         let url = format!("{BASE_URL}/audio/speech");
+        let input_chars = text.chars().count();
 
         let mut body = serde_json::json!({
             "model": model,
@@ -134,6 +179,7 @@ impl OpenRouter {
             body["speed"] = serde_json::json!(s);
         }
 
+        let start = Instant::now();
         let resp = self
             .http
             .post(&url)
@@ -143,15 +189,35 @@ impl OpenRouter {
             .json(&body)
             .send()
             .await?;
+        let duration_ms = start.elapsed().as_millis() as u64;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
+            tracing::warn!(
+                op = "openrouter.tts",
+                model,
+                voice,
+                http_status = status.as_u16(),
+                duration_ms,
+                input_chars,
+                "openrouter tts failed",
+            );
             return Err(AppError::Upstream(format!(
                 "openrouter tts {status}: {text}"
             )));
         }
-        Ok(resp.bytes().await?)
+        let bytes = resp.bytes().await?;
+        tracing::info!(
+            op = "openrouter.tts",
+            model,
+            voice,
+            duration_ms,
+            input_chars,
+            audio_bytes = bytes.len(),
+            "openrouter tts ok",
+        );
+        Ok(bytes)
     }
 
     /// Speech-to-text via chat-with-input_audio. Sends audio base64-encoded
@@ -166,6 +232,7 @@ impl OpenRouter {
         use base64::engine::general_purpose::STANDARD;
         use base64::Engine;
         let key = self.require_key()?;
+        let audio_len = audio_bytes.len();
 
         let b64 = STANDARD.encode(audio_bytes);
         let url = format!("{BASE_URL}/chat/completions");
@@ -192,6 +259,7 @@ impl OpenRouter {
             ],
         });
 
+        let start = Instant::now();
         let resp = self
             .http
             .post(&url)
@@ -201,21 +269,40 @@ impl OpenRouter {
             .json(&body)
             .send()
             .await?;
+        let duration_ms = start.elapsed().as_millis() as u64;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
+            tracing::warn!(
+                op = "openrouter.stt",
+                model,
+                http_status = status.as_u16(),
+                duration_ms,
+                audio_bytes = audio_len,
+                audio_format = format,
+                "openrouter stt failed",
+            );
             return Err(AppError::Upstream(format!(
                 "openrouter stt {status}: {text}"
             )));
         }
 
         let parsed: ChatCompletion = resp.json().await?;
-        let choice = parsed
-            .choices
-            .into_iter()
-            .next()
-            .ok_or_else(|| AppError::Upstream("openrouter returned no choices for stt".into()))?;
+        let choice =
+            parsed.choices.into_iter().next().ok_or_else(|| {
+                AppError::Upstream("openrouter returned no choices for stt".into())
+            })?;
+        let transcript_chars = choice.message.content.chars().count();
+        tracing::info!(
+            op = "openrouter.stt",
+            model,
+            duration_ms,
+            audio_bytes = audio_len,
+            audio_format = format,
+            transcript_chars,
+            "openrouter stt ok",
+        );
         Ok(choice.message.content)
     }
 }
@@ -228,10 +315,16 @@ pub struct ChatMessage {
 
 impl ChatMessage {
     pub fn system(content: impl Into<String>) -> Self {
-        Self { role: "system".into(), content: content.into() }
+        Self {
+            role: "system".into(),
+            content: content.into(),
+        }
     }
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: "user".into(), content: content.into() }
+        Self {
+            role: "user".into(),
+            content: content.into(),
+        }
     }
 }
 

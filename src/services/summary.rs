@@ -5,14 +5,15 @@
 //! persists a Summary row keyed by session_id (one summary per session).
 
 use futures::TryStreamExt;
-use mongodb::Database;
 use mongodb::options::FindOptions;
+use mongodb::Database;
 
 use crate::error::AppError;
-use crate::models::{
-    Company, Evaluation, Session, Summary, SummaryPayload,
+use crate::models::{Company, Evaluation, Session, Summary, SummaryPayload};
+use crate::services::{
+    openrouter::{ChatMessage, OpenRouter},
+    prompt_store,
 };
-use crate::services::{openrouter::{ChatMessage, OpenRouter}, prompt_store};
 
 /// How many prior session summaries to carry into the new summary's prompt.
 const MAX_PRIOR_SUMMARIES: i64 = 3;
@@ -28,11 +29,21 @@ pub async fn generate_and_save(
     session: &Session,
     company: &Company,
 ) -> Result<Summary, AppError> {
+    let span = tracing::info_span!(
+        "summary",
+        session_id = %session.id,
+        company_id = %company.id,
+        model = %session.model_snapshot.critique,
+    );
+    let _enter = span.enter();
+    let start = std::time::Instant::now();
+
     let summaries = db.collection::<Summary>(Summary::COLLECTION);
     if let Some(existing) = summaries
         .find_one(bson::doc! { "session_id": &session.id })
         .await?
     {
+        tracing::info!(op = "summary", reused = true, "existing summary returned");
         return Ok(existing);
     }
 
@@ -52,13 +63,8 @@ pub async fn generate_and_save(
 
     // Prior summaries for this company (excluding this session, in case we
     // re-run end on a session that was rolled back).
-    let priors = recent_company_summaries(
-        db,
-        &company.id,
-        Some(&session.id),
-        MAX_PRIOR_SUMMARIES,
-    )
-    .await?;
+    let priors =
+        recent_company_summaries(db, &company.id, Some(&session.id), MAX_PRIOR_SUMMARIES).await?;
 
     let user = render_user_message(company, &evals, &priors);
 
@@ -74,6 +80,7 @@ pub async fn generate_and_save(
         .await?;
 
     let payload: SummaryPayload = crate::services::openrouter::parse_json(&raw).map_err(|e| {
+        tracing::warn!(error = %e, raw_preview = %preview(&raw, 240), "summary JSON parse failed");
         AppError::Upstream(format!(
             "summary returned invalid JSON: {e} — raw: {}",
             preview(&raw, 280)
@@ -92,6 +99,13 @@ pub async fn generate_and_save(
         created_at: chrono::Utc::now(),
     };
     summaries.insert_one(&summary).await?;
+    tracing::info!(
+        op = "summary",
+        duration_ms = start.elapsed().as_millis() as u64,
+        evals_n = evals.len(),
+        priors_n = priors.len(),
+        "summary saved",
+    );
 
     Ok(summary)
 }
@@ -129,11 +143,7 @@ pub async fn for_session(db: &Database, session_id: &str) -> Result<Option<Summa
         .await?)
 }
 
-fn render_user_message(
-    company: &Company,
-    evals: &[Evaluation],
-    priors: &[Summary],
-) -> String {
+fn render_user_message(company: &Company, evals: &[Evaluation], priors: &[Summary]) -> String {
     let packet = company_packet(company);
 
     let priors_block = if priors.is_empty() {

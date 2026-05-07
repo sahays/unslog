@@ -20,7 +20,9 @@ pub async fn ensure_for(db: &Database, company_id: &str) -> Result<QuestionBank,
 }
 
 pub async fn get_for(db: &Database, company_id: &str) -> Result<Option<QuestionBank>, AppError> {
-    Ok(coll(db).find_one(bson::doc! { "company_id": company_id }).await?)
+    Ok(coll(db)
+        .find_one(bson::doc! { "company_id": company_id })
+        .await?)
 }
 
 pub async fn append_questions(

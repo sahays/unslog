@@ -36,16 +36,16 @@ async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let cursor = coll.find(bson::doc! {}).with_options(opts).await?;
     let assets: Vec<Asset> = cursor.try_collect().await?;
     let has_primary = assets.iter().any(|a| a.primary);
-    let body = ListTemplate { assets, has_primary }
-        .render()
-        .map_err(|e| AppError::Other(anyhow::anyhow!("template error: {e}")))?;
+    let body = ListTemplate {
+        assets,
+        has_primary,
+    }
+    .render()
+    .map_err(|e| AppError::Other(anyhow::anyhow!("template error: {e}")))?;
     Ok(Html(body))
 }
 
-async fn upload(
-    State(state): State<AppState>,
-    mut form: Multipart,
-) -> Result<Response, AppError> {
+async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Response, AppError> {
     let mut name: Option<String> = None;
     let mut kind = AssetKind::Book;
     let mut filename: Option<String> = None;
@@ -80,8 +80,11 @@ async fn upload(
         }
     }
 
-    let original_filename = filename.ok_or_else(|| AppError::BadRequest("no file uploaded".into()))?;
-    let display_name = name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| original_filename.clone());
+    let original_filename =
+        filename.ok_or_else(|| AppError::BadRequest("no file uploaded".into()))?;
+    let display_name = name
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or_else(|| original_filename.clone());
 
     if bytes.is_empty() {
         return Err(AppError::BadRequest("uploaded file is empty".into()));
@@ -109,6 +112,16 @@ async fn upload(
         asset.primary = true;
     }
     coll.insert_one(&asset).await?;
+    tracing::info!(
+        event = "asset.upload",
+        asset_id = %asset.id,
+        name = %asset.name,
+        original_filename = %asset.original_filename,
+        bytes = bytes.len(),
+        primary = asset.primary,
+        extraction_status = ?asset.extraction_status,
+        "asset uploaded",
+    );
 
     Ok(Redirect::to("/assets").into_response())
 }
@@ -220,9 +233,13 @@ async fn preview(
         body = body.chars().take(80_000).collect();
     }
 
-    let body = PreviewTemplate { asset, body, truncated }
-        .render()
-        .map_err(|e| AppError::Other(anyhow::anyhow!("template error: {e}")))?;
+    let body = PreviewTemplate {
+        asset,
+        body,
+        truncated,
+    }
+    .render()
+    .map_err(|e| AppError::Other(anyhow::anyhow!("template error: {e}")))?;
     Ok(Html(body))
 }
 

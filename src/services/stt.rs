@@ -13,8 +13,7 @@ pub fn audio_path_for(
     uuid: &str,
     ext: &str,
 ) -> PathBuf {
-    crate::recordings::session_dir(data_dir, company_id, session_id)
-        .join(format!("{uuid}.{ext}"))
+    crate::recordings::session_dir(data_dir, company_id, session_id).join(format!("{uuid}.{ext}"))
 }
 
 pub async fn save_and_transcribe(
