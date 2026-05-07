@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Prompts — unslog{% endblock %}
+
+{% block content %}
+<div style="display: grid; gap: 1.25rem;">
+  <div>
+    <h2 style="margin: 0 0 0.25rem; font-size: 1.125rem; font-weight: 600;">Prompts</h2>
+    <p class="muted" style="margin: 0; font-size: 0.875rem;">
+      System prompts that drive the AI. Edits never overwrite — every save creates a new version, and old sessions stay pinned to whatever version was current when they ran.
+    </p>
+  </div>
+
+  {% for item in items %}
+    <div class="card">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+        <div>
+          <div style="font-weight: 600; font-size: 1rem;">{{ item.name }}</div>
+          <div class="muted" style="font-size: 0.875rem;">{{ item.description }}</div>
+        </div>
+        <div style="display: flex; gap: 0.375rem;">
+          <a class="btn" style="font-size: 0.8125rem;" href="/prompts/{{ item.name }}">Edit</a>
+          <a class="btn" style="font-size: 0.8125rem;" href="/prompts/{{ item.name }}/history">History</a>
+        </div>
+      </div>
+      {% if !item.body_excerpt.is_empty() %}
+        <div class="muted" style="margin-top: 0.75rem; font-family: var(--font-mono); font-size: 0.8125rem; white-space: pre-wrap; padding: 0.75rem; background: var(--bg-sunk); border-radius: 6px;">{{ item.body_excerpt }}</div>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

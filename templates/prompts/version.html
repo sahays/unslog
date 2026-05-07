@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}{{ name }} version — prompts{% endblock %}
+
+{% block content %}
+<div style="display: grid; gap: 1rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600;">{{ name }}</h2>
+        {% if is_current %}<span class="tag tag-accent">current</span>{% endif %}
+      </div>
+      <div class="muted" style="font-size: 0.8125rem;">
+        <code>{{ version.id }}</code> • {{ version.created_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+      </div>
+    </div>
+    <div style="display: flex; gap: 0.375rem;">
+      <a class="btn" href="/prompts/{{ name }}/history">History</a>
+      {% if !is_current %}
+        <form method="post" action="/prompts/{{ name }}/restore/{{ version.id }}" style="display: inline;">
+          <button type="submit" class="btn">Restore this version</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <pre style="white-space: pre-wrap; word-wrap: break-word; font-family: var(--font-mono); font-size: 0.8125rem; margin: 0;">{{ version.body }}</pre>
+  </div>
+</div>
+{% endblock %}
