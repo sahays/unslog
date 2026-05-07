@@ -1,86 +1,100 @@
+{% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
 {% block title %}Assets — unslog{% endblock %}
 
 {% block content %}
-<div style="display: grid; gap: 1.5rem;">
+<div class="grid gap-6">
   <div class="card">
-    <h2 style="margin: 0 0 0.25rem; font-size: 1.125rem; font-weight: 600;">Assets</h2>
-    <p class="muted" style="margin: 0 0 1rem; font-size: 0.875rem;">
+    {% call ui::card_header("book-open", "Assets") %}
+    <p class="muted text-sm mb-5 max-w-2xl">
       Upload the book (and any reference works) here. The asset marked <em>primary</em> is the one inlined into every critique.
     </p>
 
-    <form method="post" action="/assets" enctype="multipart/form-data" style="display: grid; gap: 0.75rem;">
-      <div>
+    <form method="post" action="/assets" enctype="multipart/form-data" class="grid gap-3 max-w-xl">
+      <div class="grid gap-1.5">
         <label for="asset_name">Name</label>
         <input type="text" id="asset_name" name="name" placeholder="e.g. Acing Behavioral Interviews 2e" />
       </div>
-      <div>
+      <div class="grid gap-1.5">
         <label for="asset_kind">Kind</label>
         <select id="asset_kind" name="kind">
           <option value="book">Book</option>
           <option value="other">Other</option>
         </select>
       </div>
-      <div>
+      <div class="grid gap-1.5">
         <label for="asset_file">PDF file</label>
         <input type="file" id="asset_file" name="file" accept="application/pdf,.pdf" required />
       </div>
       <div>
-        <button type="submit" class="btn btn-primary">Upload &amp; extract</button>
+        <button type="submit" class="btn btn-primary btn-icon-spring">
+          <span class="btn-icon"><i data-lucide="upload" class="h-4 w-4"></i></span>
+          <span>Upload &amp; extract</span>
+        </button>
       </div>
     </form>
   </div>
 
   <div class="card">
-    <h3 style="margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600;">Library</h3>
+    {% call ui::card_header("library", "Library") %}
     {% if assets.is_empty() %}
-      <p class="muted">No assets yet. Upload one above.</p>
+      <p class="muted m-0">No assets yet. Upload one above.</p>
     {% else %}
       {% if !has_primary %}
-        <div class="card" style="border-color: var(--danger); margin-bottom: 1rem;">
-          <strong>No primary asset.</strong>
-          <div class="muted" style="margin-top: 0.25rem; font-size: 0.875rem;">
-            Critiques can't run until one asset is marked primary.
+        <div class="alert alert-error mb-4" role="alert">
+          <i data-lucide="alert-triangle" class="h-4 w-4 mt-0.5"></i>
+          <div>
+            <strong class="font-medium">No primary asset.</strong>
+            <div class="text-sm muted mt-0.5">Critiques can't run until one asset is marked primary.</div>
           </div>
         </div>
       {% endif %}
-      <div style="display: grid; gap: 0.75rem;">
+      <div class="grid gap-3 stagger-children">
         {% for a in assets %}
-          <div style="display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px;">
+          <div class="grid grid-cols-[1fr_auto] gap-3 p-3 rounded-md border border-[color:var(--color-border)]">
             <div>
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <strong>{{ a.name }}</strong>
-                {% if a.primary %}<span class="tag tag-accent">primary</span>{% endif %}
+              <div class="flex items-center gap-2 flex-wrap">
+                <strong class="font-medium">{{ a.name }}</strong>
+                {% if a.primary %}{% call ui::badge("primary", "accent") %}{% endif %}
                 <span class="tag">{{ a.kind|json|safe }}</span>
                 {% match a.extraction_status %}
-                  {% when crate::models::ExtractionStatus::Ok %}<span class="tag tag-good">extracted</span>
-                  {% when crate::models::ExtractionStatus::Pending %}<span class="tag">pending</span>
-                  {% when crate::models::ExtractionStatus::Failed %}<span class="tag tag-bad">failed</span>
+                  {% when crate::models::ExtractionStatus::Ok %}{% call ui::badge("extracted", "good") %}
+                  {% when crate::models::ExtractionStatus::Pending %}{% call ui::badge("pending", "default") %}
+                  {% when crate::models::ExtractionStatus::Failed %}{% call ui::badge("failed", "bad") %}
                 {% endmatch %}
               </div>
-              <div class="muted" style="font-size: 0.8125rem; margin-top: 0.25rem;">
+              <div class="muted text-sm mt-1">
                 {{ a.original_filename }} • uploaded {{ a.uploaded_at.format("%Y-%m-%d %H:%M").to_string() }}
               </div>
               {% if let Some(err) = a.extraction_error.as_ref() %}
-                <div class="muted" style="font-size: 0.8125rem; color: var(--danger); margin-top: 0.25rem;">
-                  {{ err }}
-                </div>
+                <div class="text-sm mt-1 text-[color:var(--color-error)]">{{ err }}</div>
               {% endif %}
             </div>
-            <div style="display: flex; gap: 0.375rem; align-items: flex-start;">
+            <div class="flex gap-1.5 items-start flex-shrink-0">
               {% if !a.primary %}
-                <form method="post" action="/assets/{{ a.id }}/primary" style="display: inline;">
-                  <button type="submit" class="btn" style="font-size: 0.8125rem;">Set primary</button>
+                <form method="post" action="/assets/{{ a.id }}/primary">
+                  <button type="submit" class="btn btn-sm">
+                    <i data-lucide="star" class="h-3.5 w-3.5"></i>
+                    Set primary
+                  </button>
                 </form>
               {% endif %}
-              <a class="btn" style="font-size: 0.8125rem;" href="/assets/{{ a.id }}/preview">Preview</a>
-              <form method="post" action="/assets/{{ a.id }}/reextract" style="display: inline;">
-                <button type="submit" class="btn" style="font-size: 0.8125rem;">Re-extract</button>
+              <a class="btn btn-sm" href="/assets/{{ a.id }}/preview">
+                <i data-lucide="eye" class="h-3.5 w-3.5"></i>
+                Preview
+              </a>
+              <form method="post" action="/assets/{{ a.id }}/reextract">
+                <button type="submit" class="btn btn-sm">
+                  <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
+                  Re-extract
+                </button>
               </form>
-              <form method="post" action="/assets/{{ a.id }}/delete" style="display: inline;"
-                    onsubmit="return confirm('Delete asset?')">
-                <button type="submit" class="btn btn-danger" style="font-size: 0.8125rem;">Delete</button>
+              <form method="post" action="/assets/{{ a.id }}/delete" onsubmit="return confirm('Delete asset?')">
+                <button type="submit" class="btn btn-sm btn-danger">
+                  <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
+                  Delete
+                </button>
               </form>
             </div>
           </div>

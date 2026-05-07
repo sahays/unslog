@@ -1,106 +1,111 @@
+{% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
 {% block title %}Settings — unslog{% endblock %}
 
 {% block content %}
-<div style="display: grid; gap: 1.25rem;">
-  <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
-    <h2 style="margin: 0; font-size: 1.25rem; font-weight: 600;">Settings</h2>
-    <form method="post" action="/settings/refresh-models" style="display: inline;">
-      <button type="submit" class="btn">Refresh model list</button>
+<div class="grid gap-5">
+  <div class="flex items-center justify-between gap-4">
+    <h1 class="font-heading text-2xl font-semibold">Settings</h1>
+    <form method="post" action="/settings/refresh-models">
+      <button type="submit" class="btn">
+        <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+        Refresh model list
+      </button>
     </form>
   </div>
 
   {% if !openrouter_configured %}
-    <div class="card" style="border-color: var(--danger);">
-      <strong>OPENROUTER_API_KEY not set.</strong>
-      <div class="muted" style="margin-top: 0.25rem; font-size: 0.875rem;">
-        Without a key, the model list can't load. You can still type model IDs manually below — they'll be used at session-start time.
+    <div class="alert alert-error" role="alert">
+      <i data-lucide="alert-triangle" class="h-4 w-4 mt-0.5"></i>
+      <div>
+        <strong class="font-medium">OPENROUTER_API_KEY not set.</strong>
+        <div class="text-sm muted mt-0.5">
+          Without a key, the model list can't load. You can still type model IDs manually below — they'll be used at session-start time.
+        </div>
       </div>
     </div>
   {% else if let Some(err) = models_error.as_ref() %}
-    <div class="card" style="border-color: var(--danger);">
-      <strong>Couldn't load models from OpenRouter.</strong>
-      <div class="muted" style="margin-top: 0.25rem; font-size: 0.875rem;">{{ err }}</div>
+    <div class="alert alert-error" role="alert">
+      <i data-lucide="alert-triangle" class="h-4 w-4 mt-0.5"></i>
+      <div>
+        <strong class="font-medium">Couldn't load models from OpenRouter.</strong>
+        <div class="text-sm muted mt-0.5">{{ err }}</div>
+      </div>
     </div>
   {% endif %}
 
-  <form method="post" action="/settings" class="card" style="display: grid; gap: 1.25rem;">
-    <div class="muted" style="font-size: 0.8125rem;">
-      These are the defaults used when starting a new session. Existing
-      sessions keep the snapshot they were started with.
-    </div>
+  <form method="post" action="/settings" class="card grid gap-5">
+    {% call ui::card_header("sliders", "Model selection") %}
+    <p class="muted text-sm -mt-2">
+      These are the defaults used when starting a new session. Existing sessions keep the snapshot they were started with.
+    </p>
 
-    <section style="display: grid; gap: 0.5rem;">
-      <label for="critique_model" style="font-weight: 500;">Critique model</label>
-      <div class="muted" style="font-size: 0.8125rem;">Used to score your answer and write the narrative critique.</div>
+    <section class="grid gap-1.5">
+      <label for="critique_model">Critique model</label>
+      <p class="muted-soft text-xs">Used to score your answer and write the narrative critique.</p>
       <input id="critique_model" name="critique_model" type="text" list="chat-models"
              value="{{ settings.critique_model }}" required />
     </section>
 
-    <section style="display: grid; gap: 0.5rem;">
-      <label for="research_model" style="font-weight: 500;">Research model</label>
-      <div class="muted" style="font-size: 0.8125rem;">
-        Used by the research agent. Add the <code>:online</code> suffix to enable web search
-        (e.g. <code>google/gemini-2.5-pro:online</code>).
-      </div>
+    <section class="grid gap-1.5">
+      <label for="research_model">Research model</label>
+      <p class="muted-soft text-xs">
+        Used by the research agent. Add the <code class="font-mono">:online</code> suffix to enable web search
+        (e.g. <code class="font-mono">google/gemini-2.5-pro:online</code>).
+      </p>
       <input id="research_model" name="research_model" type="text" list="chat-models"
              value="{{ settings.research_model }}" required />
     </section>
 
-    <section style="display: grid; gap: 0.5rem;">
-      <label for="stt_model" style="font-weight: 500;">Speech-to-text model</label>
-      <div class="muted" style="font-size: 0.8125rem;">Must accept audio input. Used to transcribe your spoken answers.</div>
+    <section class="grid gap-1.5">
+      <label for="stt_model">Speech-to-text model</label>
+      <p class="muted-soft text-xs">Must accept audio input. Used to transcribe your spoken answers.</p>
       <input id="stt_model" name="stt_model" type="text" list="audio-in-models"
              value="{{ settings.stt_model }}" required />
     </section>
 
-    <section style="display: grid; gap: 0.5rem;">
-      <label for="tts_model" style="font-weight: 500;">Text-to-speech model</label>
-      <div class="muted" style="font-size: 0.8125rem;">Must produce audio output. Used to read questions and critiques aloud.</div>
+    <section class="grid gap-1.5">
+      <label for="tts_model">Text-to-speech model</label>
+      <p class="muted-soft text-xs">Must produce audio output. Used to read questions and critiques aloud.</p>
       <input id="tts_model" name="tts_model" type="text" list="audio-out-models"
              value="{{ settings.tts_model }}" required />
     </section>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-      <section style="display: grid; gap: 0.5rem;">
-        <label for="tts_voice" style="font-weight: 500;">TTS voice</label>
+    <div class="grid gap-3 grid-cols-1 sm:grid-cols-2">
+      <section class="grid gap-1.5">
+        <label for="tts_voice">TTS voice</label>
         <input id="tts_voice" name="tts_voice" type="text" value="{{ settings.tts_voice }}" required />
-        <div class="muted" style="font-size: 0.75rem;">
-          OpenAI voices: alloy, echo, fable, onyx, nova, shimmer.
-        </div>
+        <div class="muted-soft text-xs">OpenAI voices: alloy, echo, fable, onyx, nova, shimmer.</div>
       </section>
-      <section style="display: grid; gap: 0.5rem;">
-        <label for="tts_speed" style="font-weight: 500;">TTS speed (optional)</label>
+      <section class="grid gap-1.5">
+        <label for="tts_speed">TTS speed (optional)</label>
         <input id="tts_speed" name="tts_speed" type="number" min="0.25" max="4.0" step="0.05"
                placeholder="1.0"
                value="{% if let Some(s) = settings.tts_speed %}{{ s }}{% endif %}" />
-        <div class="muted" style="font-size: 0.75rem;">0.25–4.0. Empty = endpoint default.</div>
+        <div class="muted-soft text-xs">0.25–4.0. Empty = endpoint default.</div>
       </section>
     </div>
 
-    <div>
-      <button type="submit" class="btn btn-primary">Save settings</button>
-      <span class="muted" style="font-size: 0.75rem; margin-left: 0.75rem;">
+    <div class="flex items-center gap-3 mt-2">
+      <button type="submit" class="btn btn-primary btn-icon-spring">
+        <span class="btn-icon"><i data-lucide="save" class="h-4 w-4"></i></span>
+        <span>Save settings</span>
+      </button>
+      <span class="muted-soft text-xs">
         Last updated {{ settings.updated_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
       </span>
     </div>
   </form>
 
   <datalist id="chat-models">
-    {% for m in chat_models %}
-      <option value="{{ m.id }}">{{ m.name }}</option>
-    {% endfor %}
+    {% for m in chat_models %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
   </datalist>
   <datalist id="audio-in-models">
-    {% for m in audio_in_models %}
-      <option value="{{ m.id }}">{{ m.name }}</option>
-    {% endfor %}
+    {% for m in audio_in_models %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
   </datalist>
   <datalist id="audio-out-models">
-    {% for m in audio_out_models %}
-      <option value="{{ m.id }}">{{ m.name }}</option>
-    {% endfor %}
+    {% for m in audio_out_models %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
   </datalist>
 </div>
 {% endblock %}

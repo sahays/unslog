@@ -1,23 +1,30 @@
+{% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
 {% block title %}{{ asset.name }} — preview{% endblock %}
 
 {% block content %}
-<div style="display: grid; gap: 1rem;">
-  <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+<div class="grid gap-5">
+  <div class="flex items-start justify-between gap-4">
     <div>
-      <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600;">{{ asset.name }}</h2>
-      <div class="muted" style="font-size: 0.875rem;">{{ asset.original_filename }}</div>
+      <h1 class="font-heading text-2xl font-semibold">{{ asset.name }}</h1>
+      <div class="muted text-sm mt-1">{{ asset.original_filename }}</div>
     </div>
-    <a class="btn" href="/assets">Back</a>
+    <a class="btn" href="/assets">
+      <i data-lucide="arrow-left" class="h-4 w-4"></i>
+      Back
+    </a>
   </div>
 
   {% if truncated %}
-    <div class="muted" style="font-size: 0.875rem;">Showing first 80,000 characters of extracted text.</div>
+    <div class="alert alert-info" role="alert">
+      <i data-lucide="info" class="h-4 w-4 mt-0.5"></i>
+      <div class="text-sm">Showing first 80,000 characters of extracted text.</div>
+    </div>
   {% endif %}
 
-  <div class="card" style="padding: 1rem;">
-    <pre style="white-space: pre-wrap; word-wrap: break-word; font-family: var(--font-mono); font-size: 0.8125rem; margin: 0; max-height: 70vh; overflow: auto;">{{ body }}</pre>
+  <div class="card">
+    <pre class="font-mono text-xs whitespace-pre-wrap break-words m-0 max-h-[70vh] overflow-auto">{{ body }}</pre>
   </div>
 </div>
 {% endblock %}

@@ -1,28 +1,38 @@
+{% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
 {% block title %}{{ name }} — prompts{% endblock %}
 
 {% block content %}
-<div style="display: grid; gap: 1rem;">
-  <div style="display: flex; align-items: center; justify-content: space-between;">
+<div class="grid gap-5">
+  <div class="flex items-start justify-between gap-4">
     <div>
-      <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600;">{{ name }}</h2>
-      <div class="muted" style="font-size: 0.875rem;">{{ description }}</div>
-      <div class="muted" style="font-size: 0.75rem; margin-top: 0.25rem;">
-        Current version: <code>{{ current_version_id }}</code> • updated {{ updated_at }}
+      <h1 class="font-heading text-2xl font-semibold">{{ name }}</h1>
+      <p class="muted text-sm mt-1">{{ description }}</p>
+      <div class="muted-soft text-xs mt-2">
+        Current version: <code class="font-mono">{{ current_version_id }}</code> • updated {{ updated_at }}
       </div>
     </div>
-    <div style="display: flex; gap: 0.375rem;">
-      <a class="btn" href="/prompts">Back</a>
-      <a class="btn" href="/prompts/{{ name }}/history">History</a>
+    <div class="flex gap-2 flex-shrink-0">
+      <a class="btn" href="/prompts">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+        Back
+      </a>
+      <a class="btn" href="/prompts/{{ name }}/history">
+        <i data-lucide="history" class="h-4 w-4"></i>
+        History
+      </a>
     </div>
   </div>
 
-  <form method="post" action="/prompts/{{ name }}" style="display: grid; gap: 0.75rem;">
-    <textarea name="body" style="min-height: 60vh;" spellcheck="false">{{ body }}</textarea>
-    <div style="display: flex; gap: 0.5rem; align-items: center;">
-      <button type="submit" class="btn btn-primary">Save as new version</button>
-      <span class="muted" style="font-size: 0.8125rem;">Saving creates a new version — your earlier text stays in history.</span>
+  <form method="post" action="/prompts/{{ name }}" class="grid gap-3">
+    <textarea name="body" spellcheck="false" class="min-h-[60vh]">{{ body }}</textarea>
+    <div class="flex gap-3 items-center">
+      <button type="submit" class="btn btn-primary btn-icon-spring">
+        <span class="btn-icon"><i data-lucide="save" class="h-4 w-4"></i></span>
+        <span>Save as new version</span>
+      </button>
+      <span class="muted-soft text-xs">Saving creates a new version — your earlier text stays in history.</span>
     </div>
   </form>
 </div>

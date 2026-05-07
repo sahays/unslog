@@ -1,44 +1,61 @@
+{% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
 {% block title %}{{ name }} history — prompts{% endblock %}
 
 {% block content %}
-<div style="display: grid; gap: 1rem;">
-  <div style="display: flex; align-items: center; justify-content: space-between;">
+<div class="grid gap-5">
+  <div class="flex items-start justify-between gap-4">
     <div>
-      <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600;">{{ name }} — version history</h2>
-      <div class="muted" style="font-size: 0.875rem;">{{ description }}</div>
+      <h1 class="font-heading text-2xl font-semibold">{{ name }} <span class="muted text-base font-normal">— version history</span></h1>
+      <p class="muted text-sm mt-1">{{ description }}</p>
     </div>
-    <div style="display: flex; gap: 0.375rem;">
-      <a class="btn" href="/prompts">Back</a>
-      <a class="btn" href="/prompts/{{ name }}">Edit current</a>
+    <div class="flex gap-2 flex-shrink-0">
+      <a class="btn" href="/prompts">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+        Back
+      </a>
+      <a class="btn" href="/prompts/{{ name }}">
+        <i data-lucide="pencil" class="h-4 w-4"></i>
+        Edit current
+      </a>
     </div>
   </div>
 
   {% if versions.is_empty() %}
-    <div class="card"><p class="muted" style="margin:0;">No versions yet.</p></div>
+    <div class="card">
+      <p class="muted m-0">No versions yet.</p>
+    </div>
   {% else %}
-    <div style="display: grid; gap: 0.5rem;">
+    <div class="grid gap-2 stagger-children">
       {% for v in versions %}
-        <div class="card" style="padding: 0.875rem;">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+        <div class="card py-3">
+          <div class="flex items-center justify-between gap-4">
             <div>
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <code style="font-size: 0.8125rem;">{{ v.id }}</code>
-                {% if v.id == current_version_id %}<span class="tag tag-accent">current</span>{% endif %}
+              <div class="flex items-center gap-2 flex-wrap">
+                <code class="font-mono text-sm">{{ v.id }}</code>
+                {% if v.id == current_version_id %}
+                  {% call ui::badge("current", "accent") %}
+                {% endif %}
                 {% if let Some(parent) = v.restored_from.as_ref() %}
-                  <span class="tag">restored from <code>{{ parent }}</code></span>
+                  <span class="tag">restored from <code class="font-mono ml-1">{{ parent }}</code></span>
                 {% endif %}
               </div>
-              <div class="muted" style="font-size: 0.8125rem; margin-top: 0.25rem;">
+              <div class="muted-soft text-sm mt-1">
                 created {{ v.created_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
               </div>
             </div>
-            <div style="display: flex; gap: 0.375rem;">
-              <a class="btn" style="font-size: 0.8125rem;" href="/prompts/{{ name }}/versions/{{ v.id }}">View</a>
+            <div class="flex gap-1.5 flex-shrink-0">
+              <a class="btn btn-sm" href="/prompts/{{ name }}/versions/{{ v.id }}">
+                <i data-lucide="eye" class="h-3.5 w-3.5"></i>
+                View
+              </a>
               {% if v.id != current_version_id %}
-                <form method="post" action="/prompts/{{ name }}/restore/{{ v.id }}" style="display: inline;">
-                  <button type="submit" class="btn" style="font-size: 0.8125rem;">Restore</button>
+                <form method="post" action="/prompts/{{ name }}/restore/{{ v.id }}">
+                  <button type="submit" class="btn btn-sm">
+                    <i data-lucide="rotate-ccw" class="h-3.5 w-3.5"></i>
+                    Restore
+                  </button>
                 </form>
               {% endif %}
             </div>

@@ -1,32 +1,46 @@
+{% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
 {% block title %}Prompts — unslog{% endblock %}
 
 {% block content %}
-<div style="display: grid; gap: 1.25rem;">
+<div class="grid gap-5">
   <div>
-    <h2 style="margin: 0 0 0.25rem; font-size: 1.125rem; font-weight: 600;">Prompts</h2>
-    <p class="muted" style="margin: 0; font-size: 0.875rem;">
+    <h1 class="font-heading text-2xl font-semibold">Prompts</h1>
+    <p class="muted text-sm mt-1 max-w-2xl">
       System prompts that drive the AI. Edits never overwrite — every save creates a new version, and old sessions stay pinned to whatever version was current when they ran.
     </p>
   </div>
 
-  {% for item in items %}
-    <div class="card">
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
-        <div>
-          <div style="font-weight: 600; font-size: 1rem;">{{ item.name }}</div>
-          <div class="muted" style="font-size: 0.875rem;">{{ item.description }}</div>
+  <div class="grid gap-3 stagger-children">
+    {% for item in items %}
+      <div class="card">
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <div class="flex h-9 w-9 items-center justify-center rounded-md bg-[color:var(--color-accent-light)]">
+              <i data-lucide="file-text" class="h-4 w-4 text-[color:var(--color-accent)]"></i>
+            </div>
+            <div>
+              <div class="font-heading font-semibold">{{ item.name }}</div>
+              <div class="muted text-sm">{{ item.description }}</div>
+            </div>
+          </div>
+          <div class="flex gap-1.5">
+            <a class="btn btn-sm" href="/prompts/{{ item.name }}">
+              <i data-lucide="pencil" class="h-3.5 w-3.5"></i>
+              Edit
+            </a>
+            <a class="btn btn-sm" href="/prompts/{{ item.name }}/history">
+              <i data-lucide="history" class="h-3.5 w-3.5"></i>
+              History
+            </a>
+          </div>
         </div>
-        <div style="display: flex; gap: 0.375rem;">
-          <a class="btn" style="font-size: 0.8125rem;" href="/prompts/{{ item.name }}">Edit</a>
-          <a class="btn" style="font-size: 0.8125rem;" href="/prompts/{{ item.name }}/history">History</a>
-        </div>
+        {% if !item.body_excerpt.is_empty() %}
+          <pre class="font-mono text-xs muted whitespace-pre-wrap p-3 mt-3 rounded-md bg-[color:var(--color-bg-tertiary)] max-h-32 overflow-hidden">{{ item.body_excerpt }}</pre>
+        {% endif %}
       </div>
-      {% if !item.body_excerpt.is_empty() %}
-        <div class="muted" style="margin-top: 0.75rem; font-family: var(--font-mono); font-size: 0.8125rem; white-space: pre-wrap; padding: 0.75rem; background: var(--bg-sunk); border-radius: 6px;">{{ item.body_excerpt }}</div>
-      {% endif %}
-    </div>
-  {% endfor %}
+    {% endfor %}
+  </div>
 </div>
 {% endblock %}

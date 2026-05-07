@@ -1,49 +1,44 @@
+{% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
 {% block title %}unslog — behavioral interview coach{% endblock %}
 
 {% block content %}
-<div style="display: grid; gap: 1.25rem;">
+<div class="grid gap-6">
   <div class="card">
-    <h1 style="font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem;">Behavioral interview coach</h1>
-    <p class="muted" style="margin-bottom: 1.25rem;">
+    <h1 class="font-heading text-3xl font-semibold mb-2">Behavioral interview coach</h1>
+    <p class="muted mb-5 max-w-2xl">
       Pick a behavioral question, answer by voice, get a critique grounded in the book and the company's signal, retry, and watch the gap close.
     </p>
-    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-      <a class="btn btn-primary" href="/companies">Open companies</a>
-      <a class="btn" href="/assets">Upload the book</a>
-      <a class="btn" href="/prompts">Tune prompts</a>
-      <a class="btn" href="/settings">Settings</a>
+    <div class="flex gap-3 flex-wrap">
+      {% call ui::link_btn("/companies", "Open companies", "briefcase", "primary") %}
+      {% call ui::link_btn("/assets", "Upload the book", "book-open", "secondary") %}
+      {% call ui::link_btn("/prompts", "Tune prompts", "file-text", "secondary") %}
+      {% call ui::link_btn("/settings", "Settings", "sliders", "secondary") %}
     </div>
   </div>
 
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;">
+  <div class="grid gap-3 grid-cols-2 sm:grid-cols-4">
+    {% call ui::stat_card("Companies", company_count) %}
+    {% call ui::stat_card("Active sessions", active_count) %}
     <div class="card">
-      <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Companies</div>
-      <div style="font-size: 1.5rem; font-weight: 600; margin-top: 0.25rem;">{{ company_count }}</div>
-    </div>
-    <div class="card">
-      <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Active sessions</div>
-      <div style="font-size: 1.5rem; font-weight: 600; margin-top: 0.25rem;">{{ active_count }}</div>
-    </div>
-    <div class="card">
-      <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Primary asset</div>
-      <div style="margin-top: 0.25rem;">
+      <div class="muted-soft text-xs uppercase tracking-wider font-medium">Primary asset</div>
+      <div class="mt-2">
         {% if primary_asset_present %}
-          <span class="tag tag-good">configured</span>
+          {% call ui::badge("configured", "good") %}
         {% else %}
-          <span class="tag tag-bad">missing</span>
-          <a class="muted" style="font-size: 0.8125rem; margin-left: 0.5rem;" href="/assets">Upload</a>
+          {% call ui::badge("missing", "bad") %}
+          <a class="link-muted text-xs ml-2" href="/assets">Upload →</a>
         {% endif %}
       </div>
     </div>
     <div class="card">
-      <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">OpenRouter</div>
-      <div style="margin-top: 0.25rem;">
+      <div class="muted-soft text-xs uppercase tracking-wider font-medium">OpenRouter</div>
+      <div class="mt-2">
         {% if openrouter_configured %}
-          <span class="tag tag-good">key set</span>
+          {% call ui::badge("key set", "good") %}
         {% else %}
-          <span class="tag tag-bad">no key</span>
+          {% call ui::badge("no key", "bad") %}
         {% endif %}
       </div>
     </div>
@@ -51,26 +46,32 @@
 
   {% if !recent.is_empty() %}
     <div>
-      <h3 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin: 0 0 0.5rem;">Recent sessions</h3>
-      <div style="display: grid; gap: 0.5rem;">
+      <h3 class="muted-soft text-xs uppercase tracking-wider font-medium mb-2">Recent sessions</h3>
+      <div class="grid gap-2 stagger-children">
         {% for row in recent %}
-          <div class="card" style="display: flex; gap: 0.75rem; align-items: center;">
-            <span class="tag" style="flex-shrink: 0;">
-              {% match row.session.status %}
-                {% when crate::models::SessionStatus::Active %}active
-                {% when crate::models::SessionStatus::Ended %}ended
-              {% endmatch %}
-            </span>
-            <div style="flex: 1; min-width: 0;">
-              <div style="font-weight: 500;">{{ row.company_name }}</div>
-              <div class="muted" style="font-size: 0.8125rem;">
+          <div class="card flex gap-3 items-center">
+            {% match row.session.status %}
+              {% when crate::models::SessionStatus::Active %}
+                {% call ui::badge("active", "accent") %}
+              {% when crate::models::SessionStatus::Ended %}
+                {% call ui::badge("ended", "default") %}
+            {% endmatch %}
+            <div class="flex-1 min-w-0">
+              <div class="font-medium">{{ row.company_name }}</div>
+              <div class="muted text-sm">
                 started {{ row.session.started_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
-                {% if row.has_summary %}<span style="margin-left: 0.5rem;">• has summary</span>{% endif %}
+                {% if row.has_summary %}<span class="ml-2">• has summary</span>{% endif %}
               </div>
             </div>
-            <a class="btn" style="font-size: 0.75rem; padding: 0.25rem 0.625rem;" href="/sessions/{{ row.session.id }}/review">Review</a>
+            <a class="btn btn-sm" href="/sessions/{{ row.session.id }}/review">
+              <i data-lucide="clipboard-list" class="h-3.5 w-3.5"></i>
+              Review
+            </a>
             {% if row.session.status == crate::models::SessionStatus::Active %}
-              <a class="btn btn-primary" style="font-size: 0.75rem; padding: 0.25rem 0.625rem;" href="/sessions/{{ row.session.id }}">Resume</a>
+              <a class="btn btn-primary btn-sm" href="/sessions/{{ row.session.id }}">
+                <i data-lucide="play" class="h-3.5 w-3.5"></i>
+                Resume
+              </a>
             {% endif %}
           </div>
         {% endfor %}
