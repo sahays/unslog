@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en"
+      class="h-full"
       x-data="{ darkMode: localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches) }"
       x-init="$watch('darkMode', v => localStorage.setItem('theme', v ? 'dark' : 'light'))"
       :class="{ 'dark': darkMode }">
@@ -19,30 +20,75 @@
     <link rel="stylesheet" href="/static/css/app.css" />
     <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
     <script src="https://unpkg.com/alpinejs@3.14.1" defer></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="/static/js/recorder.js" defer></script>
     {% block head %}{% endblock %}
   </head>
-  <body class="font-body antialiased" style="min-height: 100vh;">
-    <nav style="border-bottom: 1px solid var(--border); background: var(--bg-soft);">
-      <div style="max-width: 1100px; margin: 0 auto; padding: 0.875rem 1.25rem; display:flex; justify-content: space-between; align-items: center;">
-        <a href="/" style="font-weight: 600; text-decoration: none; color: var(--fg);">unslog</a>
-        <div style="display:flex; gap: 1rem; font-size: 0.875rem;">
-          <a href="/companies">Companies</a>
-          <a href="/assets">Assets</a>
-          <a href="/prompts">Prompts</a>
-          <a href="/settings">Settings</a>
-          <button class="btn" @click="darkMode = !darkMode" style="font-size: 0.75rem; padding: 0.25rem 0.625rem;">
-            <span x-show="!darkMode">Dark</span>
-            <span x-show="darkMode">Light</span>
-          </button>
+  <body class="bg-accent-gradient antialiased min-h-screen">
+
+    <!-- Top progress bar (HTMX-driven) -->
+    <div id="progress-bar" class="progress-bar"></div>
+
+    <!-- Navigation -->
+    <nav class="nav-frosted sticky top-0" style="z-index: var(--z-sticky);">
+      <div class="mx-auto max-w-5xl px-6 sm:px-8 lg:px-12">
+        <div class="flex h-14 items-center justify-between">
+          <a href="/" class="flex items-center gap-2 font-heading text-lg font-semibold text-[color:var(--color-accent)]">
+            <i data-lucide="layers" class="h-5 w-5"></i>
+            unslog
+          </a>
+
+          <div class="flex items-center gap-5 text-sm">
+            <a href="/companies" class="nav-link inline-flex items-center gap-1.5">
+              <i data-lucide="briefcase" class="h-4 w-4"></i>
+              <span>Companies</span>
+            </a>
+            <a href="/assets" class="nav-link inline-flex items-center gap-1.5">
+              <i data-lucide="book-open" class="h-4 w-4"></i>
+              <span>Assets</span>
+            </a>
+            <a href="/prompts" class="nav-link inline-flex items-center gap-1.5">
+              <i data-lucide="file-text" class="h-4 w-4"></i>
+              <span>Prompts</span>
+            </a>
+            <a href="/settings" class="nav-link inline-flex items-center gap-1.5">
+              <i data-lucide="sliders" class="h-4 w-4"></i>
+              <span>Settings</span>
+            </a>
+
+            <button
+              @click="darkMode = !darkMode"
+              class="btn btn-ghost p-2"
+              :aria-label="darkMode ? 'Switch to light mode' : 'Switch to dark mode'"
+              title="Toggle theme">
+              <i x-show="!darkMode" x-cloak data-lucide="moon" class="h-4 w-4"></i>
+              <i x-show="darkMode" x-cloak data-lucide="sun" class="h-4 w-4"></i>
+            </button>
+          </div>
         </div>
       </div>
     </nav>
 
-    <main style="max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.25rem;">
+    <main class="mx-auto max-w-5xl px-6 sm:px-8 lg:px-12 py-8">
       {% block content %}{% endblock %}
     </main>
 
-    <div id="progress-bar" class="htmx-indicator" style="position: fixed; top: 0; left: 0; right: 0; height: 2px; background: var(--accent); z-index: 100;"></div>
+    <!-- Lucide loader: hydrate icons after page load and after every htmx swap -->
+    <script>
+      (function () {
+        function render() {
+          if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+          }
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', render);
+        } else {
+          render();
+        }
+        document.body.addEventListener('htmx:afterSwap', render);
+        document.body.addEventListener('htmx:load', render);
+      })();
+    </script>
   </body>
 </html>

@@ -1,0 +1,102 @@
+{# ── UI macros ──────────────────────────────────────────────── #}
+
+{# Lucide icon. `name` is the icon id; `extra` is extra classes (size, color). #}
+{% macro lucide(name, extra) -%}
+<i data-lucide="{{ name }}" class="{{ extra }}"></i>
+{%- endmacro %}
+
+{# Badges. variant ∈ {default, accent, good, warn, bad, ai} — pre-styled chips. #}
+{% macro badge(text, variant) -%}
+{% if variant == "good" -%}
+<span class="tag tag-good">{{ text }}</span>
+{%- else if variant == "bad" -%}
+<span class="tag tag-bad">{{ text }}</span>
+{%- else if variant == "warn" -%}
+<span class="tag tag-warn">{{ text }}</span>
+{%- else if variant == "accent" -%}
+<span class="tag tag-accent">{{ text }}</span>
+{%- else if variant == "ai" -%}
+<span class="chip-ai">{{ text }}</span>
+{%- else -%}
+<span class="tag">{{ text }}</span>
+{%- endif %}
+{%- endmacro %}
+
+{# Alert callout. variant ∈ {info, success, warn, error}. #}
+{% macro alert(title, body, variant) -%}
+{% if variant == "success" -%}
+<div class="alert alert-success" role="alert">
+{%- else if variant == "warn" -%}
+<div class="alert alert-warn" role="alert">
+{%- else if variant == "error" -%}
+<div class="alert alert-error" role="alert">
+{%- else -%}
+<div class="alert alert-info" role="alert">
+{%- endif %}
+  <div>
+    {% if title|trim != "" %}<strong class="font-medium">{{ title }}</strong>{% endif %}
+    <div class="text-sm muted mt-0.5">{{ body }}</div>
+  </div>
+</div>
+{%- endmacro %}
+
+{# Page-level header — title + subtitle + optional right-side action slot.
+   Use as: {% call ui::page_header_open("Title", "subtitle") %}
+              <action buttons>
+           {% call ui::page_header_close() %}
+   Two macros because Askama doesn't have block macros that wrap caller-content. #}
+{% macro page_header_open(title, subtitle) -%}
+<div class="flex items-start justify-between gap-4 mb-6">
+  <div>
+    <h1 class="font-heading text-2xl font-semibold text-[color:var(--color-text-primary)]">{{ title }}</h1>
+    {% if subtitle|trim != "" %}<p class="muted text-sm mt-1">{{ subtitle }}</p>{% endif %}
+  </div>
+  <div class="flex items-center gap-2 flex-shrink-0">
+{%- endmacro %}
+
+{% macro page_header_close() -%}
+  </div>
+</div>
+{%- endmacro %}
+
+{# Card section header — icon + title; goes inside a .card #}
+{% macro card_header(icon, title) -%}
+<div class="flex items-center gap-2 mb-4">
+  <div class="flex h-8 w-8 items-center justify-center rounded-md bg-[color:var(--color-accent-light)]">
+    <i data-lucide="{{ icon }}" class="h-4 w-4 text-[color:var(--color-accent)]"></i>
+  </div>
+  <h2 class="font-heading text-base font-semibold text-[color:var(--color-text-primary)]">{{ title }}</h2>
+</div>
+{%- endmacro %}
+
+{# Stat card — small at-a-glance tile #}
+{% macro stat_card(label, value) -%}
+<div class="card card-interactive">
+  <div class="muted-soft text-xs uppercase tracking-wider font-medium">{{ label }}</div>
+  <div class="font-heading text-2xl font-semibold mt-1">{{ value }}</div>
+</div>
+{%- endmacro %}
+
+{# Plain inline link with an arrow #}
+{% macro link(href, text) -%}
+<a href="{{ href }}" class="link-primary link-hover inline-flex items-center gap-1">
+  {{ text }}
+  <i data-lucide="arrow-right" class="h-3.5 w-3.5"></i>
+</a>
+{%- endmacro %}
+
+{# Button-styled link. variant ∈ {primary, secondary, danger, ghost} #}
+{% macro link_btn(href, text, icon, variant) -%}
+{% if variant == "primary" -%}
+<a href="{{ href }}" class="btn btn-primary btn-icon-spring">
+{%- else if variant == "danger" -%}
+<a href="{{ href }}" class="btn btn-danger btn-icon-spring">
+{%- else if variant == "ghost" -%}
+<a href="{{ href }}" class="btn btn-ghost btn-icon-spring">
+{%- else -%}
+<a href="{{ href }}" class="btn btn-icon-spring">
+{%- endif %}
+  {% if icon|trim != "" %}<span class="btn-icon"><i data-lucide="{{ icon }}" class="h-4 w-4"></i></span>{% endif %}
+  <span>{{ text }}</span>
+</a>
+{%- endmacro %}

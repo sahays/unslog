@@ -1,0 +1,54 @@
+{# ── Form macros ────────────────────────────────────────────── #}
+
+{# Text input. type can be text/email/url/number/password. #}
+{% macro text_input(name, label, type, value, placeholder, required) -%}
+<div class="grid gap-1.5">
+  {% if label|trim != "" %}<label for="{{ name }}">{{ label }}</label>{% endif %}
+  <input
+    type="{{ type }}"
+    id="{{ name }}"
+    name="{{ name }}"
+    value="{{ value }}"
+    placeholder="{{ placeholder }}"
+    {% if required %}required{% endif %} />
+</div>
+{%- endmacro %}
+
+{# Textarea #}
+{% macro textarea(name, label, value, placeholder, rows) -%}
+<div class="grid gap-1.5">
+  {% if label|trim != "" %}<label for="{{ name }}">{{ label }}</label>{% endif %}
+  <textarea
+    id="{{ name }}"
+    name="{{ name }}"
+    rows="{{ rows }}"
+    placeholder="{{ placeholder }}">{{ value }}</textarea>
+</div>
+{%- endmacro %}
+
+{# File input #}
+{% macro file_input(name, label, accept, required) -%}
+<div class="grid gap-1.5">
+  {% if label|trim != "" %}<label for="{{ name }}">{{ label }}</label>{% endif %}
+  <input
+    type="file"
+    id="{{ name }}"
+    name="{{ name }}"
+    accept="{{ accept }}"
+    {% if required %}required{% endif %} />
+</div>
+{%- endmacro %}
+
+{# Submit button. variant ∈ {primary, secondary, danger}. #}
+{% macro submit_btn(text, icon, variant) -%}
+{% if variant == "danger" -%}
+<button type="submit" class="btn btn-danger btn-icon-spring">
+{%- else if variant == "secondary" -%}
+<button type="submit" class="btn btn-icon-spring">
+{%- else -%}
+<button type="submit" class="btn btn-primary btn-icon-spring">
+{%- endif %}
+  {% if icon|trim != "" %}<span class="btn-icon"><i data-lucide="{{ icon }}" class="h-4 w-4"></i></span>{% endif %}
+  <span>{{ text }}</span>
+</button>
+{%- endmacro %}
