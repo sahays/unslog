@@ -74,6 +74,16 @@
       {% block content %}{% endblock %}
     </main>
 
+    <!-- App overlay: shown while a long form (answer, end-session, research) is in flight -->
+    <div id="app-overlay" class="app-overlay" aria-hidden="true">
+      <div class="app-overlay__card" role="alertdialog" aria-busy="true" aria-live="polite">
+        <div class="app-overlay__spinner"></div>
+        <div class="app-overlay__title" id="app-overlay-title">Working…</div>
+        <div class="app-overlay__detail" id="app-overlay-detail"></div>
+        <div class="app-overlay__shimmer"></div>
+      </div>
+    </div>
+
     <!-- Lucide loader, YouTube-style progress bar, and submit-in-flight feedback -->
     <script>
       (function () {
@@ -132,6 +142,23 @@
           startProgress();
         }, true);
 
+        /* ── Modal overlay (long form submits) ──────────────── */
+        var overlay = document.getElementById('app-overlay');
+        var overlayTitle = document.getElementById('app-overlay-title');
+        var overlayDetail = document.getElementById('app-overlay-detail');
+        function showOverlay(title, detailHTML) {
+          if (!overlay) return;
+          if (overlayTitle) overlayTitle.textContent = title || 'Working…';
+          if (overlayDetail) overlayDetail.innerHTML = detailHTML || '';
+          overlay.classList.add('visible');
+          overlay.setAttribute('aria-hidden', 'false');
+        }
+        function hideOverlay() {
+          if (!overlay) return;
+          overlay.classList.remove('visible');
+          overlay.setAttribute('aria-hidden', 'true');
+        }
+
         /* Plain form submit → start */
         document.addEventListener('submit', function (e) {
           var form = e.target;
@@ -148,14 +175,24 @@
               btn.setAttribute('aria-busy', 'true');
             }
           }
+          /* Long-running form? Show modal overlay with operation-specific copy. */
+          if (form.dataset.loadingTitle || form.dataset.loadingDetail) {
+            showOverlay(
+              form.dataset.loadingTitle || 'Working…',
+              form.dataset.loadingDetail || ''
+            );
+          }
         }, true);
 
         /* htmx requests */
         document.body.addEventListener('htmx:beforeRequest', startProgress);
         document.body.addEventListener('htmx:afterRequest', finishProgress);
 
-        /* Page loaded (initial nav or bfcache restore) → finish */
-        window.addEventListener('pageshow', finishProgress);
+        /* Page loaded (initial nav or bfcache restore) → finish + clear overlay */
+        window.addEventListener('pageshow', function () {
+          finishProgress();
+          hideOverlay();
+        });
       })();
     </script>
   </body>

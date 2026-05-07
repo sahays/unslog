@@ -15,7 +15,9 @@
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
         Back
       </a>
-      <form method="post" action="/companies/{{ company.id }}/refresh-packet">
+      <form method="post" action="/companies/{{ company.id }}/refresh-packet"
+            data-loading-title="Refreshing the research packet…"
+            data-loading-detail="Re-running the research agent for {{ company.name }}. This usually takes 30–60s.">
         <button type="submit" class="btn">
           <i data-lucide="refresh-cw" class="h-4 w-4"></i>
           Refresh packet
@@ -34,7 +36,9 @@
   <div class="card">
     <div class="flex items-center justify-between mb-4">
       {% call ui::card_header("list-checks", "Question bank") %}
-      <form method="post" action="/companies/{{ company.id }}/sessions">
+      <form method="post" action="/companies/{{ company.id }}/sessions"
+            data-loading-title="Starting session…"
+            data-loading-detail="Snapshotting model + prompt versions and creating your session.">
         <button type="submit" class="btn btn-primary btn-icon-spring">
           <span class="btn-icon"><i data-lucide="play" class="h-4 w-4"></i></span>
           <span>Start session</span>

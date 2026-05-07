@@ -120,7 +120,11 @@
                   </div>
                   <div class="whitespace-pre-wrap mt-2">{{ c.narrative }}</div>
                   {% if let Some(p) = a.critique_audio_path.as_ref() %}
-                    <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" class="mt-2"></audio>
+                    <div class="critique-audio">
+                      <i data-lucide="volume-2" class="h-4 w-4"></i>
+                      <span class="critique-audio__label">Listen</span>
+                      <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}"></audio>
+                    </div>
                   {% endif %}
                   {% if !c.improved_vs_prior.is_empty() %}
                     <div class="mt-2 p-2 px-3 border-l-2 border-[color:var(--color-accent)] bg-[color:var(--color-bg-tertiary)] rounded-r-md">

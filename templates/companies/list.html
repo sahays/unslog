@@ -23,7 +23,9 @@
       </div>
     {% endif %}
 
-    <form method="post" action="/companies" class="grid gap-3 grid-cols-1 sm:grid-cols-[1fr_1fr_auto]">
+    <form method="post" action="/companies" class="grid gap-3 grid-cols-1 sm:grid-cols-[1fr_1fr_auto]"
+          data-loading-title="Researching the company…"
+          data-loading-detail="Searching the web for company values, role JD, and sample questions. This usually takes 30–60s.">
       <div class="grid gap-1.5">
         <label for="company_name">Company</label>
         <input type="text" id="company_name" name="name" placeholder="e.g. Anthropic" required />

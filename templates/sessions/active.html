@@ -37,7 +37,9 @@
       </a>
       {% if session.status == crate::models::SessionStatus::Active %}
         <form method="post" action="/sessions/{{ session.id }}/end"
-              onsubmit="return confirm('End session and write a summary?')">
+              onsubmit="return confirm('End session and write a summary?')"
+              data-loading-title="Ending session…"
+              data-loading-detail="Writing your debrief with <code>{{ session.model_snapshot.critique }}</code>. This usually takes 20–40s.">
           <button type="submit" class="btn btn-danger">
             <i data-lucide="square" class="h-4 w-4"></i>
             End session
@@ -93,9 +95,9 @@
           <div class="flex justify-between items-center mb-2">
             <div class="muted-soft text-xs uppercase tracking-wider font-medium">Current question</div>
             <form method="post" action="/sessions/{{ session.id }}/toggle-voice">
-              <button type="submit" class="btn btn-sm">
+              <button type="submit" class="btn btn-sm" title="When on, the latest critique plays automatically when the page loads.">
                 <i data-lucide="{% if session.voice_critique_enabled %}volume-2{% else %}volume-x{% endif %}" class="h-3.5 w-3.5"></i>
-                Voice critique: {% if session.voice_critique_enabled %}on{% else %}off{% endif %}
+                Autoplay critique: {% if session.voice_critique_enabled %}on{% else %}off{% endif %}
               </button>
             </form>
           </div>
@@ -120,7 +122,12 @@
                   </div>
                   <div class="whitespace-pre-wrap mt-2">{{ c.narrative }}</div>
                   {% if let Some(p) = a.critique_audio_path.as_ref() %}
-                    <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" class="mt-2"></audio>
+                    <div class="critique-audio">
+                      <i data-lucide="volume-2" class="h-4 w-4"></i>
+                      <span class="critique-audio__label">Listen</span>
+                      <audio controls preload="auto" src="{{ crate::recordings::to_url(p) }}"
+                             {% if loop.last && session.voice_critique_enabled %}autoplay{% endif %}></audio>
+                    </div>
                   {% endif %}
                   {% if !c.improved_vs_prior.is_empty() %}
                     <div class="mt-2 p-2 px-3 border-l-2 border-[color:var(--color-accent)] bg-[color:var(--color-bg-tertiary)] rounded-r-md">
@@ -141,7 +148,9 @@
             {% endfor %}
           {% endif %}
 
-          <form method="post" action="/sessions/{{ session.id }}/answers" class="grid gap-3 mt-4">
+          <form method="post" action="/sessions/{{ session.id }}/answers" class="grid gap-3 mt-4"
+                data-loading-title="Critiquing your answer…"
+                data-loading-detail="Analysing on <code>{{ session.model_snapshot.critique }}</code> with the book + research context. This usually takes 20–40s.">
             <div data-recorder-root data-record-endpoint="/sessions/{{ session.id }}/transcribe"
                  class="flex items-center gap-2 flex-wrap">
               <button type="button" class="btn" data-record-button>
@@ -174,7 +183,9 @@
               <span class="muted-soft text-xs htmx-indicator">Critiquing… can take 20–40s.</span>
             </div>
           </form>
-          <form method="post" action="/sessions/{{ session.id }}/next-question" class="mt-2">
+          <form method="post" action="/sessions/{{ session.id }}/next-question" class="mt-2"
+                data-loading-title="Picking the next question…"
+                data-loading-detail="Selecting from your bank and reading it aloud with <code>{{ session.model_snapshot.tts }}</code>.">
             <button type="submit" class="btn">
               <i data-lucide="skip-forward" class="h-4 w-4"></i>
               {% if let Some(eval) = current_eval.as_ref() %}{% if !eval.attempts.is_empty() %}Move on — next question{% else %}Skip — next question{% endif %}{% else %}Skip — next question{% endif %}
@@ -185,7 +196,9 @@
         <div class="card flex flex-col items-center text-center gap-3 py-10">
           <i data-lucide="mic-off" class="h-8 w-8 text-[color:var(--color-text-tertiary)]"></i>
           <p class="muted m-0">No question loaded. Pick the next one to start.</p>
-          <form method="post" action="/sessions/{{ session.id }}/next-question">
+          <form method="post" action="/sessions/{{ session.id }}/next-question"
+                data-loading-title="Picking the next question…"
+                data-loading-detail="Selecting from your bank and reading it aloud with <code>{{ session.model_snapshot.tts }}</code>.">
             <button type="submit" class="btn btn-primary btn-icon-spring">
               <span class="btn-icon"><i data-lucide="play" class="h-4 w-4"></i></span>
               <span>Pick next question</span>

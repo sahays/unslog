@@ -329,17 +329,17 @@ async fn submit_answer(
     )
     .await?;
 
-    let critique_audio_path = if session.voice_critique_enabled {
+    // Always attempt to TTS the critique narrative — the audio is then
+    // available later (review page, prior attempts) regardless of whether the
+    // user wants autoplay. The voice toggle now controls autoplay only.
+    let critique_audio_path =
         match maybe_tts_critique(&state, &session, &critique.narrative, attempt_n, &qid).await {
             Ok(p) => Some(p),
             Err(e) => {
-                tracing::warn!(error = %e, "tts of critique failed");
+                tracing::warn!(error = %e, "tts of critique failed; continuing without audio");
                 None
             }
-        }
-    } else {
-        None
-    };
+        };
 
     eval.attempts.push(Attempt {
         attempt_n,
