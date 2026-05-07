@@ -21,7 +21,7 @@
       <div>
         <strong class="font-medium">OPENROUTER_API_KEY not set.</strong>
         <div class="text-sm muted mt-0.5">
-          Without a key, the model list can't load. You can still type model IDs manually below — they'll be used at session-start time.
+          Without a key, the model list can't load. Type model IDs as free text in the dropdowns below — they'll be used at session-start time.
         </div>
       </div>
     </div>
@@ -38,14 +38,18 @@
   <form method="post" action="/settings" class="card grid gap-5">
     {% call ui::card_header("sliders", "Model selection") %}
     <p class="muted text-sm -mt-2">
-      These are the defaults used when starting a new session. Existing sessions keep the snapshot they were started with.
+      Defaults used when starting a new session. Existing sessions keep the snapshot they were started with. You can pick from the cached list or type a model ID that isn't on it yet — typed values are accepted as-is.
     </p>
 
     <section class="grid gap-1.5">
       <label for="critique_model">Critique model</label>
       <p class="muted-soft text-xs">Used to score your answer and write the narrative critique.</p>
-      <input id="critique_model" name="critique_model" type="text" list="chat-models"
-             value="{{ settings.critique_model }}" required />
+      <select id="critique_model" name="critique_model" data-n-select data-allow-custom required>
+        <option value="">Pick a model…</option>
+        {% for m in chat_models %}
+          <option value="{{ m.id }}"{% if m.id == settings.critique_model %} selected{% endif %}>{{ m.id }}</option>
+        {% endfor %}
+      </select>
     </section>
 
     <section class="grid gap-1.5">
@@ -54,22 +58,34 @@
         Used by the research agent. Add the <code class="font-mono">:online</code> suffix to enable web search
         (e.g. <code class="font-mono">google/gemini-2.5-pro:online</code>).
       </p>
-      <input id="research_model" name="research_model" type="text" list="chat-models"
-             value="{{ settings.research_model }}" required />
+      <select id="research_model" name="research_model" data-n-select data-allow-custom required>
+        <option value="">Pick a model…</option>
+        {% for m in chat_models %}
+          <option value="{{ m.id }}"{% if m.id == settings.research_model %} selected{% endif %}>{{ m.id }}</option>
+        {% endfor %}
+      </select>
     </section>
 
     <section class="grid gap-1.5">
       <label for="stt_model">Speech-to-text model</label>
       <p class="muted-soft text-xs">Must accept audio input. Used to transcribe your spoken answers.</p>
-      <input id="stt_model" name="stt_model" type="text" list="audio-in-models"
-             value="{{ settings.stt_model }}" required />
+      <select id="stt_model" name="stt_model" data-n-select data-allow-custom required>
+        <option value="">Pick a model…</option>
+        {% for m in audio_in_models %}
+          <option value="{{ m.id }}"{% if m.id == settings.stt_model %} selected{% endif %}>{{ m.id }}</option>
+        {% endfor %}
+      </select>
     </section>
 
     <section class="grid gap-1.5">
       <label for="tts_model">Text-to-speech model</label>
       <p class="muted-soft text-xs">Must produce audio output. Used to read questions and critiques aloud.</p>
-      <input id="tts_model" name="tts_model" type="text" list="audio-out-models"
-             value="{{ settings.tts_model }}" required />
+      <select id="tts_model" name="tts_model" data-n-select data-allow-custom required>
+        <option value="">Pick a model…</option>
+        {% for m in audio_out_models %}
+          <option value="{{ m.id }}"{% if m.id == settings.tts_model %} selected{% endif %}>{{ m.id }}</option>
+        {% endfor %}
+      </select>
     </section>
 
     <div class="grid gap-3 grid-cols-1 sm:grid-cols-2">
@@ -97,15 +113,5 @@
       </span>
     </div>
   </form>
-
-  <datalist id="chat-models">
-    {% for m in chat_models %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
-  </datalist>
-  <datalist id="audio-in-models">
-    {% for m in audio_in_models %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
-  </datalist>
-  <datalist id="audio-out-models">
-    {% for m in audio_out_models %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
-  </datalist>
 </div>
 {% endblock %}

@@ -30,7 +30,7 @@ struct SettingsTemplate {
 async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let settings = settings_store::load(&state.db).await?;
 
-    let (chat_models, audio_in_models, audio_out_models, models_error) =
+    let (mut chat_models, mut audio_in_models, mut audio_out_models, models_error) =
         if state.openrouter.configured() {
             match state.models_cache.get(&state.openrouter).await {
                 Ok(all) => {
@@ -62,6 +62,15 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
             )
         };
 
+    // If the user's currently-saved model isn't in the cached list (e.g. a
+    // brand-new model just added at OpenRouter, or a custom value typed in
+    // before the cache refreshed), inject a synthetic entry so the <select>
+    // can render it as the selected option.
+    ensure_present(&mut chat_models, &settings.critique_model);
+    ensure_present(&mut chat_models, &settings.research_model);
+    ensure_present(&mut audio_in_models, &settings.stt_model);
+    ensure_present(&mut audio_out_models, &settings.tts_model);
+
     let body = SettingsTemplate {
         settings,
         chat_models,
@@ -73,6 +82,23 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     .render()
     .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
     Ok(Html(body))
+}
+
+fn ensure_present(list: &mut Vec<ModelInfo>, id: &str) {
+    if id.is_empty() {
+        return;
+    }
+    if list.iter().any(|m| m.id == id) {
+        return;
+    }
+    list.insert(
+        0,
+        ModelInfo {
+            id: id.to_string(),
+            name: id.to_string(),
+            architecture: Default::default(),
+        },
+    );
 }
 
 #[derive(Deserialize)]
