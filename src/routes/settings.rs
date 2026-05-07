@@ -27,6 +27,21 @@ struct SettingsTemplate {
     openrouter_configured: bool,
 }
 
+/// Restrict the cached /models list to a curated set of providers. The user
+/// can still type any model ID via NSelect's `data-allow-custom` mode, so this
+/// is a soft filter — a brand-new model from one of these providers shows up
+/// after the next /models refresh, and anything else is reachable by typing.
+const PREFERRED_PREFIXES: &[&str] = &[
+    "google/gemini",   // Gemini only — skip gemma, learnlm, palm
+    "openai/",         // gpt-*, o1-*, o3-*, chatgpt-*
+    "anthropic/",      // claude-*
+    "deepseek/",       // deepseek-*
+];
+
+fn is_preferred(id: &str) -> bool {
+    PREFERRED_PREFIXES.iter().any(|p| id.starts_with(p))
+}
+
 async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let settings = settings_store::load(&state.db).await?;
 
@@ -36,17 +51,17 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
                 Ok(all) => {
                     let chat: Vec<_> = all
                         .iter()
-                        .filter(|m| m.supports_text_chat())
+                        .filter(|m| m.supports_text_chat() && is_preferred(&m.id))
                         .cloned()
                         .collect();
                     let ain: Vec<_> = all
                         .iter()
-                        .filter(|m| m.supports_audio_in())
+                        .filter(|m| m.supports_audio_in() && is_preferred(&m.id))
                         .cloned()
                         .collect();
                     let aout: Vec<_> = all
                         .iter()
-                        .filter(|m| m.supports_audio_out())
+                        .filter(|m| m.supports_audio_out() && is_preferred(&m.id))
                         .cloned()
                         .collect();
                     (chat, ain, aout, None)
