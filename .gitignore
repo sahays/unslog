@@ -1,0 +1,9 @@
+/target
+/node_modules
+/data
+.env
+.env.local
+.env.*.local
+!.env.example
+*.db
+.DS_Store

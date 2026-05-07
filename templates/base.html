@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"
+      x-data="{ darkMode: localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches) }"
+      x-init="$watch('darkMode', v => localStorage.setItem('theme', v ? 'dark' : 'light'))"
+      :class="{ 'dark': darkMode }">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}unslog{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="stylesheet" href="/static/css/app.css" />
+    <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+    <script src="https://unpkg.com/alpinejs@3.14.1" defer></script>
+    {% block head %}{% endblock %}
+  </head>
+  <body class="font-body antialiased" style="min-height: 100vh;">
+    <nav style="border-bottom: 1px solid var(--border); background: var(--bg-soft);">
+      <div style="max-width: 1100px; margin: 0 auto; padding: 0.875rem 1.25rem; display:flex; justify-content: space-between; align-items: center;">
+        <a href="/" style="font-weight: 600; text-decoration: none; color: var(--fg);">unslog</a>
+        <div style="display:flex; gap: 1rem; font-size: 0.875rem;">
+          <a href="/companies">Companies</a>
+          <a href="/assets">Assets</a>
+          <a href="/prompts">Prompts</a>
+          <a href="/settings">Settings</a>
+          <button class="btn" @click="darkMode = !darkMode" style="font-size: 0.75rem; padding: 0.25rem 0.625rem;">
+            <span x-show="!darkMode">Dark</span>
+            <span x-show="darkMode">Light</span>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main style="max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.25rem;">
+      {% block content %}{% endblock %}
+    </main>
+
+    <div id="progress-bar" class="htmx-indicator" style="position: fixed; top: 0; left: 0; right: 0; height: 2px; background: var(--accent); z-index: 100;"></div>
+  </body>
+</html>

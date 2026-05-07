@@ -1,0 +1,56 @@
+[package]
+name = "unslog"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["macros"] }
+axum-extra = { version = "0.9", features = ["typed-header", "form", "multipart"] }
+axum-htmx = "0.6"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "trace", "limit"] }
+http = "1.0"
+
+# Templates
+askama = { version = "0.12", features = ["serde-json"] }
+askama_axum = "0.4"
+
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Database
+mongodb = "3"
+bson = { version = "2", features = ["chrono-0_4", "uuid-1"] }
+
+# Errors
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Utilities
+uuid = { version = "1.10", features = ["v4", "v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# PDF extraction (with pdftotext as a runtime fallback)
+pdf-extract = "0.7"
+
+# Multipart helpers
+bytes = "1"
+
+# Base64 (for STT input_audio)
+base64 = "0.22"
+
+# Random shuffle
+rand = "0.8"
