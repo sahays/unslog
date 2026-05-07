@@ -20,6 +20,7 @@ pub struct AppState {
     pub db: Database,
     pub http: reqwest::Client,
     pub openrouter: crate::services::openrouter::OpenRouter,
+    pub models_cache: crate::services::openrouter_models::ModelsCache,
 }
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
@@ -51,6 +52,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         db,
         http,
         openrouter,
+        models_cache: crate::services::openrouter_models::ModelsCache::new(),
     };
 
     let static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static");

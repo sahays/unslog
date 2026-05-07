@@ -44,6 +44,29 @@ impl OpenRouter {
         }
     }
 
+    /// List available models from OpenRouter. Returns the raw `data` array
+    /// JSON so callers can parse into their own shape.
+    pub async fn list_models_raw(&self) -> Result<serde_json::Value, AppError> {
+        let key = self.require_key()?;
+        let url = format!("{BASE_URL}/models");
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(key)
+            .header("HTTP-Referer", "https://github.com/sahays/unslog")
+            .header("X-Title", "unslog")
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(AppError::Upstream(format!(
+                "openrouter /models {status}: {text}"
+            )));
+        }
+        Ok(resp.json().await?)
+    }
+
     /// Plain chat completion. `messages` and `model` are caller-controlled.
     /// `force_json` adds `response_format: { type: "json_object" }`.
     pub async fn chat(

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Settings — unslog{% endblock %}
+
+{% block content %}
+<div style="display: grid; gap: 1.25rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+    <h2 style="margin: 0; font-size: 1.25rem; font-weight: 600;">Settings</h2>
+    <form method="post" action="/settings/refresh-models" style="display: inline;">
+      <button type="submit" class="btn">Refresh model list</button>
+    </form>
+  </div>
+
+  {% if !openrouter_configured %}
+    <div class="card" style="border-color: var(--danger);">
+      <strong>OPENROUTER_API_KEY not set.</strong>
+      <div class="muted" style="margin-top: 0.25rem; font-size: 0.875rem;">
+        Without a key, the model list can't load. You can still type model IDs manually below — they'll be used at session-start time.
+      </div>
+    </div>
+  {% else if let Some(err) = models_error.as_ref() %}
+    <div class="card" style="border-color: var(--danger);">
+      <strong>Couldn't load models from OpenRouter.</strong>
+      <div class="muted" style="margin-top: 0.25rem; font-size: 0.875rem;">{{ err }}</div>
+    </div>
+  {% endif %}
+
+  <form method="post" action="/settings" class="card" style="display: grid; gap: 1.25rem;">
+    <div class="muted" style="font-size: 0.8125rem;">
+      These are the defaults used when starting a new session. Existing
+      sessions keep the snapshot they were started with.
+    </div>
+
+    <section style="display: grid; gap: 0.5rem;">
+      <label for="critique_model" style="font-weight: 500;">Critique model</label>
+      <div class="muted" style="font-size: 0.8125rem;">Used to score your answer and write the narrative critique.</div>
+      <input id="critique_model" name="critique_model" type="text" list="chat-models"
+             value="{{ settings.critique_model }}" required />
+    </section>
+
+    <section style="display: grid; gap: 0.5rem;">
+      <label for="research_model" style="font-weight: 500;">Research model</label>
+      <div class="muted" style="font-size: 0.8125rem;">
+        Used by the research agent. Add the <code>:online</code> suffix to enable web search
+        (e.g. <code>google/gemini-2.5-pro:online</code>).
+      </div>
+      <input id="research_model" name="research_model" type="text" list="chat-models"
+             value="{{ settings.research_model }}" required />
+    </section>
+
+    <section style="display: grid; gap: 0.5rem;">
+      <label for="stt_model" style="font-weight: 500;">Speech-to-text model</label>
+      <div class="muted" style="font-size: 0.8125rem;">Must accept audio input. Used to transcribe your spoken answers.</div>
+      <input id="stt_model" name="stt_model" type="text" list="audio-in-models"
+             value="{{ settings.stt_model }}" required />
+    </section>
+
+    <section style="display: grid; gap: 0.5rem;">
+      <label for="tts_model" style="font-weight: 500;">Text-to-speech model</label>
+      <div class="muted" style="font-size: 0.8125rem;">Must produce audio output. Used to read questions and critiques aloud.</div>
+      <input id="tts_model" name="tts_model" type="text" list="audio-out-models"
+             value="{{ settings.tts_model }}" required />
+    </section>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+      <section style="display: grid; gap: 0.5rem;">
+        <label for="tts_voice" style="font-weight: 500;">TTS voice</label>
+        <input id="tts_voice" name="tts_voice" type="text" value="{{ settings.tts_voice }}" required />
+        <div class="muted" style="font-size: 0.75rem;">
+          OpenAI voices: alloy, echo, fable, onyx, nova, shimmer.
+        </div>
+      </section>
+      <section style="display: grid; gap: 0.5rem;">
+        <label for="tts_speed" style="font-weight: 500;">TTS speed (optional)</label>
+        <input id="tts_speed" name="tts_speed" type="number" min="0.25" max="4.0" step="0.05"
+               placeholder="1.0"
+               value="{% if let Some(s) = settings.tts_speed %}{{ s }}{% endif %}" />
+        <div class="muted" style="font-size: 0.75rem;">0.25–4.0. Empty = endpoint default.</div>
+      </section>
+    </div>
+
+    <div>
+      <button type="submit" class="btn btn-primary">Save settings</button>
+      <span class="muted" style="font-size: 0.75rem; margin-left: 0.75rem;">
+        Last updated {{ settings.updated_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+      </span>
+    </div>
+  </form>
+
+  <datalist id="chat-models">
+    {% for m in chat_models %}
+      <option value="{{ m.id }}">{{ m.name }}</option>
+    {% endfor %}
+  </datalist>
+  <datalist id="audio-in-models">
+    {% for m in audio_in_models %}
+      <option value="{{ m.id }}">{{ m.name }}</option>
+    {% endfor %}
+  </datalist>
+  <datalist id="audio-out-models">
+    {% for m in audio_out_models %}
+      <option value="{{ m.id }}">{{ m.name }}</option>
+    {% endfor %}
+  </datalist>
+</div>
+{% endblock %}

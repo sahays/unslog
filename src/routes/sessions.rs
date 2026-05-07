@@ -13,7 +13,7 @@ use crate::error::AppError;
 use crate::models::{
     Attempt, Company, Evaluation, ModelSnapshot, PromptSnapshot, Session, SessionStatus, Summary,
 };
-use crate::services::{critique, openrouter, prompt_store, question_bank, stt, summary, tts};
+use crate::services::{critique, prompt_store, question_bank, settings_store, stt, summary, tts};
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -44,6 +44,7 @@ async fn start(
     let summary_prompt = prompt_store::get_prompt(&state.db, "summary")
         .await?
         .ok_or_else(|| AppError::NotFound("summary prompt".into()))?;
+    let settings = settings_store::load(&state.db).await?;
 
     let session = Session {
         id: uuid::Uuid::now_v7().to_string(),
@@ -52,10 +53,12 @@ async fn start(
         ended_at: None,
         status: SessionStatus::Active,
         model_snapshot: ModelSnapshot {
-            stt: openrouter::DEFAULT_STT_MODEL.into(),
-            tts: openrouter::DEFAULT_TTS_MODEL.into(),
-            critique: openrouter::DEFAULT_CRITIQUE_MODEL.into(),
-            research: openrouter::DEFAULT_RESEARCH_MODEL.into(),
+            stt: settings.stt_model.clone(),
+            tts: settings.tts_model.clone(),
+            critique: settings.critique_model.clone(),
+            research: settings.research_model.clone(),
+            tts_voice: settings.tts_voice.clone(),
+            tts_speed: settings.tts_speed,
         },
         prompt_snapshot: PromptSnapshot {
             critique: critique_prompt.current_version_id,
@@ -233,11 +236,17 @@ async fn maybe_tts_question(
     );
     crate::recordings::ensure_dir(&dir).await?;
     let path = dir.join(format!("question_{}.mp3", question.id));
+    let voice = if session.model_snapshot.tts_voice.is_empty() {
+        crate::services::openrouter::DEFAULT_TTS_VOICE
+    } else {
+        &session.model_snapshot.tts_voice
+    };
     let path = tts::synthesize(
         &state.openrouter,
         &session.model_snapshot.tts,
-        openrouter::DEFAULT_TTS_VOICE,
+        voice,
         &question.text,
+        session.model_snapshot.tts_speed,
         path,
     )
     .await?;
@@ -418,11 +427,17 @@ async fn maybe_tts_critique(
     );
     crate::recordings::ensure_dir(&dir).await?;
     let path = dir.join(format!("critique_{question_id}_v{attempt_n}.mp3"));
+    let voice = if session.model_snapshot.tts_voice.is_empty() {
+        crate::services::openrouter::DEFAULT_TTS_VOICE
+    } else {
+        &session.model_snapshot.tts_voice
+    };
     let path = tts::synthesize(
         &state.openrouter,
         &session.model_snapshot.tts,
-        openrouter::DEFAULT_TTS_VOICE,
+        voice,
         text,
+        session.model_snapshot.tts_speed,
         path,
     )
     .await?;

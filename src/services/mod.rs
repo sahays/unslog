@@ -1,9 +1,11 @@
 pub mod assets;
 pub mod critique;
 pub mod openrouter;
+pub mod openrouter_models;
 pub mod prompt_store;
 pub mod question_bank;
 pub mod research;
+pub mod settings_store;
 pub mod stt;
 pub mod summary;
 pub mod tts;

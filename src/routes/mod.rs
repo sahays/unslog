@@ -9,6 +9,7 @@ pub mod home;
 pub mod prompts;
 pub mod recordings;
 pub mod sessions;
+pub mod settings;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -19,5 +20,6 @@ pub fn router(state: AppState) -> Router {
         .merge(prompts::routes())
         .merge(recordings::routes())
         .merge(sessions::routes())
+        .merge(settings::routes())
         .with_state(state)
 }

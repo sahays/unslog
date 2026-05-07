@@ -4,10 +4,8 @@ use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::models::company::{ResearchPacket, ResearchSource};
-use crate::services::openrouter::{
-    parse_json, ChatMessage, OpenRouter, DEFAULT_RESEARCH_MODEL,
-};
-use crate::services::prompt_store;
+use crate::services::openrouter::{parse_json, ChatMessage, OpenRouter};
+use crate::services::{prompt_store, settings_store};
 
 #[derive(Debug, Deserialize)]
 struct AgentOutput {
@@ -30,6 +28,7 @@ pub async fn run(
         .await?
         .ok_or_else(|| AppError::NotFound("research prompt".into()))?;
     let body = prompt_store::get_current_body(db, "research").await?;
+    let settings = settings_store::load(db).await?;
 
     let user = format!(
         "Company: {company_name}\nRole: {role}\n\nProduce the research packet now. Return only the JSON object specified, no other text."
@@ -37,7 +36,7 @@ pub async fn run(
 
     let raw = or
         .chat(
-            DEFAULT_RESEARCH_MODEL,
+            &settings.research_model,
             vec![ChatMessage::system(body), ChatMessage::user(user)],
             true,
         )

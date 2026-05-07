@@ -13,6 +13,10 @@ pub struct ModelSnapshot {
     pub tts: String,
     pub critique: String,
     pub research: String,
+    #[serde(default)]
+    pub tts_voice: String,
+    #[serde(default)]
+    pub tts_speed: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
