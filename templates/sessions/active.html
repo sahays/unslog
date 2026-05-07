@@ -1,206 +1,290 @@
+{% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
 {% block title %}Session — {{ company.name }}{% endblock %}
 
 {% block content %}
-<div style="display: grid; gap: 1.25rem;">
-  <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+<div
+  x-data="{
+    tab: '{% if session.status == crate::models::SessionStatus::Ended %}{% if summary.is_some() %}debrief{% else %}history{% endif %}{% else %}current{% endif %}',
+    recording: window.unslogRecording === true
+  }"
+  x-init="
+    document.addEventListener('unslog:recording', e => recording = e.detail.recording);
+  "
+  class="grid gap-5"
+>
+  <div class="flex items-start justify-between gap-4">
     <div>
-      <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600;">{{ company.name }} — {{ company.role }}</h2>
-      <div class="muted" style="font-size: 0.8125rem;">
-        session started {{ session.started_at.format("%Y-%m-%d %H:%M").to_string() }} •
-        model: <code>{{ session.model_snapshot.critique }}</code>
+      <h1 class="font-heading text-2xl font-semibold">{{ company.name }} <span class="muted text-base font-normal">— {{ company.role }}</span></h1>
+      <div class="muted text-sm mt-1 flex items-center gap-2 flex-wrap">
+        {% match session.status %}
+          {% when crate::models::SessionStatus::Active %}{% call ui::badge("active", "accent") %}
+          {% when crate::models::SessionStatus::Ended %}{% call ui::badge("ended", "default") %}
+        {% endmatch %}
+        <span>started {{ session.started_at.format("%Y-%m-%d %H:%M").to_string() }}</span>
+        <span>• model <code class="font-mono">{{ session.model_snapshot.critique }}</code></span>
       </div>
     </div>
-    <div style="display: flex; gap: 0.375rem;">
-      <a class="btn" href="/companies/{{ company.id }}">Back</a>
-      <a class="btn" href="/sessions/{{ session.id }}/review">Full review</a>
+    <div class="flex gap-2 flex-shrink-0">
+      <a class="btn" href="/companies/{{ company.id }}">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+        Back
+      </a>
+      <a class="btn" href="/sessions/{{ session.id }}/review">
+        <i data-lucide="external-link" class="h-4 w-4"></i>
+        Full review
+      </a>
       {% if session.status == crate::models::SessionStatus::Active %}
-        <form method="post" action="/sessions/{{ session.id }}/end" style="display: inline;"
+        <form method="post" action="/sessions/{{ session.id }}/end"
               onsubmit="return confirm('End session and write a summary?')">
-          <button type="submit" class="btn btn-danger">End session</button>
+          <button type="submit" class="btn btn-danger">
+            <i data-lucide="square" class="h-4 w-4"></i>
+            End session
+          </button>
         </form>
       {% endif %}
     </div>
   </div>
 
   {% if !has_primary_asset %}
-    <div class="card" style="border-color: var(--danger);">
-      <strong>No primary asset configured.</strong>
-      <div class="muted" style="margin-top: 0.25rem; font-size: 0.875rem;">
-        Critiques pull from the primary asset's extracted text. <a href="/assets">Upload &amp; mark one primary</a> first.
-      </div>
-    </div>
-  {% endif %}
-
-  {% if session.status == crate::models::SessionStatus::Ended %}
-    {% if let Some(s) = summary.as_ref() %}
-      <div class="card">
-        <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin-bottom: 0.375rem;">Session debrief</div>
-        <div style="white-space: pre-wrap;">{{ s.narrative }}</div>
-
-        {% if !s.strengths.is_empty() %}
-          <div style="margin-top: 1rem;">
-            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Strengths</div>
-            <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem;">
-              {% for x in s.strengths %}<li>{{ x }}</li>{% endfor %}
-            </ul>
-          </div>
-        {% endif %}
-
-        {% if !s.recurring_weaknesses.is_empty() %}
-          <div style="margin-top: 1rem;">
-            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Recurring weaknesses</div>
-            <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem;">
-              {% for x in s.recurring_weaknesses %}<li>{{ x }}</li>{% endfor %}
-            </ul>
-          </div>
-        {% endif %}
-
-        {% if !s.blind_spots.is_empty() %}
-          <div style="margin-top: 1rem;">
-            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Blind spots</div>
-            <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem;">
-              {% for x in s.blind_spots %}<li>{{ x }}</li>{% endfor %}
-            </ul>
-          </div>
-        {% endif %}
-
-        {% if !s.company_fit_signal.is_empty() %}
-          <div style="margin-top: 1rem;">
-            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Company fit signal</div>
-            <div style="white-space: pre-wrap; margin-top: 0.25rem;">{{ s.company_fit_signal }}</div>
-          </div>
-        {% endif %}
-      </div>
-    {% else %}
-      <div class="card">
-        <strong>Session ended.</strong>
-        <div class="muted" style="font-size: 0.875rem; margin-top: 0.25rem;">
-          No summary on file — likely the LLM call failed when the session ended. The transcript above is still intact.
+    <div class="alert alert-error" role="alert">
+      <i data-lucide="alert-triangle" class="h-4 w-4 mt-0.5"></i>
+      <div>
+        <strong class="font-medium">No primary asset configured.</strong>
+        <div class="text-sm muted mt-0.5">
+          Critiques pull from the primary asset's extracted text. <a class="link-primary" href="/assets">Upload &amp; mark one primary</a> first.
         </div>
       </div>
-    {% endif %}
+    </div>
   {% endif %}
 
-  {% if let Some(eval) = current_eval.as_ref() %}
-    <div class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.375rem;">
-        <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted);">Current question</div>
-        {% if session.status == crate::models::SessionStatus::Active %}
-          <form method="post" action="/sessions/{{ session.id }}/toggle-voice" style="display: inline;">
-            <button type="submit" class="btn" style="font-size: 0.75rem; padding: 0.25rem 0.625rem;">
-              {% if session.voice_critique_enabled %}Voice critique: on{% else %}Voice critique: off{% endif %}
+  <!-- Tab strip -->
+  <div class="tab-strip" role="tablist">
+    {% if session.status == crate::models::SessionStatus::Active %}
+      <button type="button" role="tab" class="tab-button" :class="tab === 'current' && 'active'" @click="tab = 'current'">
+        <i data-lucide="mic" class="h-4 w-4"></i>
+        <span>Current question</span>
+        <span class="recording-dot" x-show="recording" x-cloak title="recording in progress"></span>
+      </button>
+    {% endif %}
+
+    <button type="button" role="tab" class="tab-button" :class="tab === 'history' && 'active'" @click="tab = 'history'">
+      <i data-lucide="history" class="h-4 w-4"></i>
+      <span>Session history</span>
+      {% if !history.is_empty() || current_eval.is_some() %}
+        <span class="tag tag-accent ml-1">{% if current_eval.is_some() %}{{ history.len() + 1 }}{% else %}{{ history.len() }}{% endif %}</span>
+      {% endif %}
+    </button>
+
+    {% if session.status == crate::models::SessionStatus::Ended && summary.is_some() %}
+      <button type="button" role="tab" class="tab-button" :class="tab === 'debrief' && 'active'" @click="tab = 'debrief'">
+        <i data-lucide="clipboard-check" class="h-4 w-4"></i>
+        <span>Debrief</span>
+      </button>
+    {% endif %}
+  </div>
+
+  <!-- ─────────── Current tab ─────────── -->
+  {% if session.status == crate::models::SessionStatus::Active %}
+    <div role="tabpanel" x-show="tab === 'current'" x-cloak class="grid gap-4">
+      {% if let Some(eval) = current_eval.as_ref() %}
+        <div class="card">
+          <div class="flex justify-between items-center mb-2">
+            <div class="muted-soft text-xs uppercase tracking-wider font-medium">Current question</div>
+            <form method="post" action="/sessions/{{ session.id }}/toggle-voice">
+              <button type="submit" class="btn btn-sm">
+                <i data-lucide="{% if session.voice_critique_enabled %}volume-2{% else %}volume-x{% endif %}" class="h-3.5 w-3.5"></i>
+                Voice critique: {% if session.voice_critique_enabled %}on{% else %}off{% endif %}
+              </button>
+            </form>
+          </div>
+          <div class="font-heading text-lg font-semibold mb-2">{{ eval.question_text }}</div>
+          {% if let Some(p) = session.current_question_audio_path.as_ref() %}
+            <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" class="mb-3"></audio>
+          {% endif %}
+
+          {% if !eval.attempts.is_empty() %}
+            {% for a in eval.attempts %}
+              <div class="border-t border-[color:var(--color-border)] pt-3 mt-3">
+                <div class="muted-soft text-xs uppercase tracking-wider font-medium">Attempt {{ a.attempt_n }} — your answer</div>
+                <div class="whitespace-pre-wrap mt-1">{{ a.answer_transcript }}</div>
+                {% if let Some(c) = a.critique.as_ref() %}
+                  <div class="muted-soft text-xs uppercase tracking-wider font-medium mt-3">Critique</div>
+                  <div class="flex gap-2 flex-wrap mt-1">
+                    <span class="tag">specificity {{ c.scores.specificity }}/5</span>
+                    <span class="tag">role clarity {{ c.scores.role_clarity }}/5</span>
+                    <span class="tag">STAR+ {{ c.scores.star_plus_structure }}/5</span>
+                    <span class="tag">pitfalls {{ c.scores.pitfalls_avoided }}/5</span>
+                    <span class="tag">company fit {{ c.scores.company_fit }}/5</span>
+                  </div>
+                  <div class="whitespace-pre-wrap mt-2">{{ c.narrative }}</div>
+                  {% if let Some(p) = a.critique_audio_path.as_ref() %}
+                    <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" class="mt-2"></audio>
+                  {% endif %}
+                  {% if !c.improved_vs_prior.is_empty() %}
+                    <div class="mt-2 p-2 px-3 border-l-2 border-[color:var(--color-accent)] bg-[color:var(--color-bg-tertiary)] rounded-r-md">
+                      <div class="muted-soft text-xs uppercase tracking-wider font-medium">Vs. prior attempt</div>
+                      <div class="whitespace-pre-wrap">{{ c.improved_vs_prior }}</div>
+                    </div>
+                  {% endif %}
+                  {% if !c.citations.is_empty() %}
+                    <div class="muted-soft text-xs uppercase tracking-wider font-medium mt-3">Citations</div>
+                    <ul class="list-disc pl-5 m-0 mt-1 text-sm grid gap-0.5">
+                      {% for cit in c.citations %}
+                        <li><strong>{{ cit.chapter }}</strong>{% if !cit.section.is_empty() %} — {{ cit.section }}{% endif %}: {{ cit.quote }}</li>
+                      {% endfor %}
+                    </ul>
+                  {% endif %}
+                {% endif %}
+              </div>
+            {% endfor %}
+          {% endif %}
+
+          <form method="post" action="/sessions/{{ session.id }}/answers" class="grid gap-3 mt-4">
+            <div data-recorder-root data-record-endpoint="/sessions/{{ session.id }}/transcribe"
+                 class="flex items-center gap-2 flex-wrap">
+              <button type="button" class="btn" data-record-button>
+                <i data-lucide="mic" class="h-4 w-4"></i>
+                Record
+              </button>
+              <span class="muted text-sm" data-record-status>idle</span>
+              <span class="muted-soft text-xs ml-auto">
+                shortcuts: <kbd>r</kbd> record/stop · <kbd>esc</kbd> stop · <kbd>⌘/ctrl + ↵</kbd> submit
+              </span>
+            </div>
+            <div class="grid gap-1.5">
+              <label for="answer">
+                {% if eval.attempts.is_empty() %}
+                  Transcript (you can edit before submitting)
+                {% else %}
+                  Take another shot — answer again with the feedback in mind
+                {% endif %}
+              </label>
+              <textarea id="answer" name="transcript" data-record-target placeholder="Speak above, or type your answer…" required></textarea>
+            </div>
+            <input type="hidden" name="audio_path" data-record-audio value="" />
+            <div class="flex gap-3 items-center">
+              <button type="submit" class="btn btn-primary btn-icon-spring">
+                <span class="btn-icon"><i data-lucide="send" class="h-4 w-4"></i></span>
+                <span>{% if eval.attempts.is_empty() %}Submit answer{% else %}Submit retry (attempt {{ eval.attempts.len() + 1 }}){% endif %}</span>
+              </button>
+              <span class="muted-soft text-xs htmx-indicator">Critiquing… can take 20–40s.</span>
+            </div>
+          </form>
+          <form method="post" action="/sessions/{{ session.id }}/next-question" class="mt-2">
+            <button type="submit" class="btn">
+              <i data-lucide="skip-forward" class="h-4 w-4"></i>
+              {% if eval.attempts.is_empty() %}Skip — next question{% else %}Move on — next question{% endif %}
             </button>
           </form>
-        {% endif %}
-      </div>
-      <div style="font-size: 1.0625rem; margin-bottom: 0.5rem;">{{ eval.question_text }}</div>
-      {% if let Some(p) = session.current_question_audio_path.as_ref() %}
-        <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" style="margin-bottom: 1rem;"></audio>
-      {% endif %}
-
-      {% if !eval.attempts.is_empty() %}
-        {% for a in eval.attempts %}
-          <div style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.75rem;">
-            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Attempt {{ a.attempt_n }} — your answer</div>
-            <div style="white-space: pre-wrap; margin-top: 0.25rem;">{{ a.answer_transcript }}</div>
-            {% if let Some(c) = a.critique.as_ref() %}
-              <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.75rem;">Critique</div>
-              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem;">
-                <span class="tag">specificity {{ c.scores.specificity }}/5</span>
-                <span class="tag">role clarity {{ c.scores.role_clarity }}/5</span>
-                <span class="tag">STAR+ {{ c.scores.star_plus_structure }}/5</span>
-                <span class="tag">pitfalls {{ c.scores.pitfalls_avoided }}/5</span>
-                <span class="tag">company fit {{ c.scores.company_fit }}/5</span>
-              </div>
-              <div style="white-space: pre-wrap; margin-top: 0.5rem;">{{ c.narrative }}</div>
-              {% if let Some(p) = a.critique_audio_path.as_ref() %}
-                <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" style="margin-top: 0.5rem; width: 100%;"></audio>
-              {% endif %}
-              {% if !c.improved_vs_prior.is_empty() %}
-                <div style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-left: 3px solid var(--accent); background: var(--bg-sunk);">
-                  <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Vs. prior attempt</div>
-                  <div style="white-space: pre-wrap;">{{ c.improved_vs_prior }}</div>
-                </div>
-              {% endif %}
-              {% if !c.citations.is_empty() %}
-                <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.75rem;">Citations</div>
-                <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem; font-size: 0.875rem;">
-                  {% for cit in c.citations %}
-                    <li><strong>{{ cit.chapter }}</strong>{% if !cit.section.is_empty() %} — {{ cit.section }}{% endif %}: {{ cit.quote }}</li>
-                  {% endfor %}
-                </ul>
-              {% endif %}
-            {% endif %}
-          </div>
-        {% endfor %}
-      {% endif %}
-
-      {% if session.status == crate::models::SessionStatus::Active %}
-        <form method="post" action="/sessions/{{ session.id }}/answers" style="display: grid; gap: 0.75rem; margin-top: 1rem;">
-          <div data-recorder-root data-record-endpoint="/sessions/{{ session.id }}/transcribe"
-               style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-            <button type="button" class="btn" data-record-button>Record</button>
-            <span class="muted" style="font-size: 0.8125rem;" data-record-status>idle</span>
-            <span class="muted" style="font-size: 0.75rem; margin-left: auto;">
-              shortcuts: <kbd>r</kbd> record/stop · <kbd>esc</kbd> stop · <kbd>⌘/ctrl + ↵</kbd> submit
-            </span>
-          </div>
-          <label for="answer">
-            {% if eval.attempts.is_empty() %}
-              Transcript (you can edit before submitting)
-            {% else %}
-              Take another shot — answer again with the feedback in mind
-            {% endif %}
-          </label>
-          <textarea id="answer" name="transcript" data-record-target placeholder="Speak above, or type your answer…" required></textarea>
-          <input type="hidden" name="audio_path" data-record-audio value="" />
-          <div style="display: flex; gap: 0.5rem; align-items: center;">
-            <button type="submit" class="btn btn-primary">
-              {% if eval.attempts.is_empty() %}Submit answer{% else %}Submit retry (attempt {{ eval.attempts.len() + 1 }}){% endif %}
+        </div>
+      {% else %}
+        <div class="card flex flex-col items-center text-center gap-3 py-10">
+          <i data-lucide="mic-off" class="h-8 w-8 text-[color:var(--color-text-tertiary)]"></i>
+          <p class="muted m-0">No question loaded. Pick the next one to start.</p>
+          <form method="post" action="/sessions/{{ session.id }}/next-question">
+            <button type="submit" class="btn btn-primary btn-icon-spring">
+              <span class="btn-icon"><i data-lucide="play" class="h-4 w-4"></i></span>
+              <span>Pick next question</span>
             </button>
-            <span class="muted htmx-indicator" style="font-size: 0.8125rem;">Critiquing… can take 20–40s.</span>
-          </div>
-        </form>
-        <form method="post" action="/sessions/{{ session.id }}/next-question" style="margin-top: 0.5rem;">
-          <button type="submit" class="btn">
-            {% if eval.attempts.is_empty() %}Skip — next question{% else %}Move on — next question{% endif %}
-          </button>
-        </form>
+          </form>
+        </div>
       {% endif %}
     </div>
-  {% else %}
-    {% if session.status == crate::models::SessionStatus::Active %}
-      <div class="card" style="text-align: center;">
-        <p class="muted" style="margin: 0 0 0.75rem;">No question loaded. Pick the next one to start.</p>
-        <form method="post" action="/sessions/{{ session.id }}/next-question" style="display: inline;">
-          <button type="submit" class="btn btn-primary">Pick next question</button>
-        </form>
-      </div>
-    {% endif %}
   {% endif %}
 
-  {% if !history.is_empty() %}
-    <div>
-      <h3 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin: 0 0 0.5rem;">Earlier in this session</h3>
-      <div style="display: grid; gap: 0.75rem;">
+  <!-- ─────────── History tab ─────────── -->
+  <div role="tabpanel" x-show="tab === 'history'" x-cloak>
+    {% if history.is_empty() && current_eval.is_none() %}
+      <div class="card flex items-center gap-3">
+        <i data-lucide="inbox" class="h-6 w-6 text-[color:var(--color-text-tertiary)]"></i>
+        <p class="muted m-0">No questions answered yet.</p>
+      </div>
+    {% else %}
+      <div class="grid gap-3 stagger-children">
+        {% if let Some(eval) = current_eval.as_ref() %}
+          {% if !eval.attempts.is_empty() %}
+            <div class="card">
+              <div class="flex items-center gap-2 mb-1">
+                <div class="font-medium">{{ eval.question_text }}</div>
+                {% call ui::badge("current", "accent") %}
+              </div>
+              {% for a in eval.attempts %}
+                <div class="mt-2 pt-2 border-t border-[color:var(--color-border)]">
+                  <div class="muted-soft text-xs">Attempt {{ a.attempt_n }}</div>
+                  <div class="whitespace-pre-wrap text-sm mt-1">{{ a.answer_transcript }}</div>
+                  {% if let Some(c) = a.critique.as_ref() %}
+                    <div class="muted text-sm whitespace-pre-wrap mt-1">{{ c.narrative }}</div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endif %}
+
         {% for eval in history %}
           <div class="card">
-            <div style="font-weight: 500;">{{ eval.question_text }}</div>
+            <div class="font-medium">{{ eval.question_text }}</div>
             {% for a in eval.attempts %}
-              <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border);">
-                <div class="muted" style="font-size: 0.75rem;">Attempt {{ a.attempt_n }}</div>
-                <div style="white-space: pre-wrap; font-size: 0.875rem;">{{ a.answer_transcript }}</div>
+              <div class="mt-2 pt-2 border-t border-[color:var(--color-border)]">
+                <div class="muted-soft text-xs">Attempt {{ a.attempt_n }}</div>
+                <div class="whitespace-pre-wrap text-sm mt-1">{{ a.answer_transcript }}</div>
                 {% if let Some(c) = a.critique.as_ref() %}
-                  <div class="muted" style="font-size: 0.875rem; white-space: pre-wrap; margin-top: 0.25rem;">{{ c.narrative }}</div>
+                  <div class="muted text-sm whitespace-pre-wrap mt-1">{{ c.narrative }}</div>
                 {% endif %}
               </div>
             {% endfor %}
           </div>
         {% endfor %}
       </div>
-    </div>
+    {% endif %}
+  </div>
+
+  <!-- ─────────── Debrief tab ─────────── -->
+  {% if session.status == crate::models::SessionStatus::Ended && summary.is_some() %}
+    {% if let Some(s) = summary.as_ref() %}
+      <div role="tabpanel" x-show="tab === 'debrief'" x-cloak>
+        <div class="card">
+          {% call ui::card_header("clipboard-check", "Session debrief") %}
+          <div class="whitespace-pre-wrap">{{ s.narrative }}</div>
+
+          {% if !s.strengths.is_empty() %}
+            <div class="mt-5">
+              <div class="muted-soft text-xs uppercase tracking-wider font-medium">Strengths</div>
+              <ul class="list-disc pl-5 mt-1 grid gap-0.5">
+                {% for x in s.strengths %}<li>{{ x }}</li>{% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+
+          {% if !s.recurring_weaknesses.is_empty() %}
+            <div class="mt-5">
+              <div class="muted-soft text-xs uppercase tracking-wider font-medium">Recurring weaknesses</div>
+              <ul class="list-disc pl-5 mt-1 grid gap-0.5">
+                {% for x in s.recurring_weaknesses %}<li>{{ x }}</li>{% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+
+          {% if !s.blind_spots.is_empty() %}
+            <div class="mt-5">
+              <div class="muted-soft text-xs uppercase tracking-wider font-medium">Blind spots</div>
+              <ul class="list-disc pl-5 mt-1 grid gap-0.5">
+                {% for x in s.blind_spots %}<li>{{ x }}</li>{% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+
+          {% if !s.company_fit_signal.is_empty() %}
+            <div class="mt-5">
+              <div class="muted-soft text-xs uppercase tracking-wider font-medium">Company fit signal</div>
+              <div class="whitespace-pre-wrap mt-1">{{ s.company_fit_signal }}</div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
   {% endif %}
 </div>
 {% endblock %}

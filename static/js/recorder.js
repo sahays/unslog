@@ -35,6 +35,11 @@
     status.dataset.state = s;
   }
 
+  function broadcastRecording(active) {
+    window.unslogRecording = active;
+    document.dispatchEvent(new CustomEvent("unslog:recording", { detail: { recording: active } }));
+  }
+
   function startTimer() {
     recordStartedAt = Date.now();
     if (timerHandle) clearInterval(timerHandle);
@@ -72,6 +77,7 @@
     recorder.onstop = onStop;
     recorder.start();
     recording = true;
+    broadcastRecording(true);
     btn.textContent = "Stop";
     startTimer();
     setState("recording… 0:00 (press r or esc to stop)");
@@ -82,6 +88,7 @@
     recorder.stop();
     media.getTracks().forEach((t) => t.stop());
     recording = false;
+    broadcastRecording(false);
     stopTimer();
     btn.textContent = "Record";
     setState("uploading & transcribing…");
