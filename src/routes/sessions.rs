@@ -26,6 +26,10 @@ pub fn routes() -> Router<AppState> {
         .route("/sessions/:id/answers", post(submit_answer))
         .route("/sessions/:id/toggle-voice", post(toggle_voice))
         .route("/sessions/:id/end", post(end))
+        .route(
+            "/sessions/:id/attempts/:eval_id/:n/regenerate-audio",
+            post(regenerate_critique_audio),
+        )
 }
 
 async fn start(
@@ -462,6 +466,68 @@ async fn toggle_voice(
             bson::doc! { "$set": { "voice_critique_enabled": !session.voice_critique_enabled } },
         )
         .await?;
+    Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
+}
+
+/// Re-attempt TTS for one specific attempt's critique narrative. Used when
+/// the original synthesis failed (transient OpenRouter error) or the audio
+/// file got lost. Saves the new MP3 alongside other recordings and updates
+/// the eval row's `critique_audio_path` for that attempt.
+async fn regenerate_critique_audio(
+    State(state): State<AppState>,
+    Path((id, eval_id, attempt_n)): Path<(String, String, u32)>,
+) -> Result<Response, AppError> {
+    let session = load_session(&state, &id).await?;
+    let evals = state.db.collection::<Evaluation>(Evaluation::COLLECTION);
+    let eval: Evaluation = evals
+        .find_one(bson::doc! { "_id": &eval_id, "session_id": &id })
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("evaluation {eval_id}")))?;
+
+    let attempt = eval
+        .attempts
+        .iter()
+        .find(|a| a.attempt_n == attempt_n)
+        .ok_or_else(|| AppError::NotFound(format!("attempt {attempt_n} on {eval_id}")))?;
+
+    let critique = attempt
+        .critique
+        .as_ref()
+        .ok_or_else(|| AppError::BadRequest("attempt has no critique to read aloud".into()))?;
+
+    tracing::info!(
+        event = "tts.regenerate",
+        session_id = %id,
+        eval_id = %eval_id,
+        attempt_n,
+        narrative_chars = critique.narrative.chars().count(),
+        "regenerating critique audio",
+    );
+
+    let audio_path =
+        maybe_tts_critique(&state, &session, &critique.narrative, attempt_n, &eval.question_id)
+            .await?;
+
+    // Update the matched array element. MongoDB positional `$` operator finds
+    // the right attempt by attempt_n in the array filter.
+    evals
+        .update_one(
+            bson::doc! {
+                "_id": &eval_id,
+                "attempts.attempt_n": attempt_n as i64,
+            },
+            bson::doc! { "$set": { "attempts.$.critique_audio_path": &audio_path } },
+        )
+        .await?;
+
+    tracing::info!(
+        event = "tts.regenerate_ok",
+        eval_id = %eval_id,
+        attempt_n,
+        path = %audio_path,
+        "critique audio regenerated",
+    );
+
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
 

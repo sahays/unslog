@@ -125,6 +125,17 @@
                       <span class="critique-audio__label">Listen</span>
                       <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}"></audio>
                     </div>
+                  {% else %}
+                    <form method="post"
+                          action="/sessions/{{ session.id }}/attempts/{{ eval.id }}/{{ a.attempt_n }}/regenerate-audio"
+                          class="mt-2"
+                          data-loading-title="Generating audio…"
+                          data-loading-detail="Synthesising the critique with <code>{{ session.model_snapshot.tts }}</code>. Usually a few seconds.">
+                      <button type="submit" class="btn btn-sm">
+                        <i data-lucide="volume-2" class="h-3.5 w-3.5"></i>
+                        Generate audio
+                      </button>
+                    </form>
                   {% endif %}
                   {% if !c.improved_vs_prior.is_empty() %}
                     <div class="mt-2 p-2 px-3 border-l-2 border-[color:var(--color-accent)] bg-[color:var(--color-bg-tertiary)] rounded-r-md">

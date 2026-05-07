@@ -158,7 +158,32 @@ impl OpenRouter {
     }
 
     /// Synthesize speech. Returns the raw audio bytes (mp3 by default).
+    /// Retries once on transient body-decode / network errors before failing.
     pub async fn tts(
+        &self,
+        model: &str,
+        voice: &str,
+        text: &str,
+        speed: Option<f32>,
+    ) -> Result<bytes::Bytes, AppError> {
+        match self.tts_once(model, voice, text, speed).await {
+            Ok(b) => Ok(b),
+            Err(first) => {
+                let retryable = matches!(&first, AppError::Http(_) | AppError::Upstream(_));
+                if !retryable {
+                    return Err(first);
+                }
+                tracing::warn!(
+                    op = "openrouter.tts",
+                    error = %first,
+                    "first TTS attempt failed, retrying once",
+                );
+                self.tts_once(model, voice, text, speed).await
+            }
+        }
+    }
+
+    async fn tts_once(
         &self,
         model: &str,
         voice: &str,
