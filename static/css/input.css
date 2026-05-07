@@ -327,10 +327,17 @@ button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:dis
 }
 .btn-primary:hover::before { animation: shimmer-sweep 600ms ease-out; }
 .btn-primary:hover {
-  color: white;  /* defend against a:hover overriding on <a class="btn-primary"> */
+  color: white;
+  /* Re-assert the gradient: .btn:hover sets bg to cream and would otherwise
+     override the base .btn-primary gradient (same specificity, source order
+     gives .btn:hover the win on the `background` property). */
+  background: linear-gradient(135deg, var(--color-teal-600) 0%, var(--color-teal-700) 100%);
   box-shadow: 0 4px 10px rgba(13,110,110,0.18), 0 1px 3px rgba(13,110,110,0.10);
 }
-.dark .btn-primary:hover { box-shadow: 0 4px 12px rgba(98,179,163,0.18), 0 1px 3px rgba(98,179,163,0.12); }
+.dark .btn-primary:hover {
+  background: linear-gradient(135deg, var(--color-brass-500) 0%, var(--color-brass-600) 100%);
+  box-shadow: 0 4px 12px rgba(98,179,163,0.18), 0 1px 3px rgba(98,179,163,0.12);
+}
 
 .btn-danger {
   background: transparent;
