@@ -24,7 +24,9 @@
   <div class="card">
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
       <h3 style="margin: 0; font-size: 1rem; font-weight: 600;">Question bank ({{ bank.questions.len() }})</h3>
-      <a class="btn btn-primary" href="#start-session">Start session</a>
+      <form method="post" action="/companies/{{ company.id }}/sessions" style="display: inline;">
+        <button type="submit" class="btn btn-primary">Start session</button>
+      </form>
     </div>
 
     <form method="post" action="/companies/{{ company.id }}/questions" style="display: grid; gap: 0.5rem; margin-bottom: 1rem;">

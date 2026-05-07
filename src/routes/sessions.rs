@@ -1,0 +1,277 @@
+use askama::Template;
+use axum::extract::{Form, Path, State};
+use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::routing::{get, post};
+use axum::Router;
+use futures::TryStreamExt;
+use mongodb::options::FindOptions;
+use serde::Deserialize;
+
+use crate::error::AppError;
+use crate::models::{
+    Attempt, Company, Evaluation, ModelSnapshot, PromptSnapshot, Session, SessionStatus,
+};
+use crate::services::{critique, openrouter, prompt_store, question_bank};
+use crate::startup::AppState;
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/companies/:id/sessions", post(start))
+        .route("/sessions/:id", get(show))
+        .route("/sessions/:id/next-question", post(next_question))
+        .route("/sessions/:id/answers", post(submit_answer))
+        .route("/sessions/:id/end", post(end))
+}
+
+async fn start(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    let coll = crate::db::companies(&state.db);
+    let _company: Company = coll
+        .find_one(bson::doc! { "_id": &id })
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("company {id}")))?;
+
+    let critique_prompt = prompt_store::get_prompt(&state.db, "critique")
+        .await?
+        .ok_or_else(|| AppError::NotFound("critique prompt".into()))?;
+    let summary_prompt = prompt_store::get_prompt(&state.db, "summary")
+        .await?
+        .ok_or_else(|| AppError::NotFound("summary prompt".into()))?;
+
+    let session = Session {
+        id: uuid::Uuid::now_v7().to_string(),
+        company_id: id,
+        started_at: chrono::Utc::now(),
+        ended_at: None,
+        status: SessionStatus::Active,
+        model_snapshot: ModelSnapshot {
+            stt: openrouter::DEFAULT_STT_MODEL.into(),
+            tts: openrouter::DEFAULT_TTS_MODEL.into(),
+            critique: openrouter::DEFAULT_CRITIQUE_MODEL.into(),
+            research: openrouter::DEFAULT_RESEARCH_MODEL.into(),
+        },
+        prompt_snapshot: PromptSnapshot {
+            critique: critique_prompt.current_version_id,
+            summary: summary_prompt.current_version_id,
+        },
+        voice_critique_enabled: false,
+        current_question_id: None,
+        current_question_text: None,
+    };
+
+    state
+        .db
+        .collection::<Session>(Session::COLLECTION)
+        .insert_one(&session)
+        .await?;
+
+    Ok(Redirect::to(&format!("/sessions/{}", session.id)).into_response())
+}
+
+#[derive(Template)]
+#[template(path = "sessions/active.html")]
+struct ActiveTemplate {
+    session: Session,
+    company: Company,
+    history: Vec<Evaluation>,
+    current_eval: Option<Evaluation>,
+    has_primary_asset: bool,
+}
+
+async fn show(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Html<String>, AppError> {
+    let session = load_session(&state, &id).await?;
+    let company = load_company(&state, &session.company_id).await?;
+
+    let evals: Vec<Evaluation> = state
+        .db
+        .collection::<Evaluation>(Evaluation::COLLECTION)
+        .find(bson::doc! { "session_id": &id })
+        .with_options(FindOptions::builder().sort(bson::doc! { "_id": 1 }).build())
+        .await?
+        .try_collect()
+        .await?;
+
+    let current_eval = match &session.current_question_id {
+        Some(qid) => evals.iter().find(|e| &e.question_id == qid).cloned(),
+        None => None,
+    };
+    let history: Vec<Evaluation> = evals
+        .into_iter()
+        .filter(|e| Some(&e.question_id) != session.current_question_id.as_ref())
+        .collect();
+
+    let has_primary_asset = crate::db::assets(&state.db)
+        .count_documents(bson::doc! { "primary": true })
+        .await?
+        > 0;
+
+    let body = ActiveTemplate {
+        session,
+        company,
+        history,
+        current_eval,
+        has_primary_asset,
+    }
+    .render()
+    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
+    Ok(Html(body))
+}
+
+async fn next_question(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    let session = load_session(&state, &id).await?;
+    if session.status != SessionStatus::Active {
+        return Err(AppError::BadRequest("session has ended".into()));
+    }
+
+    let bank = question_bank::ensure_for(&state.db, &session.company_id).await?;
+    let evals: Vec<Evaluation> = state
+        .db
+        .collection::<Evaluation>(Evaluation::COLLECTION)
+        .find(bson::doc! { "session_id": &id })
+        .await?
+        .try_collect()
+        .await?;
+    let seen: Vec<String> = evals.iter().map(|e| e.question_id.clone()).collect();
+
+    let Some(next) = question_bank::pick_next(&bank, &seen) else {
+        return Err(AppError::BadRequest(
+            "no unseen questions left in this bank".into(),
+        ));
+    };
+
+    state
+        .db
+        .collection::<Session>(Session::COLLECTION)
+        .update_one(
+            bson::doc! { "_id": &id },
+            bson::doc! { "$set": {
+                "current_question_id": &next.id,
+                "current_question_text": &next.text,
+            } },
+        )
+        .await?;
+
+    Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
+}
+
+#[derive(Deserialize)]
+pub struct AnswerForm {
+    pub transcript: String,
+}
+
+async fn submit_answer(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Form(form): Form<AnswerForm>,
+) -> Result<Response, AppError> {
+    let answer = form.transcript.trim().to_string();
+    if answer.is_empty() {
+        return Err(AppError::BadRequest("answer is empty".into()));
+    }
+
+    let session = load_session(&state, &id).await?;
+    if session.status != SessionStatus::Active {
+        return Err(AppError::BadRequest("session has ended".into()));
+    }
+    let qid = session
+        .current_question_id
+        .clone()
+        .ok_or_else(|| AppError::BadRequest("pick a question first".into()))?;
+    let qtext = session
+        .current_question_text
+        .clone()
+        .ok_or_else(|| AppError::BadRequest("session is missing current question text".into()))?;
+
+    let company = load_company(&state, &session.company_id).await?;
+
+    let evals = state.db.collection::<Evaluation>(Evaluation::COLLECTION);
+    let mut eval = evals
+        .find_one(bson::doc! { "session_id": &id, "question_id": &qid })
+        .await?
+        .unwrap_or_else(|| {
+            Evaluation::new(
+                session.id.clone(),
+                session.company_id.clone(),
+                qid.clone(),
+                qtext.clone(),
+            )
+        });
+
+    let attempt_n = (eval.attempts.len() as u32) + 1;
+
+    let prior_summaries: Vec<String> = Vec::new(); // Phase 10 will populate this
+    let critique = critique::run(
+        &state.openrouter,
+        &state.db,
+        &session,
+        &company,
+        &qtext,
+        &answer,
+        &eval.attempts,
+        &prior_summaries,
+    )
+    .await?;
+
+    eval.attempts.push(Attempt {
+        attempt_n,
+        answer_audio_path: None,
+        answer_transcript: answer,
+        critique: Some(critique),
+        critique_audio_path: None,
+        created_at: chrono::Utc::now(),
+    });
+
+    if eval.attempts.len() == 1 {
+        evals.insert_one(&eval).await?;
+    } else {
+        evals
+            .replace_one(bson::doc! { "_id": &eval.id }, &eval)
+            .await?;
+    }
+
+    Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
+}
+
+async fn end(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    state
+        .db
+        .collection::<Session>(Session::COLLECTION)
+        .update_one(
+            bson::doc! { "_id": &id },
+            bson::doc! { "$set": {
+                "status": "ended",
+                "ended_at": bson::DateTime::now(),
+                "current_question_id": null,
+                "current_question_text": null,
+            } },
+        )
+        .await?;
+    Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
+}
+
+async fn load_session(state: &AppState, id: &str) -> Result<Session, AppError> {
+    state
+        .db
+        .collection::<Session>(Session::COLLECTION)
+        .find_one(bson::doc! { "_id": id })
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("session {id}")))
+}
+
+async fn load_company(state: &AppState, id: &str) -> Result<Company, AppError> {
+    crate::db::companies(&state.db)
+        .find_one(bson::doc! { "_id": id })
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("company {id}")))
+}

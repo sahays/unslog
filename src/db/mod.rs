@@ -1,6 +1,6 @@
 use mongodb::{Client, Collection, Database};
 
-use crate::models::{Asset, Company, PromptVersion, QuestionBank};
+use crate::models::{Asset, Company, Evaluation, PromptVersion, QuestionBank, Session};
 
 pub async fn connect(uri: &str, db_name: &str) -> anyhow::Result<Database> {
     let client = Client::with_uri_str(uri).await?;
@@ -55,6 +55,30 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         )
         .build();
     banks.create_index(bank_idx).await?;
+
+    let sessions: Collection<Session> = db.collection(Session::COLLECTION);
+    let s_idx = IndexModel::builder()
+        .keys(bson::doc! { "company_id": 1, "started_at": -1 })
+        .options(IndexOptions::builder().name("company_started".to_string()).build())
+        .build();
+    sessions.create_index(s_idx).await?;
+
+    let evals: Collection<Evaluation> = db.collection(Evaluation::COLLECTION);
+    let e_idx = IndexModel::builder()
+        .keys(bson::doc! { "session_id": 1 })
+        .options(IndexOptions::builder().name("session_id".to_string()).build())
+        .build();
+    evals.create_index(e_idx).await?;
+    let e_idx2 = IndexModel::builder()
+        .keys(bson::doc! { "session_id": 1, "question_id": 1 })
+        .options(
+            IndexOptions::builder()
+                .unique(true)
+                .name("session_question_unique".to_string())
+                .build(),
+        )
+        .build();
+    evals.create_index(e_idx2).await?;
 
     Ok(())
 }

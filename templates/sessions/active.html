@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Session — {{ company.name }}{% endblock %}
+
+{% block content %}
+<div style="display: grid; gap: 1.25rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+    <div>
+      <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600;">{{ company.name }} — {{ company.role }}</h2>
+      <div class="muted" style="font-size: 0.8125rem;">
+        session started {{ session.started_at.format("%Y-%m-%d %H:%M").to_string() }} •
+        model: <code>{{ session.model_snapshot.critique }}</code>
+      </div>
+    </div>
+    <div style="display: flex; gap: 0.375rem;">
+      <a class="btn" href="/companies/{{ company.id }}">Back</a>
+      {% if session.status == crate::models::SessionStatus::Active %}
+        <form method="post" action="/sessions/{{ session.id }}/end" style="display: inline;"
+              onsubmit="return confirm('End session and write a summary?')">
+          <button type="submit" class="btn btn-danger">End session</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if !has_primary_asset %}
+    <div class="card" style="border-color: var(--danger);">
+      <strong>No primary asset configured.</strong>
+      <div class="muted" style="margin-top: 0.25rem; font-size: 0.875rem;">
+        Critiques pull from the primary asset's extracted text. <a href="/assets">Upload &amp; mark one primary</a> first.
+      </div>
+    </div>
+  {% endif %}
+
+  {% if session.status == crate::models::SessionStatus::Ended %}
+    <div class="card">
+      <strong>Session ended.</strong>
+      <div class="muted" style="font-size: 0.875rem; margin-top: 0.25rem;">
+        Read the per-session review for the full transcript and summary.
+      </div>
+    </div>
+  {% endif %}
+
+  {% if let Some(eval) = current_eval.as_ref() %}
+    <div class="card">
+      <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin-bottom: 0.375rem;">Current question</div>
+      <div style="font-size: 1.0625rem; margin-bottom: 1rem;">{{ eval.question_text }}</div>
+
+      {% if !eval.attempts.is_empty() %}
+        {% for a in eval.attempts %}
+          <div style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.75rem;">
+            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Attempt {{ a.attempt_n }} — your answer</div>
+            <div style="white-space: pre-wrap; margin-top: 0.25rem;">{{ a.answer_transcript }}</div>
+            {% if let Some(c) = a.critique.as_ref() %}
+              <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.75rem;">Critique</div>
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                <span class="tag">specificity {{ c.scores.specificity }}/5</span>
+                <span class="tag">role clarity {{ c.scores.role_clarity }}/5</span>
+                <span class="tag">STAR+ {{ c.scores.star_plus_structure }}/5</span>
+                <span class="tag">pitfalls {{ c.scores.pitfalls_avoided }}/5</span>
+                <span class="tag">company fit {{ c.scores.company_fit }}/5</span>
+              </div>
+              <div style="white-space: pre-wrap; margin-top: 0.5rem;">{{ c.narrative }}</div>
+              {% if !c.improved_vs_prior.is_empty() %}
+                <div style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-left: 3px solid var(--accent); background: var(--bg-sunk);">
+                  <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Vs. prior attempt</div>
+                  <div style="white-space: pre-wrap;">{{ c.improved_vs_prior }}</div>
+                </div>
+              {% endif %}
+              {% if !c.citations.is_empty() %}
+                <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.75rem;">Citations</div>
+                <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem; font-size: 0.875rem;">
+                  {% for cit in c.citations %}
+                    <li><strong>{{ cit.chapter }}</strong>{% if !cit.section.is_empty() %} — {{ cit.section }}{% endif %}: {{ cit.quote }}</li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
+
+      {% if session.status == crate::models::SessionStatus::Active %}
+        <form method="post" action="/sessions/{{ session.id }}/answers" style="display: grid; gap: 0.75rem; margin-top: 1rem;">
+          <label for="answer">Your answer (Phase 6: type for now; voice arrives next)</label>
+          <textarea id="answer" name="transcript" placeholder="Tell the story…" required></textarea>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button type="submit" class="btn btn-primary">Submit answer</button>
+            <span class="muted htmx-indicator" style="font-size: 0.8125rem;">Critiquing… can take 20–40s.</span>
+          </div>
+        </form>
+        <form method="post" action="/sessions/{{ session.id }}/next-question" style="margin-top: 0.5rem;">
+          <button type="submit" class="btn">Skip — next question</button>
+        </form>
+      {% endif %}
+    </div>
+  {% else %}
+    {% if session.status == crate::models::SessionStatus::Active %}
+      <div class="card" style="text-align: center;">
+        <p class="muted" style="margin: 0 0 0.75rem;">No question loaded. Pick the next one to start.</p>
+        <form method="post" action="/sessions/{{ session.id }}/next-question" style="display: inline;">
+          <button type="submit" class="btn btn-primary">Pick next question</button>
+        </form>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  {% if !history.is_empty() %}
+    <div>
+      <h3 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin: 0 0 0.5rem;">Earlier in this session</h3>
+      <div style="display: grid; gap: 0.75rem;">
+        {% for eval in history %}
+          <div class="card">
+            <div style="font-weight: 500;">{{ eval.question_text }}</div>
+            {% for a in eval.attempts %}
+              <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border);">
+                <div class="muted" style="font-size: 0.75rem;">Attempt {{ a.attempt_n }}</div>
+                <div style="white-space: pre-wrap; font-size: 0.875rem;">{{ a.answer_transcript }}</div>
+                {% if let Some(c) = a.critique.as_ref() %}
+                  <div class="muted" style="font-size: 0.875rem; white-space: pre-wrap; margin-top: 0.25rem;">{{ c.narrative }}</div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

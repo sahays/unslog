@@ -1,4 +1,5 @@
 pub mod assets;
+pub mod critique;
 pub mod openrouter;
 pub mod prompt_store;
 pub mod question_bank;
