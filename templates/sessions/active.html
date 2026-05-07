@@ -88,7 +88,7 @@
   <!-- ─────────── Current tab ─────────── -->
   {% if session.status == crate::models::SessionStatus::Active %}
     <div role="tabpanel" x-show="tab === 'current'" x-cloak class="grid gap-4">
-      {% if let Some(eval) = current_eval.as_ref() %}
+      {% if let Some(qtext) = session.current_question_text.as_ref() %}
         <div class="card">
           <div class="flex justify-between items-center mb-2">
             <div class="muted-soft text-xs uppercase tracking-wider font-medium">Current question</div>
@@ -99,12 +99,12 @@
               </button>
             </form>
           </div>
-          <div class="font-heading text-lg font-semibold mb-2">{{ eval.question_text }}</div>
+          <div class="font-heading text-lg font-semibold mb-2">{{ qtext }}</div>
           {% if let Some(p) = session.current_question_audio_path.as_ref() %}
             <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" class="mb-3"></audio>
           {% endif %}
 
-          {% if !eval.attempts.is_empty() %}
+          {% if let Some(eval) = current_eval.as_ref() %}
             {% for a in eval.attempts %}
               <div class="border-t border-[color:var(--color-border)] pt-3 mt-3">
                 <div class="muted-soft text-xs uppercase tracking-wider font-medium">Attempt {{ a.attempt_n }} — your answer</div>
@@ -155,10 +155,12 @@
             </div>
             <div class="grid gap-1.5">
               <label for="answer">
-                {% if eval.attempts.is_empty() %}
-                  Transcript (you can edit before submitting)
-                {% else %}
+                {% if let Some(eval) = current_eval.as_ref() %}{% if !eval.attempts.is_empty() %}
                   Take another shot — answer again with the feedback in mind
+                {% else %}
+                  Transcript (you can edit before submitting)
+                {% endif %}{% else %}
+                  Transcript (you can edit before submitting)
                 {% endif %}
               </label>
               <textarea id="answer" name="transcript" data-record-target placeholder="Speak above, or type your answer…" required></textarea>
@@ -167,7 +169,7 @@
             <div class="flex gap-3 items-center">
               <button type="submit" class="btn btn-primary btn-icon-spring">
                 <span class="btn-icon"><i data-lucide="send" class="h-4 w-4"></i></span>
-                <span>{% if eval.attempts.is_empty() %}Submit answer{% else %}Submit retry (attempt {{ eval.attempts.len() + 1 }}){% endif %}</span>
+                <span>{% if let Some(eval) = current_eval.as_ref() %}{% if !eval.attempts.is_empty() %}Submit retry (attempt {{ eval.attempts.len() + 1 }}){% else %}Submit answer{% endif %}{% else %}Submit answer{% endif %}</span>
               </button>
               <span class="muted-soft text-xs htmx-indicator">Critiquing… can take 20–40s.</span>
             </div>
@@ -175,7 +177,7 @@
           <form method="post" action="/sessions/{{ session.id }}/next-question" class="mt-2">
             <button type="submit" class="btn">
               <i data-lucide="skip-forward" class="h-4 w-4"></i>
-              {% if eval.attempts.is_empty() %}Skip — next question{% else %}Move on — next question{% endif %}
+              {% if let Some(eval) = current_eval.as_ref() %}{% if !eval.attempts.is_empty() %}Move on — next question{% else %}Skip — next question{% endif %}{% else %}Skip — next question{% endif %}
             </button>
           </form>
         </div>
