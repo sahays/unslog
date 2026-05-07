@@ -19,6 +19,7 @@ pub struct AppState {
     pub config: Arc<AppConfig>,
     pub db: Database,
     pub http: reqwest::Client,
+    pub openrouter: crate::services::openrouter::OpenRouter,
 }
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
@@ -37,10 +38,19 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         .await
         .ok();
 
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| anyhow::anyhow!("reqwest client: {e}"))?;
+    let openrouter = crate::services::openrouter::OpenRouter::new(
+        http.clone(),
+        config.openrouter_api_key.clone(),
+    );
     let state = AppState {
         config: Arc::new(config),
         db,
-        http: reqwest::Client::new(),
+        http,
+        openrouter,
     };
 
     let static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static");

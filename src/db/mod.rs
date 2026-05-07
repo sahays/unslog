@@ -1,6 +1,6 @@
 use mongodb::{Client, Collection, Database};
 
-use crate::models::{Asset, PromptVersion};
+use crate::models::{Asset, Company, PromptVersion};
 
 pub async fn connect(uri: &str, db_name: &str) -> anyhow::Result<Database> {
     let client = Client::with_uri_str(uri).await?;
@@ -32,7 +32,23 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         .build();
     versions.create_index(pname_idx).await?;
 
+    let companies: Collection<Company> = db.collection(Company::COLLECTION);
+    let name_idx = IndexModel::builder()
+        .keys(bson::doc! { "name": 1 })
+        .options(
+            IndexOptions::builder()
+                .unique(true)
+                .name("name_unique".to_string())
+                .build(),
+        )
+        .build();
+    companies.create_index(name_idx).await?;
+
     Ok(())
+}
+
+pub fn companies(db: &Database) -> Collection<Company> {
+    db.collection(Company::COLLECTION)
 }
 
 pub fn assets(db: &Database) -> Collection<Asset> {
