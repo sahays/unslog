@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Assets — unslog{% endblock %}
+
+{% block content %}
+<div style="display: grid; gap: 1.5rem;">
+  <div class="card">
+    <h2 style="margin: 0 0 0.25rem; font-size: 1.125rem; font-weight: 600;">Assets</h2>
+    <p class="muted" style="margin: 0 0 1rem; font-size: 0.875rem;">
+      Upload the book (and any reference works) here. The asset marked <em>primary</em> is the one inlined into every critique.
+    </p>
+
+    <form method="post" action="/assets" enctype="multipart/form-data" style="display: grid; gap: 0.75rem;">
+      <div>
+        <label for="asset_name">Name</label>
+        <input type="text" id="asset_name" name="name" placeholder="e.g. Acing Behavioral Interviews 2e" />
+      </div>
+      <div>
+        <label for="asset_kind">Kind</label>
+        <select id="asset_kind" name="kind">
+          <option value="book">Book</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div>
+        <label for="asset_file">PDF file</label>
+        <input type="file" id="asset_file" name="file" accept="application/pdf,.pdf" required />
+      </div>
+      <div>
+        <button type="submit" class="btn btn-primary">Upload &amp; extract</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 style="margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600;">Library</h3>
+    {% if assets.is_empty() %}
+      <p class="muted">No assets yet. Upload one above.</p>
+    {% else %}
+      {% if !has_primary %}
+        <div class="card" style="border-color: var(--danger); margin-bottom: 1rem;">
+          <strong>No primary asset.</strong>
+          <div class="muted" style="margin-top: 0.25rem; font-size: 0.875rem;">
+            Critiques can't run until one asset is marked primary.
+          </div>
+        </div>
+      {% endif %}
+      <div style="display: grid; gap: 0.75rem;">
+        {% for a in assets %}
+          <div style="display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <strong>{{ a.name }}</strong>
+                {% if a.primary %}<span class="tag tag-accent">primary</span>{% endif %}
+                <span class="tag">{{ a.kind|json|safe }}</span>
+                {% match a.extraction_status %}
+                  {% when crate::models::ExtractionStatus::Ok %}<span class="tag tag-good">extracted</span>
+                  {% when crate::models::ExtractionStatus::Pending %}<span class="tag">pending</span>
+                  {% when crate::models::ExtractionStatus::Failed %}<span class="tag tag-bad">failed</span>
+                {% endmatch %}
+              </div>
+              <div class="muted" style="font-size: 0.8125rem; margin-top: 0.25rem;">
+                {{ a.original_filename }} • uploaded {{ a.uploaded_at.format("%Y-%m-%d %H:%M").to_string() }}
+              </div>
+              {% if let Some(err) = a.extraction_error.as_ref() %}
+                <div class="muted" style="font-size: 0.8125rem; color: var(--danger); margin-top: 0.25rem;">
+                  {{ err }}
+                </div>
+              {% endif %}
+            </div>
+            <div style="display: flex; gap: 0.375rem; align-items: flex-start;">
+              {% if !a.primary %}
+                <form method="post" action="/assets/{{ a.id }}/primary" style="display: inline;">
+                  <button type="submit" class="btn" style="font-size: 0.8125rem;">Set primary</button>
+                </form>
+              {% endif %}
+              <a class="btn" style="font-size: 0.8125rem;" href="/assets/{{ a.id }}/preview">Preview</a>
+              <form method="post" action="/assets/{{ a.id }}/reextract" style="display: inline;">
+                <button type="submit" class="btn" style="font-size: 0.8125rem;">Re-extract</button>
+              </form>
+              <form method="post" action="/assets/{{ a.id }}/delete" style="display: inline;"
+                    onsubmit="return confirm('Delete asset?')">
+                <button type="submit" class="btn btn-danger" style="font-size: 0.8125rem;">Delete</button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

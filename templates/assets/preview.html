@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}{{ asset.name }} — preview{% endblock %}
+
+{% block content %}
+<div style="display: grid; gap: 1rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+    <div>
+      <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600;">{{ asset.name }}</h2>
+      <div class="muted" style="font-size: 0.875rem;">{{ asset.original_filename }}</div>
+    </div>
+    <a class="btn" href="/assets">Back</a>
+  </div>
+
+  {% if truncated %}
+    <div class="muted" style="font-size: 0.875rem;">Showing first 80,000 characters of extracted text.</div>
+  {% endif %}
+
+  <div class="card" style="padding: 1rem;">
+    <pre style="white-space: pre-wrap; word-wrap: break-word; font-family: var(--font-mono); font-size: 0.8125rem; margin: 0; max-height: 70vh; overflow: auto;">{{ body }}</pre>
+  </div>
+</div>
+{% endblock %}

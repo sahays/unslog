@@ -1,9 +1,15 @@
+use axum::extract::DefaultBodyLimit;
 use axum::Router;
 use mongodb::Database;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
+
+/// Cap upload body at 50 MB. Audio answers and the book PDF both fit comfortably
+/// under this; well above that and either we have a very long-winded answer or
+/// a misconfigured client.
+const MAX_BODY_BYTES: usize = 50 * 1024 * 1024;
 
 use crate::config::AppConfig;
 use crate::routes;
@@ -41,6 +47,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         .merge(routes::router(state.clone()))
         .nest_service("/static", ServeDir::new(static_dir))
         .fallback(crate::error::not_found_handler)
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .layer(TraceLayer::new_for_http());
 
     let addr = state.config.addr();
