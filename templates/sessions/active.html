@@ -140,9 +140,12 @@
       {% if session.status == crate::models::SessionStatus::Active %}
         <form method="post" action="/sessions/{{ session.id }}/answers" style="display: grid; gap: 0.75rem; margin-top: 1rem;">
           <div data-recorder-root data-record-endpoint="/sessions/{{ session.id }}/transcribe"
-               style="display: flex; gap: 0.5rem; align-items: center;">
+               style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
             <button type="button" class="btn" data-record-button>Record</button>
             <span class="muted" style="font-size: 0.8125rem;" data-record-status>idle</span>
+            <span class="muted" style="font-size: 0.75rem; margin-left: auto;">
+              shortcuts: <kbd>r</kbd> record/stop · <kbd>esc</kbd> stop · <kbd>⌘/ctrl + ↵</kbd> submit
+            </span>
           </div>
           <label for="answer">
             {% if eval.attempts.is_empty() %}

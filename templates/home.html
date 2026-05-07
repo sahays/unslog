@@ -3,17 +3,79 @@
 {% block title %}unslog — behavioral interview coach{% endblock %}
 
 {% block content %}
-<div class="card">
-  <h1 style="font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem;">Behavioral interview coach</h1>
-  <p class="muted" style="margin-bottom: 1.25rem;">
-    A live answer coach. Pick a behavioral question, answer by voice, get a critique grounded in the book and
-    the company's signal, retry, and watch the gap close.
-  </p>
-  <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-    <a class="btn btn-primary" href="/companies">Open companies</a>
-    <a class="btn" href="/assets">Upload the book</a>
-    <a class="btn" href="/prompts">Tune prompts</a>
-    <a class="btn" href="/settings">Settings</a>
+<div style="display: grid; gap: 1.25rem;">
+  <div class="card">
+    <h1 style="font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem;">Behavioral interview coach</h1>
+    <p class="muted" style="margin-bottom: 1.25rem;">
+      Pick a behavioral question, answer by voice, get a critique grounded in the book and the company's signal, retry, and watch the gap close.
+    </p>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+      <a class="btn btn-primary" href="/companies">Open companies</a>
+      <a class="btn" href="/assets">Upload the book</a>
+      <a class="btn" href="/prompts">Tune prompts</a>
+      <a class="btn" href="/settings">Settings</a>
+    </div>
   </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;">
+    <div class="card">
+      <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Companies</div>
+      <div style="font-size: 1.5rem; font-weight: 600; margin-top: 0.25rem;">{{ company_count }}</div>
+    </div>
+    <div class="card">
+      <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Active sessions</div>
+      <div style="font-size: 1.5rem; font-weight: 600; margin-top: 0.25rem;">{{ active_count }}</div>
+    </div>
+    <div class="card">
+      <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Primary asset</div>
+      <div style="margin-top: 0.25rem;">
+        {% if primary_asset_present %}
+          <span class="tag tag-good">configured</span>
+        {% else %}
+          <span class="tag tag-bad">missing</span>
+          <a class="muted" style="font-size: 0.8125rem; margin-left: 0.5rem;" href="/assets">Upload</a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">OpenRouter</div>
+      <div style="margin-top: 0.25rem;">
+        {% if openrouter_configured %}
+          <span class="tag tag-good">key set</span>
+        {% else %}
+          <span class="tag tag-bad">no key</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if !recent.is_empty() %}
+    <div>
+      <h3 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin: 0 0 0.5rem;">Recent sessions</h3>
+      <div style="display: grid; gap: 0.5rem;">
+        {% for row in recent %}
+          <div class="card" style="display: flex; gap: 0.75rem; align-items: center;">
+            <span class="tag" style="flex-shrink: 0;">
+              {% match row.session.status %}
+                {% when crate::models::SessionStatus::Active %}active
+                {% when crate::models::SessionStatus::Ended %}ended
+              {% endmatch %}
+            </span>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-weight: 500;">{{ row.company_name }}</div>
+              <div class="muted" style="font-size: 0.8125rem;">
+                started {{ row.session.started_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+                {% if row.has_summary %}<span style="margin-left: 0.5rem;">• has summary</span>{% endif %}
+              </div>
+            </div>
+            <a class="btn" style="font-size: 0.75rem; padding: 0.25rem 0.625rem;" href="/sessions/{{ row.session.id }}/review">Review</a>
+            {% if row.session.status == crate::models::SessionStatus::Active %}
+              <a class="btn btn-primary" style="font-size: 0.75rem; padding: 0.25rem 0.625rem;" href="/sessions/{{ row.session.id }}">Resume</a>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
 </div>
 {% endblock %}

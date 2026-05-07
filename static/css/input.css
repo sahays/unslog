@@ -130,3 +130,15 @@ a:hover { color: var(--accent-h); }
 .tag-good   { color: var(--good); border-color: color-mix(in srgb, var(--good) 30%, transparent); }
 .tag-bad    { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
 .tag-accent { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+
+kbd {
+  display: inline-block;
+  padding: 0 0.375rem;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--bg-sunk);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  color: var(--fg);
+}

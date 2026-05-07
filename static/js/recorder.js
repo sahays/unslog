@@ -7,8 +7,10 @@
 //   data-record-audio    — hidden input filled with the audio_path
 //   data-record-endpoint — POST URL for the multipart audio
 //
-// The page should set the data-record-endpoint attribute on the recorder
-// container element (a <div> wrapping the controls).
+// Keyboard shortcuts (active session page):
+//   r          — toggle record/stop, when focus is not in a form field
+//   escape     — stop recording (any focus)
+//   cmd/ctrl-enter — submit the answer form, from anywhere on the page
 
 (function () {
   const root = document.querySelector("[data-recorder-root]");
@@ -25,10 +27,31 @@
   let recorder = null;
   let chunks = [];
   let recording = false;
+  let timerHandle = null;
+  let recordStartedAt = 0;
 
   function setState(s) {
     status.textContent = s;
     status.dataset.state = s;
+  }
+
+  function startTimer() {
+    recordStartedAt = Date.now();
+    if (timerHandle) clearInterval(timerHandle);
+    timerHandle = setInterval(() => {
+      if (!recording) return;
+      const sec = Math.floor((Date.now() - recordStartedAt) / 1000);
+      const m = Math.floor(sec / 60);
+      const s = String(sec % 60).padStart(2, "0");
+      setState(`recording… ${m}:${s} (press r or esc to stop)`);
+    }, 250);
+  }
+
+  function stopTimer() {
+    if (timerHandle) {
+      clearInterval(timerHandle);
+      timerHandle = null;
+    }
   }
 
   async function start() {
@@ -50,7 +73,8 @@
     recorder.start();
     recording = true;
     btn.textContent = "Stop";
-    setState("recording…");
+    startTimer();
+    setState("recording… 0:00 (press r or esc to stop)");
   }
 
   async function stop() {
@@ -58,21 +82,21 @@
     recorder.stop();
     media.getTracks().forEach((t) => t.stop());
     recording = false;
+    stopTimer();
     btn.textContent = "Record";
-    setState("uploading…");
+    setState("uploading & transcribing…");
   }
 
   async function onStop() {
     const blob = new Blob(chunks, { type: chunks[0]?.type || "audio/webm" });
     const fd = new FormData();
-    // Always send a .webm extension so the server picks the right STT format.
     fd.append("file", blob, "answer.webm");
 
     let resp;
     try {
       resp = await fetch(endpoint, { method: "POST", body: fd });
     } catch (e) {
-      setState("network error");
+      setState("network error — try again");
       return;
     }
 
@@ -86,18 +110,51 @@
     try {
       data = await resp.json();
     } catch (e) {
-      setState("bad response");
+      setState("bad response from server");
       return;
     }
 
     transcript.value = data.transcript || "";
     audioInput.value = data.audio_path || "";
-    setState("transcribed — review and submit");
+    transcript.focus();
+    setState("transcribed — review and submit (cmd+enter)");
   }
 
   btn.addEventListener("click", (ev) => {
     ev.preventDefault();
     if (recording) stop();
     else start();
+  });
+
+  // Keyboard shortcuts.
+  function isTypingTarget(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
+  }
+
+  document.addEventListener("keydown", (ev) => {
+    // Cmd/Ctrl + Enter — submit the nearest form to the transcript textarea.
+    if ((ev.metaKey || ev.ctrlKey) && ev.key === "Enter") {
+      const form = transcript.closest("form");
+      if (form) {
+        ev.preventDefault();
+        if (typeof form.requestSubmit === "function") form.requestSubmit();
+        else form.submit();
+      }
+      return;
+    }
+    // Escape — stop recording, regardless of focus.
+    if (ev.key === "Escape" && recording) {
+      ev.preventDefault();
+      stop();
+      return;
+    }
+    // r — toggle record, only when not typing.
+    if (ev.key === "r" && !isTypingTarget(document.activeElement) && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+      ev.preventDefault();
+      if (recording) stop();
+      else start();
+    }
   });
 })();
