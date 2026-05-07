@@ -1,17 +1,19 @@
 use askama::Template;
 use axum::extract::{Form, Path, State};
-use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::response::{Html, IntoResponse, Json, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
+use axum_extra::extract::Multipart;
 use futures::TryStreamExt;
 use mongodb::options::FindOptions;
 use serde::Deserialize;
+use serde_json::json;
 
 use crate::error::AppError;
 use crate::models::{
     Attempt, Company, Evaluation, ModelSnapshot, PromptSnapshot, Session, SessionStatus,
 };
-use crate::services::{critique, openrouter, prompt_store, question_bank};
+use crate::services::{critique, openrouter, prompt_store, question_bank, stt};
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -19,6 +21,7 @@ pub fn routes() -> Router<AppState> {
         .route("/companies/:id/sessions", post(start))
         .route("/sessions/:id", get(show))
         .route("/sessions/:id/next-question", post(next_question))
+        .route("/sessions/:id/transcribe", post(transcribe))
         .route("/sessions/:id/answers", post(submit_answer))
         .route("/sessions/:id/end", post(end))
 }
@@ -165,6 +168,8 @@ async fn next_question(
 #[derive(Deserialize)]
 pub struct AnswerForm {
     pub transcript: String,
+    #[serde(default)]
+    pub audio_path: Option<String>,
 }
 
 async fn submit_answer(
@@ -176,6 +181,7 @@ async fn submit_answer(
     if answer.is_empty() {
         return Err(AppError::BadRequest("answer is empty".into()));
     }
+    let audio_path = form.audio_path.filter(|s| !s.is_empty());
 
     let session = load_session(&state, &id).await?;
     if session.status != SessionStatus::Active {
@@ -222,7 +228,7 @@ async fn submit_answer(
 
     eval.attempts.push(Attempt {
         attempt_n,
-        answer_audio_path: None,
+        answer_audio_path: audio_path,
         answer_transcript: answer,
         critique: Some(critique),
         critique_audio_path: None,
@@ -238,6 +244,60 @@ async fn submit_answer(
     }
 
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
+}
+
+async fn transcribe(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    mut form: Multipart,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let session = load_session(&state, &id).await?;
+    if session.status != SessionStatus::Active {
+        return Err(AppError::BadRequest("session has ended".into()));
+    }
+
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut ext: String = "webm".to_string();
+
+    while let Some(field) = form
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("multipart: {e}")))?
+    {
+        let fname = field.name().unwrap_or("").to_string();
+        if fname == "file" || fname == "audio" {
+            if let Some(orig) = field.file_name() {
+                if let Some(e) = std::path::Path::new(orig).extension().and_then(|s| s.to_str()) {
+                    ext = e.to_lowercase();
+                }
+            }
+            bytes = field
+                .bytes()
+                .await
+                .map_err(|e| AppError::BadRequest(format!("audio read: {e}")))?
+                .to_vec();
+        }
+    }
+
+    if bytes.is_empty() {
+        return Err(AppError::BadRequest("no audio uploaded".into()));
+    }
+
+    let (audio_path, transcript) = stt::save_and_transcribe(
+        &state.openrouter,
+        &session.model_snapshot.stt,
+        &state.config.data_dir,
+        &session.company_id,
+        &session.id,
+        &bytes,
+        &ext,
+    )
+    .await?;
+
+    Ok(Json(json!({
+        "audio_path": audio_path,
+        "transcript": transcript,
+    })))
 }
 
 async fn end(
