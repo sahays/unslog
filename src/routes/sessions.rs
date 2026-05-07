@@ -13,7 +13,7 @@ use crate::error::AppError;
 use crate::models::{
     Attempt, Company, Evaluation, ModelSnapshot, PromptSnapshot, Session, SessionStatus,
 };
-use crate::services::{critique, openrouter, prompt_store, question_bank, stt};
+use crate::services::{critique, openrouter, prompt_store, question_bank, stt, tts};
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -23,6 +23,7 @@ pub fn routes() -> Router<AppState> {
         .route("/sessions/:id/next-question", post(next_question))
         .route("/sessions/:id/transcribe", post(transcribe))
         .route("/sessions/:id/answers", post(submit_answer))
+        .route("/sessions/:id/toggle-voice", post(toggle_voice))
         .route("/sessions/:id/end", post(end))
 }
 
@@ -62,6 +63,7 @@ async fn start(
         voice_critique_enabled: false,
         current_question_id: None,
         current_question_text: None,
+        current_question_audio_path: None,
     };
 
     state
@@ -150,6 +152,16 @@ async fn next_question(
         ));
     };
 
+    // Best-effort TTS of the question text. If TTS fails (no key, model error,
+    // network), keep the question but skip the audio — the page still works.
+    let audio_path = match maybe_tts_question(&state, &session, next).await {
+        Ok(p) => Some(p),
+        Err(e) => {
+            tracing::warn!(error = %e, "tts of question failed; continuing without audio");
+            None
+        }
+    };
+
     state
         .db
         .collection::<Session>(Session::COLLECTION)
@@ -158,11 +170,38 @@ async fn next_question(
             bson::doc! { "$set": {
                 "current_question_id": &next.id,
                 "current_question_text": &next.text,
+                "current_question_audio_path": audio_path.clone(),
             } },
         )
         .await?;
 
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
+}
+
+async fn maybe_tts_question(
+    state: &AppState,
+    session: &Session,
+    question: &crate::models::Question,
+) -> Result<String, AppError> {
+    if !state.openrouter.configured() {
+        return Err(AppError::OpenRouterNotConfigured);
+    }
+    let dir = crate::recordings::session_dir(
+        &state.config.data_dir,
+        &session.company_id,
+        &session.id,
+    );
+    crate::recordings::ensure_dir(&dir).await?;
+    let path = dir.join(format!("question_{}.mp3", question.id));
+    let path = tts::synthesize(
+        &state.openrouter,
+        &session.model_snapshot.tts,
+        openrouter::DEFAULT_TTS_VOICE,
+        &question.text,
+        path,
+    )
+    .await?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 #[derive(Deserialize)]
@@ -226,12 +265,24 @@ async fn submit_answer(
     )
     .await?;
 
+    let critique_audio_path = if session.voice_critique_enabled {
+        match maybe_tts_critique(&state, &session, &critique.narrative, attempt_n, &qid).await {
+            Ok(p) => Some(p),
+            Err(e) => {
+                tracing::warn!(error = %e, "tts of critique failed");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     eval.attempts.push(Attempt {
         attempt_n,
         answer_audio_path: audio_path,
         answer_transcript: answer,
         critique: Some(critique),
-        critique_audio_path: None,
+        critique_audio_path,
         created_at: chrono::Utc::now(),
     });
 
@@ -298,6 +349,50 @@ async fn transcribe(
         "audio_path": audio_path,
         "transcript": transcript,
     })))
+}
+
+async fn maybe_tts_critique(
+    state: &AppState,
+    session: &Session,
+    text: &str,
+    attempt_n: u32,
+    question_id: &str,
+) -> Result<String, AppError> {
+    if !state.openrouter.configured() {
+        return Err(AppError::OpenRouterNotConfigured);
+    }
+    let dir = crate::recordings::session_dir(
+        &state.config.data_dir,
+        &session.company_id,
+        &session.id,
+    );
+    crate::recordings::ensure_dir(&dir).await?;
+    let path = dir.join(format!("critique_{question_id}_v{attempt_n}.mp3"));
+    let path = tts::synthesize(
+        &state.openrouter,
+        &session.model_snapshot.tts,
+        openrouter::DEFAULT_TTS_VOICE,
+        text,
+        path,
+    )
+    .await?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+async fn toggle_voice(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    let session = load_session(&state, &id).await?;
+    state
+        .db
+        .collection::<Session>(Session::COLLECTION)
+        .update_one(
+            bson::doc! { "_id": &id },
+            bson::doc! { "$set": { "voice_critique_enabled": !session.voice_critique_enabled } },
+        )
+        .await?;
+    Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
 
 async fn end(

@@ -5,3 +5,4 @@ pub mod prompt_store;
 pub mod question_bank;
 pub mod research;
 pub mod stt;
+pub mod tts;

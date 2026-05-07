@@ -38,6 +38,8 @@ pub struct Session {
     pub current_question_id: Option<String>,
     #[serde(default)]
     pub current_question_text: Option<String>,
+    #[serde(default)]
+    pub current_question_audio_path: Option<String>,
 }
 
 impl Session {

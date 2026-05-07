@@ -52,3 +52,16 @@ pub fn critique_audio_path(
 pub async fn ensure_dir(path: &Path) -> std::io::Result<()> {
     tokio::fs::create_dir_all(path).await
 }
+
+/// Convert a stored absolute-or-relative recording path into a server URL like
+/// `/recordings/<company>/<session>/<file>`. Returns empty string if the path
+/// doesn't sit under any `recordings` dir.
+pub fn to_url(path: &str) -> String {
+    let needle = "recordings/";
+    if let Some(idx) = path.find(needle) {
+        let rest = &path[idx + needle.len()..];
+        format!("/recordings/{rest}")
+    } else {
+        String::new()
+    }
+}
