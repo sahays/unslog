@@ -76,18 +76,34 @@
     <!-- Lucide loader: hydrate icons after page load and after every htmx swap -->
     <script>
       (function () {
-        function render() {
+        function renderIcons() {
           if (window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
           }
         }
         if (document.readyState === 'loading') {
-          document.addEventListener('DOMContentLoaded', render);
+          document.addEventListener('DOMContentLoaded', renderIcons);
         } else {
-          render();
+          renderIcons();
         }
-        document.body.addEventListener('htmx:afterSwap', render);
-        document.body.addEventListener('htmx:load', render);
+        document.body.addEventListener('htmx:afterSwap', renderIcons);
+        document.body.addEventListener('htmx:load', renderIcons);
+
+        /* Submit-in-flight feedback: when a form is submitted (plain HTML
+           POST, not htmx), mark its submit button as loading so the icon
+           spins and the button dims while the next page loads. The form
+           data has already been collected by the time this fires, so
+           setting disabled is safe. */
+        document.addEventListener('submit', function (e) {
+          var form = e.target;
+          if (!(form instanceof HTMLFormElement)) return;
+          if (form.dataset.noLoading === 'true') return;
+          var btn = form.querySelector('button[type="submit"], input[type="submit"]');
+          if (btn) {
+            btn.classList.add('btn-loading');
+            btn.setAttribute('aria-busy', 'true');
+          }
+        }, true);
       })();
     </script>
   </body>

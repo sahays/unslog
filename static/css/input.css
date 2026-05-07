@@ -208,7 +208,8 @@ html, body {
   font-weight: 500;
   transition: color 150ms ease;
 }
-.nav-link:hover { color: var(--color-text-primary); }
+.nav-link:hover { color: var(--color-text-primary); transform: none; box-shadow: none; }
+.nav-link:active { transform: none; box-shadow: none; }
 .nav-link::after {
   content: '';
   position: absolute;
@@ -246,15 +247,35 @@ html, body {
 /* ── Generic interactive transitions ───────────────────────── */
 a, button, [role="button"], input[type="submit"] {
   cursor: pointer;
-  transition: transform 250ms var(--ease-spring), box-shadow 250ms ease,
+  transition: transform 300ms var(--ease-spring), box-shadow 300ms ease,
               background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
-button:hover:not(:disabled), [role="button"]:hover, input[type="submit"]:hover:not(:disabled) {
+/* Hover: lift + soft glow */
+button:hover:not(:disabled), [role="button"]:hover:not(:disabled), input[type="submit"]:hover:not(:disabled) {
   transform: translateY(-1px);
+  box-shadow: var(--shadow-glow);
 }
+.dark button:hover:not(:disabled), .dark [role="button"]:hover:not(:disabled), .dark input[type="submit"]:hover:not(:disabled) {
+  box-shadow: 0 0 14px 2px rgba(98, 179, 163, 0.18), 0 2px 8px rgba(98, 179, 163, 0.10);
+}
+
+/* Active: slam down — deeper than resting, shadow collapses to inset */
 button:active:not(:disabled), [role="button"]:active, input[type="submit"]:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(1px) scale(0.97);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.15), 0 0 0 rgba(0,0,0,0);
+  transition: transform 80ms ease-out, box-shadow 80ms ease-out;
+}
+.dark button:active:not(:disabled), .dark [role="button"]:active, .dark input[type="submit"]:active:not(:disabled) {
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.30), 0 0 4px rgba(98, 179, 163, 0.08);
+}
+
+/* Disabled state */
+button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 /* Button icon spring */
@@ -347,6 +368,10 @@ button:active:not(:disabled), [role="button"]:active, input[type="submit"]:activ
   transform: translateY(-2px);
   box-shadow: var(--shadow-glow-md);
   border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+}
+.card-interactive:active {
+  transform: translateY(0) scale(0.995);
+  transition: transform 100ms ease-out;
 }
 .dark .card-interactive:hover {
   box-shadow: 0 0 24px 4px rgba(74, 156, 140, 0.12), 0 4px 12px 0 rgba(74, 156, 140, 0.06);
@@ -504,6 +529,7 @@ a:hover { color: var(--color-accent-hover); }
   cursor: pointer;
 }
 .tab-button:hover { color: var(--color-text-primary); transform: none; box-shadow: none; }
+.tab-button:active { transform: none; box-shadow: none; }
 .tab-button.active {
   color: var(--color-accent);
   border-bottom-color: var(--color-accent);
@@ -567,6 +593,63 @@ audio {
 
 /* ── Alpine cloak ──────────────────────────────────────────── */
 [x-cloak] { display: none !important; }
+
+/* ── Form validation: shake + invalid border ──────────────── */
+@keyframes field-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+input.invalid, textarea.invalid, select.invalid {
+  border-color: var(--color-error) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-error) 18%, transparent) !important;
+  animation: field-shake 320ms ease-in-out;
+}
+.field-error {
+  display: none;
+  color: var(--color-error);
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+}
+.field-error.visible { display: block; }
+
+/* ── htmx button feedback — submit-in-flight ──────────────── */
+/* When a button is the source of an htmx request, dim it and swap its
+   icon for a spinner. Pair with `.btn-loading` (added by base.html JS). */
+button.btn-loading,
+input[type="submit"].btn-loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+button.btn-loading .btn-icon i,
+button.btn-loading > i:first-child {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* htmx-request adds shimmer overlay to .btn-primary while in flight */
+.btn-primary.htmx-request::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.20) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer-loop 1.4s linear infinite;
+  pointer-events: none;
+}
+@keyframes shimmer-loop {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* ── View Transitions — flicker-free page navigation ──────── */
+@view-transition { navigation: auto; }
+::view-transition-old(root) { animation: fade-out 120ms ease-in; }
+::view-transition-new(root) { animation: fade-in 200ms ease-out; }
 
 /* ── Reduced motion ────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
