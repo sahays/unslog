@@ -102,16 +102,26 @@
             <button type="button" class="btn" data-record-button>Record</button>
             <span class="muted" style="font-size: 0.8125rem;" data-record-status>idle</span>
           </div>
-          <label for="answer">Transcript (you can edit before submitting)</label>
+          <label for="answer">
+            {% if eval.attempts.is_empty() %}
+              Transcript (you can edit before submitting)
+            {% else %}
+              Take another shot — answer again with the feedback in mind
+            {% endif %}
+          </label>
           <textarea id="answer" name="transcript" data-record-target placeholder="Speak above, or type your answer…" required></textarea>
           <input type="hidden" name="audio_path" data-record-audio value="" />
           <div style="display: flex; gap: 0.5rem; align-items: center;">
-            <button type="submit" class="btn btn-primary">Submit answer</button>
+            <button type="submit" class="btn btn-primary">
+              {% if eval.attempts.is_empty() %}Submit answer{% else %}Submit retry (attempt {{ eval.attempts.len() + 1 }}){% endif %}
+            </button>
             <span class="muted htmx-indicator" style="font-size: 0.8125rem;">Critiquing… can take 20–40s.</span>
           </div>
         </form>
         <form method="post" action="/sessions/{{ session.id }}/next-question" style="margin-top: 0.5rem;">
-          <button type="submit" class="btn">Skip — next question</button>
+          <button type="submit" class="btn">
+            {% if eval.attempts.is_empty() %}Skip — next question{% else %}Move on — next question{% endif %}
+          </button>
         </form>
       {% endif %}
     </div>
