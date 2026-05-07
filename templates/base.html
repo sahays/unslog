@@ -74,9 +74,10 @@
       {% block content %}{% endblock %}
     </main>
 
-    <!-- Lucide loader: hydrate icons after page load and after every htmx swap -->
+    <!-- Lucide loader, YouTube-style progress bar, and submit-in-flight feedback -->
     <script>
       (function () {
+        /* ── Lucide ──────────────────────────────────────────── */
         function renderIcons() {
           if (window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
@@ -90,21 +91,71 @@
         document.body.addEventListener('htmx:afterSwap', renderIcons);
         document.body.addEventListener('htmx:load', renderIcons);
 
-        /* Submit-in-flight feedback: when a form is submitted (plain HTML
-           POST, not htmx), mark its submit button as loading so the icon
-           spins and the button dims while the next page loads. The form
-           data has already been collected by the time this fires, so
-           setting disabled is safe. */
+        /* ── YouTube-style progress bar ──────────────────────── */
+        var bar = document.getElementById('progress-bar');
+        var inFlight = false;
+        function startProgress() {
+          if (!bar || inFlight) return;
+          inFlight = true;
+          bar.style.transition = 'none';
+          bar.style.width = '0%';
+          bar.style.opacity = '1';
+          /* force reflow so the next transition takes effect */
+          void bar.offsetWidth;
+          bar.style.transition = 'width 8s cubic-bezier(0.05, 0.55, 0.4, 0.95)';
+          bar.style.width = '85%';
+        }
+        function finishProgress() {
+          if (!bar) return;
+          inFlight = false;
+          bar.style.transition = 'width 220ms ease-out, opacity 360ms ease-out 160ms';
+          bar.style.width = '100%';
+          window.setTimeout(function () { bar.style.opacity = '0'; }, 240);
+          window.setTimeout(function () {
+            bar.style.transition = 'none';
+            bar.style.width = '0%';
+          }, 740);
+        }
+
+        /* Same-tab link click → start */
+        document.addEventListener('click', function (e) {
+          var a = e.target.closest('a[href]');
+          if (!a) return;
+          if (a.target && a.target !== '_self') return;
+          if (a.hasAttribute('download')) return;
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+          var url;
+          try { url = new URL(a.href, window.location.href); } catch (_) { return; }
+          if (url.origin !== window.location.origin) return;
+          /* same-page anchor jump → no nav, skip */
+          if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
+          startProgress();
+        }, true);
+
+        /* Plain form submit → start */
         document.addEventListener('submit', function (e) {
           var form = e.target;
           if (!(form instanceof HTMLFormElement)) return;
-          if (form.dataset.noLoading === 'true') return;
-          var btn = form.querySelector('button[type="submit"], input[type="submit"]');
-          if (btn) {
-            btn.classList.add('btn-loading');
-            btn.setAttribute('aria-busy', 'true');
+          if (form.target && form.target !== '_self') return;
+          startProgress();
+          /* Submit-in-flight button feedback: spin the icon, dim the button
+             while the next page loads. FormData is already collected at this
+             point, so flipping disabled is safe. */
+          if (form.dataset.noLoading !== 'true') {
+            var btn = form.querySelector('button[type="submit"], input[type="submit"]');
+            if (btn) {
+              btn.classList.add('btn-loading');
+              btn.setAttribute('aria-busy', 'true');
+            }
           }
         }, true);
+
+        /* htmx requests */
+        document.body.addEventListener('htmx:beforeRequest', startProgress);
+        document.body.addEventListener('htmx:afterRequest', finishProgress);
+
+        /* Page loaded (initial nav or bfcache restore) → finish */
+        window.addEventListener('pageshow', finishProgress);
       })();
     </script>
   </body>

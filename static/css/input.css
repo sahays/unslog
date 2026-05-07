@@ -225,52 +225,49 @@ html, body {
 .nav-link.active::after { width: 100%; left: 0; }
 .nav-link.active { color: var(--color-text-primary); }
 
-/* ── Top progress bar (HTMX) ───────────────────────────────── */
+/* ── YouTube-style top progress bar ────────────────────────── */
+/* Animated by base.html JS on link click, form submit, htmx requests, and
+   completed on pageshow / load. Width and opacity are inline-styled by JS. */
 .progress-bar {
   position: fixed;
   top: 0; left: 0;
-  height: 2px;
+  height: 2.5px;
   width: 0%;
   z-index: var(--z-progress);
   background: linear-gradient(90deg,
-    var(--color-teal-500),
-    var(--color-brass-400),
-    var(--color-teal-500));
+    var(--color-teal-600) 0%,
+    var(--color-brass-400) 50%,
+    var(--color-teal-600) 100%);
   background-size: 200% 100%;
-  animation: gradient-shift 3s ease infinite;
-  transition: width 200ms ease, opacity 200ms ease;
+  animation: gradient-shift 2.4s linear infinite;
+  pointer-events: none;
   opacity: 0;
+  box-shadow: 0 0 8px rgba(13, 110, 110, 0.45);
 }
-.htmx-request ~ .progress-bar,
-.htmx-request .progress-bar { opacity: 1; width: 70%; }
+.dark .progress-bar {
+  box-shadow: 0 0 8px rgba(98, 179, 163, 0.55);
+}
 
 /* ── Generic interactive transitions ───────────────────────── */
+/* Component classes (.btn, .btn-primary, .card-interactive) own their own
+   hover shadows so they look right against unslog's warm-paper bg. The
+   global rule below only adds the lift + GPU-layer promotion (so subpixel
+   antialiasing on the lifted text stays crisp) — no shadow. */
 a, button, [role="button"], input[type="submit"] {
   cursor: pointer;
-  transition: transform 300ms var(--ease-spring), box-shadow 300ms ease,
+  transition: transform 250ms var(--ease-spring), box-shadow 250ms ease,
               background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
-/* Hover: lift + soft glow */
 button:hover:not(:disabled), [role="button"]:hover:not(:disabled), input[type="submit"]:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-glow);
-}
-.dark button:hover:not(:disabled), .dark [role="button"]:hover:not(:disabled), .dark input[type="submit"]:hover:not(:disabled) {
-  box-shadow: 0 0 14px 2px rgba(98, 179, 163, 0.18), 0 2px 8px rgba(98, 179, 163, 0.10);
+  transform: translate3d(0, -1px, 0);
 }
 
-/* Active: slam down — deeper than resting, shadow collapses to inset */
 button:active:not(:disabled), [role="button"]:active, input[type="submit"]:active:not(:disabled) {
-  transform: translateY(1px) scale(0.97);
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.15), 0 0 0 rgba(0,0,0,0);
-  transition: transform 80ms ease-out, box-shadow 80ms ease-out;
-}
-.dark button:active:not(:disabled), .dark [role="button"]:active, .dark input[type="submit"]:active:not(:disabled) {
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.30), 0 0 4px rgba(98, 179, 163, 0.08);
+  transform: translate3d(0, 1px, 0) scale(0.98);
+  transition: transform 90ms ease-out, box-shadow 90ms ease-out;
 }
 
-/* Disabled state */
 button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -300,7 +297,12 @@ button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:dis
   color: var(--color-text-primary);
   transition: all 150ms ease;
 }
-.btn:hover { background: var(--color-bg-tertiary); border-color: var(--color-border-hover); box-shadow: var(--shadow-glow-sm); }
+.btn:hover {
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-sm);
+}
+.btn:active { box-shadow: inset 0 1px 2px rgba(0,0,0,0.08); }
 
 .btn-primary {
   position: relative;
@@ -321,8 +323,8 @@ button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:dis
   pointer-events: none;
 }
 .btn-primary:hover::before { animation: shimmer-sweep 600ms ease-out; }
-.btn-primary:hover { box-shadow: 0 0 16px 1px rgba(13,110,110,0.25), 0 2px 8px rgba(13,110,110,0.15); }
-.dark .btn-primary:hover { box-shadow: 0 0 18px 2px rgba(98,179,163,0.25), 0 2px 8px rgba(98,179,163,0.15); }
+.btn-primary:hover { box-shadow: 0 4px 10px rgba(13,110,110,0.18), 0 1px 3px rgba(13,110,110,0.10); }
+.dark .btn-primary:hover { box-shadow: 0 4px 12px rgba(98,179,163,0.18), 0 1px 3px rgba(98,179,163,0.12); }
 
 .btn-danger {
   background: transparent;
@@ -362,19 +364,19 @@ button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:dis
 
 .card-interactive {
   position: relative;
-  transition: transform 300ms var(--ease-spring), box-shadow 300ms ease, border-color 300ms ease;
+  transition: transform 250ms var(--ease-spring), box-shadow 250ms ease, border-color 250ms ease;
 }
 .card-interactive:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-glow-md);
-  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+  transform: translate3d(0, -1px, 0);
+  box-shadow: var(--shadow);
+  border-color: color-mix(in srgb, var(--color-accent) 25%, var(--color-border));
 }
 .card-interactive:active {
-  transform: translateY(0) scale(0.995);
+  transform: translate3d(0, 0, 0) scale(0.995);
   transition: transform 100ms ease-out;
 }
 .dark .card-interactive:hover {
-  box-shadow: 0 0 24px 4px rgba(74, 156, 140, 0.12), 0 4px 12px 0 rgba(74, 156, 140, 0.06);
+  box-shadow: 0 4px 14px 0 rgba(74, 156, 140, 0.10), 0 2px 6px 0 rgba(74, 156, 140, 0.06);
 }
 
 /* ── Inputs ────────────────────────────────────────────────── */
