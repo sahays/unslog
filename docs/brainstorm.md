@@ -47,12 +47,20 @@ Everything is scoped per **company**. When you add a company:
 - **Per-session narrative summary** written at end of session ("strong on conflict stories, recurring weakness: vague metrics; missing 'how did this change your model of the customer'").
 - Summaries roll forward into future sessions' critique prompts, so the AI sees patterns over time.
 
+## Assets
+
+The book and any future reference works are uploaded **through the app** — no hardcoded paths. On upload, the original PDF is saved to `data/assets/originals/` and extracted Markdown to `data/assets/extracted/`; metadata lives in Mongo. Exactly one asset is marked **primary** at a time; that's the work the critique pipeline inlines. v1 expects a single primary asset (the book); the data model leaves room for more.
+
+## Prompts
+
+The critique, research, and end-of-session summary system prompts are **editable in the app** — plain textareas. Defaults are embedded in the binary and seeded into Mongo on first boot. **Every save creates a new version** (no overwrite); each prompt has a chronological history view and a "Restore this version" button. Sessions snapshot the active prompt-version IDs at start, so the per-session review page faithfully reproduces what the AI was actually using when you practiced.
+
 ## Recordings & Review
 
 - Audio + transcripts retained per session.
 - Stored on disk under `data/recordings/<company_id>/<session_id>/`.
 - `data/` is git-ignored.
-- Per-session review page: every Q/A, audio playback, transcripts, critiques, and the session summary. Read-only — no edits after the fact, so progress can't be gamed.
+- Per-session review page: every Q/A, audio playback, transcripts, critiques, and the session summary, with the model and prompt versions used clearly surfaced. Read-only — no edits after the fact, so progress can't be gamed.
 
 ## Stack
 
