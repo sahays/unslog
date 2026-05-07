@@ -301,6 +301,9 @@ button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:dis
   background: var(--color-bg-tertiary);
   border-color: var(--color-border-hover);
   box-shadow: var(--shadow-sm);
+  /* Re-assert color so a:hover (which has the same specificity as
+     .btn:hover) doesn't paint anchor-styled buttons in the link color. */
+  color: var(--color-text-primary);
 }
 .btn:active { box-shadow: inset 0 1px 2px rgba(0,0,0,0.08); }
 
@@ -323,7 +326,10 @@ button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:dis
   pointer-events: none;
 }
 .btn-primary:hover::before { animation: shimmer-sweep 600ms ease-out; }
-.btn-primary:hover { box-shadow: 0 4px 10px rgba(13,110,110,0.18), 0 1px 3px rgba(13,110,110,0.10); }
+.btn-primary:hover {
+  color: white;  /* defend against a:hover overriding on <a class="btn-primary"> */
+  box-shadow: 0 4px 10px rgba(13,110,110,0.18), 0 1px 3px rgba(13,110,110,0.10);
+}
 .dark .btn-primary:hover { box-shadow: 0 4px 12px rgba(98,179,163,0.18), 0 1px 3px rgba(98,179,163,0.12); }
 
 .btn-danger {
@@ -333,17 +339,20 @@ button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:dis
 }
 .btn-danger:hover {
   background: color-mix(in srgb, var(--color-error) 10%, transparent);
+  color: var(--color-error);  /* defend against a:hover */
   box-shadow: 0 0 12px rgba(185, 74, 68, 0.20);
 }
 
 .btn-ghost {
   background: transparent;
   border: 1px solid transparent;
+  color: var(--color-text-primary);
 }
 .btn-ghost:hover {
   border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
   box-shadow: 0 0 10px 1px rgba(13, 110, 110, 0.08);
   background: transparent;
+  color: var(--color-text-primary);  /* defend against a:hover */
 }
 .dark .btn-ghost:hover {
   border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
