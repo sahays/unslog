@@ -21,6 +21,42 @@
     </div>
   </div>
 
+  <div class="card">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+      <h3 style="margin: 0; font-size: 1rem; font-weight: 600;">Question bank ({{ bank.questions.len() }})</h3>
+      <a class="btn btn-primary" href="#start-session">Start session</a>
+    </div>
+
+    <form method="post" action="/companies/{{ company.id }}/questions" style="display: grid; gap: 0.5rem; margin-bottom: 1rem;">
+      <label for="paste-questions">Paste questions — one per line</label>
+      <textarea id="paste-questions" name="text" placeholder="Tell me about a time you missed a deadline.&#10;Walk me through a project you led end-to-end."></textarea>
+      <div>
+        <button type="submit" class="btn">Add questions</button>
+      </div>
+    </form>
+
+    {% if bank.questions.is_empty() %}
+      <p class="muted" style="margin: 0;">No questions yet. Add some above, or hit "Refresh packet" to let the agent re-suggest.</p>
+    {% else %}
+      <ul style="margin: 0; padding: 0; list-style: none; display: grid; gap: 0.375rem;">
+        {% for q in bank.questions %}
+          <li style="display: flex; gap: 0.5rem; align-items: start; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px;">
+            <span class="tag" style="flex-shrink: 0;">
+              {% match q.source %}
+                {% when crate::models::QuestionSource::Agent %}agent
+                {% when crate::models::QuestionSource::Uploaded %}uploaded
+              {% endmatch %}
+            </span>
+            <span style="flex: 1;">{{ q.text }}</span>
+            <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/delete" style="display: inline; flex-shrink: 0;">
+              <button type="submit" class="btn" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;" title="Delete">×</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+
   {% if let Some(p) = company.research_packet.as_ref() %}
     <div class="card">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">

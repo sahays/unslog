@@ -8,8 +8,8 @@ use mongodb::options::FindOptions;
 use serde::Deserialize;
 
 use crate::error::AppError;
-use crate::models::Company;
-use crate::services::research;
+use crate::models::{Company, QuestionBank, QuestionSource};
+use crate::services::{question_bank, research};
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -18,6 +18,11 @@ pub fn routes() -> Router<AppState> {
         .route("/companies/:id", get(show))
         .route("/companies/:id/refresh-packet", post(refresh_packet))
         .route("/companies/:id/delete", post(delete))
+        .route("/companies/:id/questions", post(add_questions))
+        .route(
+            "/companies/:id/questions/:qid/delete",
+            post(delete_question),
+        )
 }
 
 #[derive(Template)]
@@ -64,12 +69,29 @@ async fn create(
 
     // Run research synchronously — single user, expected to wait. Failures
     // become a packet-less company; user can hit "refresh packet" to retry.
-    match research::run(&state.openrouter, &state.db, &name, &role).await {
-        Ok(packet) => company.research_packet = Some(packet),
-        Err(e) => tracing::warn!(error = %e, name, role, "research agent failed; saving company without packet"),
-    }
+    let agent_questions = match research::run(&state.openrouter, &state.db, &name, &role).await {
+        Ok(packet) => {
+            let qs = packet.sample_questions.clone();
+            company.research_packet = Some(packet);
+            qs
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, name, role, "research agent failed; saving company without packet");
+            Vec::new()
+        }
+    };
 
     coll.insert_one(&company).await?;
+    question_bank::ensure_for(&state.db, &company.id).await?;
+    if !agent_questions.is_empty() {
+        question_bank::append_questions(
+            &state.db,
+            &company.id,
+            agent_questions,
+            QuestionSource::Agent,
+        )
+        .await?;
+    }
     Ok(Redirect::to(&format!("/companies/{}", company.id)).into_response())
 }
 
@@ -77,6 +99,7 @@ async fn create(
 #[template(path = "companies/show.html")]
 struct ShowTemplate {
     company: Company,
+    bank: QuestionBank,
 }
 
 async fn show(
@@ -88,10 +111,44 @@ async fn show(
         .find_one(bson::doc! { "_id": &id })
         .await?
         .ok_or_else(|| AppError::NotFound(format!("company {id}")))?;
-    let body = ShowTemplate { company }
+    let bank = question_bank::ensure_for(&state.db, &id).await?;
+    let body = ShowTemplate { company, bank }
         .render()
         .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
     Ok(Html(body))
+}
+
+#[derive(Deserialize)]
+pub struct AddQuestionsForm {
+    pub text: String,
+}
+
+async fn add_questions(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Form(form): Form<AddQuestionsForm>,
+) -> Result<Response, AppError> {
+    let lines: Vec<String> = form
+        .text
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return Err(AppError::BadRequest(
+            "paste one or more questions, one per line".into(),
+        ));
+    }
+    question_bank::append_questions(&state.db, &id, lines, QuestionSource::Uploaded).await?;
+    Ok(Redirect::to(&format!("/companies/{id}")).into_response())
+}
+
+async fn delete_question(
+    State(state): State<AppState>,
+    Path((id, qid)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    question_bank::delete_question(&state.db, &id, &qid).await?;
+    Ok(Redirect::to(&format!("/companies/{id}")).into_response())
 }
 
 async fn refresh_packet(
