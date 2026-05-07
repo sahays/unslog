@@ -20,6 +20,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/companies/:id/sessions", post(start))
         .route("/sessions/:id", get(show))
+        .route("/sessions/:id/review", get(review))
         .route("/sessions/:id/next-question", post(next_question))
         .route("/sessions/:id/transcribe", post(transcribe))
         .route("/sessions/:id/answers", post(submit_answer))
@@ -124,6 +125,41 @@ async fn show(
         history,
         current_eval,
         has_primary_asset,
+        summary,
+    }
+    .render()
+    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
+    Ok(Html(body))
+}
+
+#[derive(Template)]
+#[template(path = "sessions/review.html")]
+struct ReviewTemplate {
+    session: Session,
+    company: Company,
+    evals: Vec<Evaluation>,
+    summary: Option<Summary>,
+}
+
+async fn review(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Html<String>, AppError> {
+    let session = load_session(&state, &id).await?;
+    let company = load_company(&state, &session.company_id).await?;
+    let evals: Vec<Evaluation> = state
+        .db
+        .collection::<Evaluation>(Evaluation::COLLECTION)
+        .find(bson::doc! { "session_id": &id })
+        .with_options(FindOptions::builder().sort(bson::doc! { "_id": 1 }).build())
+        .await?
+        .try_collect()
+        .await?;
+    let summary = summary::for_session(&state.db, &id).await?;
+    let body = ReviewTemplate {
+        session,
+        company,
+        evals,
         summary,
     }
     .render()

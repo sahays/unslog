@@ -8,8 +8,8 @@ use mongodb::options::FindOptions;
 use serde::Deserialize;
 
 use crate::error::AppError;
-use crate::models::{Company, QuestionBank, QuestionSource};
-use crate::services::{question_bank, research};
+use crate::models::{Company, Evaluation, QuestionBank, QuestionSource, Session, Summary};
+use crate::services::{question_bank, research, summary as summary_svc};
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -95,11 +95,18 @@ async fn create(
     Ok(Redirect::to(&format!("/companies/{}", company.id)).into_response())
 }
 
+pub struct SessionRow {
+    pub session: Session,
+    pub eval_count: u64,
+    pub summary: Option<Summary>,
+}
+
 #[derive(Template)]
 #[template(path = "companies/show.html")]
 struct ShowTemplate {
     company: Company,
     bank: QuestionBank,
+    sessions: Vec<SessionRow>,
 }
 
 async fn show(
@@ -112,9 +119,41 @@ async fn show(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("company {id}")))?;
     let bank = question_bank::ensure_for(&state.db, &id).await?;
-    let body = ShowTemplate { company, bank }
-        .render()
-        .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
+
+    let opts = FindOptions::builder()
+        .sort(bson::doc! { "started_at": -1 })
+        .build();
+    let sessions_raw: Vec<Session> = state
+        .db
+        .collection::<Session>(Session::COLLECTION)
+        .find(bson::doc! { "company_id": &id })
+        .with_options(opts)
+        .await?
+        .try_collect()
+        .await?;
+
+    let mut sessions = Vec::with_capacity(sessions_raw.len());
+    for s in sessions_raw {
+        let eval_count = state
+            .db
+            .collection::<Evaluation>(Evaluation::COLLECTION)
+            .count_documents(bson::doc! { "session_id": &s.id })
+            .await?;
+        let summary = summary_svc::for_session(&state.db, &s.id).await?;
+        sessions.push(SessionRow {
+            session: s,
+            eval_count,
+            summary,
+        });
+    }
+
+    let body = ShowTemplate {
+        company,
+        bank,
+        sessions,
+    }
+    .render()
+    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
     Ok(Html(body))
 }
 

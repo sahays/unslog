@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Review — {{ company.name }} session {% endblock %}
+
+{% block content %}
+<div style="display: grid; gap: 1.25rem;">
+  <div style="display: flex; align-items: start; justify-content: space-between; gap: 1rem;">
+    <div>
+      <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600;">{{ company.name }} — {{ company.role }}</h2>
+      <div class="muted" style="font-size: 0.8125rem;">
+        session
+        {% match session.status %}
+          {% when crate::models::SessionStatus::Active %}<span class="tag">active</span>
+          {% when crate::models::SessionStatus::Ended %}<span class="tag">ended</span>
+        {% endmatch %}
+        — started {{ session.started_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+        {% if let Some(e) = session.ended_at.as_ref() %}
+          • ended {{ e.format("%Y-%m-%d %H:%M UTC").to_string() }}
+        {% endif %}
+      </div>
+    </div>
+    <div style="display: flex; gap: 0.375rem;">
+      <a class="btn" href="/companies/{{ company.id }}">Back</a>
+      {% if session.status == crate::models::SessionStatus::Active %}
+        <a class="btn btn-primary" href="/sessions/{{ session.id }}">Continue session</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin-bottom: 0.5rem;">Snapshot at session start</div>
+    <div style="display: grid; grid-template-columns: max-content 1fr; column-gap: 0.75rem; row-gap: 0.25rem; font-size: 0.875rem;">
+      <div class="muted">critique model</div><div><code>{{ session.model_snapshot.critique }}</code></div>
+      <div class="muted">research model</div><div><code>{{ session.model_snapshot.research }}</code></div>
+      <div class="muted">stt model</div><div><code>{{ session.model_snapshot.stt }}</code></div>
+      <div class="muted">tts model</div><div><code>{{ session.model_snapshot.tts }}</code></div>
+      <div class="muted">critique prompt</div><div><code>{{ session.prompt_snapshot.critique }}</code></div>
+      <div class="muted">summary prompt</div><div><code>{{ session.prompt_snapshot.summary }}</code></div>
+    </div>
+  </div>
+
+  {% if let Some(s) = summary.as_ref() %}
+    <div class="card">
+      <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin-bottom: 0.375rem;">Session debrief</div>
+      <div style="white-space: pre-wrap;">{{ s.narrative }}</div>
+
+      {% if !s.strengths.is_empty() %}
+        <div style="margin-top: 1rem;">
+          <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Strengths</div>
+          <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem;">
+            {% for x in s.strengths %}<li>{{ x }}</li>{% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      {% if !s.recurring_weaknesses.is_empty() %}
+        <div style="margin-top: 1rem;">
+          <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Recurring weaknesses</div>
+          <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem;">
+            {% for x in s.recurring_weaknesses %}<li>{{ x }}</li>{% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      {% if !s.blind_spots.is_empty() %}
+        <div style="margin-top: 1rem;">
+          <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Blind spots</div>
+          <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem;">
+            {% for x in s.blind_spots %}<li>{{ x }}</li>{% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      {% if !s.company_fit_signal.is_empty() %}
+        <div style="margin-top: 1rem;">
+          <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Company fit signal</div>
+          <div style="white-space: pre-wrap; margin-top: 0.25rem;">{{ s.company_fit_signal }}</div>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if evals.is_empty() %}
+    <div class="card">
+      <p class="muted" style="margin: 0;">No questions answered in this session.</p>
+    </div>
+  {% else %}
+    <h3 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin: 0;">Questions ({{ evals.len() }})</h3>
+    {% for eval in evals %}
+      <div class="card">
+        <div style="font-size: 1.0625rem; font-weight: 500; margin-bottom: 0.5rem;">{{ eval.question_text }}</div>
+
+        {% if eval.attempts.is_empty() %}
+          <div class="muted" style="font-size: 0.875rem;">(skipped — no attempts)</div>
+        {% else %}
+          {% for a in eval.attempts %}
+            <div style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.75rem;">
+              <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Attempt {{ a.attempt_n }} — your answer</div>
+              <div style="white-space: pre-wrap; margin-top: 0.25rem;">{{ a.answer_transcript }}</div>
+              {% if let Some(p) = a.answer_audio_path.as_ref() %}
+                <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" style="margin-top: 0.5rem; width: 100%;"></audio>
+              {% endif %}
+
+              {% if let Some(c) = a.critique.as_ref() %}
+                <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.75rem;">Critique</div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                  <span class="tag">specificity {{ c.scores.specificity }}/5</span>
+                  <span class="tag">role clarity {{ c.scores.role_clarity }}/5</span>
+                  <span class="tag">STAR+ {{ c.scores.star_plus_structure }}/5</span>
+                  <span class="tag">pitfalls {{ c.scores.pitfalls_avoided }}/5</span>
+                  <span class="tag">company fit {{ c.scores.company_fit }}/5</span>
+                </div>
+                <div style="white-space: pre-wrap; margin-top: 0.5rem;">{{ c.narrative }}</div>
+                {% if let Some(p) = a.critique_audio_path.as_ref() %}
+                  <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" style="margin-top: 0.5rem; width: 100%;"></audio>
+                {% endif %}
+                {% if !c.improved_vs_prior.is_empty() %}
+                  <div style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-left: 3px solid var(--accent); background: var(--bg-sunk);">
+                    <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Vs. prior attempt</div>
+                    <div style="white-space: pre-wrap;">{{ c.improved_vs_prior }}</div>
+                  </div>
+                {% endif %}
+                {% if !c.citations.is_empty() %}
+                  <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.75rem;">Citations</div>
+                  <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem; font-size: 0.875rem;">
+                    {% for cit in c.citations %}
+                      <li><strong>{{ cit.chapter }}</strong>{% if !cit.section.is_empty() %} — {{ cit.section }}{% endif %}: {{ cit.quote }}</li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              {% endif %}
+            </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

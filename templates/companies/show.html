@@ -59,6 +59,37 @@
     {% endif %}
   </div>
 
+  {% if !sessions.is_empty() %}
+    <div class="card">
+      <h3 style="margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600;">Past sessions ({{ sessions.len() }})</h3>
+      <ul style="margin: 0; padding: 0; list-style: none; display: grid; gap: 0.5rem;">
+        {% for row in sessions %}
+          <li style="display: flex; gap: 0.75rem; align-items: center; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px;">
+            <span class="tag" style="flex-shrink: 0;">
+              {% match row.session.status %}
+                {% when crate::models::SessionStatus::Active %}active
+                {% when crate::models::SessionStatus::Ended %}ended
+              {% endmatch %}
+            </span>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 0.875rem;">
+                {{ row.session.started_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+                <span class="muted">— {{ row.eval_count }} question{% if row.eval_count != 1 %}s{% endif %}</span>
+                {% if row.summary.is_some() %}
+                  <span class="muted">• has summary</span>
+                {% endif %}
+              </div>
+            </div>
+            <a class="btn" style="font-size: 0.75rem; padding: 0.25rem 0.625rem; flex-shrink: 0;" href="/sessions/{{ row.session.id }}/review">Review</a>
+            {% if row.session.status == crate::models::SessionStatus::Active %}
+              <a class="btn btn-primary" style="font-size: 0.75rem; padding: 0.25rem 0.625rem; flex-shrink: 0;" href="/sessions/{{ row.session.id }}">Resume</a>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
   {% if let Some(p) = company.research_packet.as_ref() %}
     <div class="card">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
