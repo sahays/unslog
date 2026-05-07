@@ -11,9 +11,9 @@ use serde_json::json;
 
 use crate::error::AppError;
 use crate::models::{
-    Attempt, Company, Evaluation, ModelSnapshot, PromptSnapshot, Session, SessionStatus,
+    Attempt, Company, Evaluation, ModelSnapshot, PromptSnapshot, Session, SessionStatus, Summary,
 };
-use crate::services::{critique, openrouter, prompt_store, question_bank, stt, tts};
+use crate::services::{critique, openrouter, prompt_store, question_bank, stt, summary, tts};
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -83,6 +83,7 @@ struct ActiveTemplate {
     history: Vec<Evaluation>,
     current_eval: Option<Evaluation>,
     has_primary_asset: bool,
+    summary: Option<Summary>,
 }
 
 async fn show(
@@ -115,12 +116,15 @@ async fn show(
         .await?
         > 0;
 
+    let summary = summary::for_session(&state.db, &id).await?;
+
     let body = ActiveTemplate {
         session,
         company,
         history,
         current_eval,
         has_primary_asset,
+        summary,
     }
     .render()
     .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
@@ -252,7 +256,17 @@ async fn submit_answer(
 
     let attempt_n = (eval.attempts.len() as u32) + 1;
 
-    let prior_summaries: Vec<String> = Vec::new(); // Phase 10 will populate this
+    let prior_summaries: Vec<String> = summary::recent_company_summaries(
+        &state.db,
+        &session.company_id,
+        Some(&session.id),
+        summary::CARRY_FORWARD_INTO_CRITIQUE,
+    )
+    .await?
+    .into_iter()
+    .map(|s| s.narrative)
+    .collect();
+
     let critique = critique::run(
         &state.openrouter,
         &state.db,
@@ -399,6 +413,16 @@ async fn end(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
+    let session = load_session(&state, &id).await?;
+    if session.status == SessionStatus::Active {
+        let company = load_company(&state, &session.company_id).await?;
+        // Best-effort: if the LLM call fails (no key, model down), still let
+        // the session end so the user isn't stuck with an unkillable session.
+        if let Err(e) = summary::generate_and_save(&state.openrouter, &state.db, &session, &company).await {
+            tracing::warn!(error = %e, session_id = %id, "summary generation failed; ending session anyway");
+        }
+    }
+
     state
         .db
         .collection::<Session>(Session::COLLECTION)

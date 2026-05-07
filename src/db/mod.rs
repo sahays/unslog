@@ -1,6 +1,6 @@
 use mongodb::{Client, Collection, Database};
 
-use crate::models::{Asset, Company, Evaluation, PromptVersion, QuestionBank, Session};
+use crate::models::{Asset, Company, Evaluation, PromptVersion, QuestionBank, Session, Summary};
 
 pub async fn connect(uri: &str, db_name: &str) -> anyhow::Result<Database> {
     let client = Client::with_uri_str(uri).await?;
@@ -62,6 +62,27 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         .options(IndexOptions::builder().name("company_started".to_string()).build())
         .build();
     sessions.create_index(s_idx).await?;
+
+    let summaries: Collection<Summary> = db.collection(Summary::COLLECTION);
+    let sum_idx = IndexModel::builder()
+        .keys(bson::doc! { "session_id": 1 })
+        .options(
+            IndexOptions::builder()
+                .unique(true)
+                .name("session_id_unique".to_string())
+                .build(),
+        )
+        .build();
+    summaries.create_index(sum_idx).await?;
+    let sum_idx2 = IndexModel::builder()
+        .keys(bson::doc! { "company_id": 1, "created_at": -1 })
+        .options(
+            IndexOptions::builder()
+                .name("company_created".to_string())
+                .build(),
+        )
+        .build();
+    summaries.create_index(sum_idx2).await?;
 
     let evals: Collection<Evaluation> = db.collection(Evaluation::COLLECTION);
     let e_idx = IndexModel::builder()

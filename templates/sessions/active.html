@@ -33,12 +33,53 @@
   {% endif %}
 
   {% if session.status == crate::models::SessionStatus::Ended %}
-    <div class="card">
-      <strong>Session ended.</strong>
-      <div class="muted" style="font-size: 0.875rem; margin-top: 0.25rem;">
-        Read the per-session review for the full transcript and summary.
+    {% if let Some(s) = summary.as_ref() %}
+      <div class="card">
+        <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin-bottom: 0.375rem;">Session debrief</div>
+        <div style="white-space: pre-wrap;">{{ s.narrative }}</div>
+
+        {% if !s.strengths.is_empty() %}
+          <div style="margin-top: 1rem;">
+            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Strengths</div>
+            <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem;">
+              {% for x in s.strengths %}<li>{{ x }}</li>{% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        {% if !s.recurring_weaknesses.is_empty() %}
+          <div style="margin-top: 1rem;">
+            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Recurring weaknesses</div>
+            <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem;">
+              {% for x in s.recurring_weaknesses %}<li>{{ x }}</li>{% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        {% if !s.blind_spots.is_empty() %}
+          <div style="margin-top: 1rem;">
+            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Blind spots</div>
+            <ul style="margin: 0.25rem 0 0; padding-left: 1.25rem;">
+              {% for x in s.blind_spots %}<li>{{ x }}</li>{% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        {% if !s.company_fit_signal.is_empty() %}
+          <div style="margin-top: 1rem;">
+            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Company fit signal</div>
+            <div style="white-space: pre-wrap; margin-top: 0.25rem;">{{ s.company_fit_signal }}</div>
+          </div>
+        {% endif %}
       </div>
-    </div>
+    {% else %}
+      <div class="card">
+        <strong>Session ended.</strong>
+        <div class="muted" style="font-size: 0.875rem; margin-top: 0.25rem;">
+          No summary on file — likely the LLM call failed when the session ended. The transcript above is still intact.
+        </div>
+      </div>
+    {% endif %}
   {% endif %}
 
   {% if let Some(eval) = current_eval.as_ref() %}
