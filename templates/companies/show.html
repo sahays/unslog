@@ -1,57 +1,74 @@
+{% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
 {% block title %}{{ company.name }} — unslog{% endblock %}
 
 {% block content %}
-<div style="display: grid; gap: 1.25rem;">
-  <div style="display: flex; align-items: start; justify-content: space-between; gap: 1rem;">
+<div class="grid gap-5">
+  <div class="flex items-start justify-between gap-4">
     <div>
-      <h2 style="margin: 0; font-size: 1.25rem; font-weight: 600;">{{ company.name }}</h2>
-      <div class="muted" style="font-size: 0.875rem;">{{ company.role }}</div>
+      <h1 class="font-heading text-2xl font-semibold">{{ company.name }}</h1>
+      <div class="muted text-sm mt-1">{{ company.role }}</div>
     </div>
-    <div style="display: flex; gap: 0.375rem;">
-      <a class="btn" href="/companies">Back</a>
-      <form method="post" action="/companies/{{ company.id }}/refresh-packet" style="display: inline;">
-        <button type="submit" class="btn">Refresh packet</button>
+    <div class="flex gap-2 flex-shrink-0">
+      <a class="btn" href="/companies">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+        Back
+      </a>
+      <form method="post" action="/companies/{{ company.id }}/refresh-packet">
+        <button type="submit" class="btn">
+          <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+          Refresh packet
+        </button>
       </form>
-      <form method="post" action="/companies/{{ company.id }}/delete" style="display: inline;"
+      <form method="post" action="/companies/{{ company.id }}/delete"
             onsubmit="return confirm('Delete company? Sessions and evaluations are kept but orphaned.')">
-        <button type="submit" class="btn btn-danger">Delete</button>
+        <button type="submit" class="btn btn-danger">
+          <i data-lucide="trash-2" class="h-4 w-4"></i>
+          Delete
+        </button>
       </form>
     </div>
   </div>
 
   <div class="card">
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
-      <h3 style="margin: 0; font-size: 1rem; font-weight: 600;">Question bank ({{ bank.questions.len() }})</h3>
-      <form method="post" action="/companies/{{ company.id }}/sessions" style="display: inline;">
-        <button type="submit" class="btn btn-primary">Start session</button>
+    <div class="flex items-center justify-between mb-4">
+      {% call ui::card_header("list-checks", "Question bank") %}
+      <form method="post" action="/companies/{{ company.id }}/sessions">
+        <button type="submit" class="btn btn-primary btn-icon-spring">
+          <span class="btn-icon"><i data-lucide="play" class="h-4 w-4"></i></span>
+          <span>Start session</span>
+        </button>
       </form>
     </div>
+    <div class="muted-soft text-xs mb-4">{{ bank.questions.len() }} question{% if bank.questions.len() != 1 %}s{% endif %} loaded</div>
 
-    <form method="post" action="/companies/{{ company.id }}/questions" style="display: grid; gap: 0.5rem; margin-bottom: 1rem;">
+    <form method="post" action="/companies/{{ company.id }}/questions" class="grid gap-2 mb-5">
       <label for="paste-questions">Paste questions — one per line</label>
-      <textarea id="paste-questions" name="text" placeholder="Tell me about a time you missed a deadline.&#10;Walk me through a project you led end-to-end."></textarea>
+      <textarea id="paste-questions" name="text" rows="4" placeholder="Tell me about a time you missed a deadline.&#10;Walk me through a project you led end-to-end."></textarea>
       <div>
-        <button type="submit" class="btn">Add questions</button>
+        <button type="submit" class="btn btn-icon-spring">
+          <span class="btn-icon"><i data-lucide="plus" class="h-4 w-4"></i></span>
+          <span>Add questions</span>
+        </button>
       </div>
     </form>
 
     {% if bank.questions.is_empty() %}
-      <p class="muted" style="margin: 0;">No questions yet. Add some above, or hit "Refresh packet" to let the agent re-suggest.</p>
+      <p class="muted m-0">No questions yet. Add some above, or hit "Refresh packet" to let the agent re-suggest.</p>
     {% else %}
-      <ul style="margin: 0; padding: 0; list-style: none; display: grid; gap: 0.375rem;">
+      <ul class="grid gap-1.5 list-none p-0 m-0">
         {% for q in bank.questions %}
-          <li style="display: flex; gap: 0.5rem; align-items: start; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px;">
-            <span class="tag" style="flex-shrink: 0;">
-              {% match q.source %}
-                {% when crate::models::QuestionSource::Agent %}agent
-                {% when crate::models::QuestionSource::Uploaded %}uploaded
-              {% endmatch %}
-            </span>
-            <span style="flex: 1;">{{ q.text }}</span>
-            <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/delete" style="display: inline; flex-shrink: 0;">
-              <button type="submit" class="btn" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;" title="Delete">×</button>
+          <li class="flex gap-2 items-start p-2 px-3 rounded-md border border-[color:var(--color-border)]">
+            {% match q.source %}
+              {% when crate::models::QuestionSource::Agent %}{% call ui::badge("agent", "ai") %}
+              {% when crate::models::QuestionSource::Uploaded %}{% call ui::badge("uploaded", "default") %}
+            {% endmatch %}
+            <span class="flex-1">{{ q.text }}</span>
+            <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/delete">
+              <button type="submit" class="btn btn-sm btn-ghost" title="Delete">
+                <i data-lucide="x" class="h-3.5 w-3.5"></i>
+              </button>
             </form>
           </li>
         {% endfor %}
@@ -61,28 +78,31 @@
 
   {% if !sessions.is_empty() %}
     <div class="card">
-      <h3 style="margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600;">Past sessions ({{ sessions.len() }})</h3>
-      <ul style="margin: 0; padding: 0; list-style: none; display: grid; gap: 0.5rem;">
+      {% call ui::card_header("history", "Past sessions") %}
+      <div class="muted-soft text-xs mb-3">{{ sessions.len() }} session{% if sessions.len() != 1 %}s{% endif %}</div>
+      <ul class="grid gap-2 list-none p-0 m-0 stagger-children">
         {% for row in sessions %}
-          <li style="display: flex; gap: 0.75rem; align-items: center; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px;">
-            <span class="tag" style="flex-shrink: 0;">
-              {% match row.session.status %}
-                {% when crate::models::SessionStatus::Active %}active
-                {% when crate::models::SessionStatus::Ended %}ended
-              {% endmatch %}
-            </span>
-            <div style="flex: 1; min-width: 0;">
-              <div style="font-size: 0.875rem;">
+          <li class="flex gap-3 items-center p-2 px-3 rounded-md border border-[color:var(--color-border)]">
+            {% match row.session.status %}
+              {% when crate::models::SessionStatus::Active %}{% call ui::badge("active", "accent") %}
+              {% when crate::models::SessionStatus::Ended %}{% call ui::badge("ended", "default") %}
+            {% endmatch %}
+            <div class="flex-1 min-w-0">
+              <div class="text-sm">
                 {{ row.session.started_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
                 <span class="muted">— {{ row.eval_count }} question{% if row.eval_count != 1 %}s{% endif %}</span>
-                {% if row.summary.is_some() %}
-                  <span class="muted">• has summary</span>
-                {% endif %}
+                {% if row.summary.is_some() %}<span class="muted">• has summary</span>{% endif %}
               </div>
             </div>
-            <a class="btn" style="font-size: 0.75rem; padding: 0.25rem 0.625rem; flex-shrink: 0;" href="/sessions/{{ row.session.id }}/review">Review</a>
+            <a class="btn btn-sm" href="/sessions/{{ row.session.id }}/review">
+              <i data-lucide="clipboard-list" class="h-3.5 w-3.5"></i>
+              Review
+            </a>
             {% if row.session.status == crate::models::SessionStatus::Active %}
-              <a class="btn btn-primary" style="font-size: 0.75rem; padding: 0.25rem 0.625rem; flex-shrink: 0;" href="/sessions/{{ row.session.id }}">Resume</a>
+              <a class="btn btn-primary btn-sm" href="/sessions/{{ row.session.id }}">
+                <i data-lucide="play" class="h-3.5 w-3.5"></i>
+                Resume
+              </a>
             {% endif %}
           </li>
         {% endfor %}
@@ -92,46 +112,47 @@
 
   {% if let Some(p) = company.research_packet.as_ref() %}
     <div class="card">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
-        <h3 style="margin: 0; font-size: 1rem; font-weight: 600;">Research packet</h3>
-        <div class="muted" style="font-size: 0.75rem;">
+      <div class="flex items-center justify-between mb-4">
+        {% call ui::card_header("search", "Research packet") %}
+        <div class="muted-soft text-xs">
           refreshed {{ p.last_refreshed_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
         </div>
       </div>
 
-      <div style="display: grid; gap: 1rem;">
+      <div class="grid gap-5">
         <section>
-          <h4 style="margin: 0 0 0.25rem; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted);">Summary</h4>
-          <div style="white-space: pre-wrap;">{{ p.summary }}</div>
+          <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Summary</h4>
+          <div class="whitespace-pre-wrap">{{ p.summary }}</div>
         </section>
 
         <section>
-          <h4 style="margin: 0 0 0.25rem; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted);">Role JD</h4>
-          <div style="white-space: pre-wrap;">{{ p.role_jd }}</div>
+          <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Role JD</h4>
+          <div class="whitespace-pre-wrap">{{ p.role_jd }}</div>
         </section>
 
         <section>
-          <h4 style="margin: 0 0 0.25rem; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted);">Values signal</h4>
-          <div style="white-space: pre-wrap;">{{ p.values_signal }}</div>
+          <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Values signal</h4>
+          <div class="whitespace-pre-wrap">{{ p.values_signal }}</div>
         </section>
 
         {% if !p.sample_questions.is_empty() %}
           <section>
-            <h4 style="margin: 0 0 0.25rem; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted);">Sample questions</h4>
-            <ul style="margin: 0; padding-left: 1.25rem;">
-              {% for q in p.sample_questions %}
-                <li>{{ q }}</li>
-              {% endfor %}
+            <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Sample questions</h4>
+            <ul class="list-disc pl-5 m-0 grid gap-1">
+              {% for q in p.sample_questions %}<li>{{ q }}</li>{% endfor %}
             </ul>
           </section>
         {% endif %}
 
         {% if !p.sources.is_empty() %}
           <section>
-            <h4 style="margin: 0 0 0.25rem; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted);">Sources</h4>
-            <ul style="margin: 0; padding-left: 1.25rem;">
+            <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Sources</h4>
+            <ul class="list-disc pl-5 m-0 grid gap-1">
               {% for s in p.sources %}
-                <li><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title }}</a> — <span class="muted" style="font-size: 0.875rem;">{{ s.snippet }}</span></li>
+                <li>
+                  <a href="{{ s.url }}" target="_blank" rel="noopener" class="link-primary">{{ s.title }}</a>
+                  <span class="muted text-sm"> — {{ s.snippet }}</span>
+                </li>
               {% endfor %}
             </ul>
           </section>
@@ -139,10 +160,13 @@
       </div>
     </div>
   {% else %}
-    <div class="card" style="border-color: var(--danger);">
-      <strong>No research packet yet.</strong>
-      <div class="muted" style="margin-top: 0.25rem; font-size: 0.875rem;">
-        The research agent hasn't produced a packet for this company. Click <em>Refresh packet</em> above to retry.
+    <div class="alert alert-error" role="alert">
+      <i data-lucide="alert-triangle" class="h-4 w-4 mt-0.5"></i>
+      <div>
+        <strong class="font-medium">No research packet yet.</strong>
+        <div class="text-sm muted mt-0.5">
+          The research agent hasn't produced a packet for this company. Click <em>Refresh packet</em> above to retry.
+        </div>
       </div>
     </div>
   {% endif %}
