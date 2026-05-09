@@ -13,7 +13,16 @@ pub struct Settings {
     /// 0.25–4.0; `None` means "let the TTS endpoint use its own default".
     #[serde(default)]
     pub tts_speed: Option<f32>,
+    /// Cheap fast model used for question categorization + session curation.
+    /// Defaults to `google/gemini-2.5-flash` on first read.
+    #[serde(default = "default_lite_model")]
+    pub lite_model: String,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+fn default_lite_model() -> String {
+    "google/gemini-2.5-flash".to_string()
 }
 
 impl Settings {

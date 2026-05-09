@@ -3,6 +3,11 @@
 
 {% block title %}{{ asset.name }} — preview{% endblock %}
 
+{% block breadcrumbs %}
+  <a href="/assets">Assets</a>
+  <span>{{ asset.name }}</span>
+{% endblock %}
+
 {% block content %}
 <div class="grid gap-5">
   <div class="flex items-start justify-between gap-4">

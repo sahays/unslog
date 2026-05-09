@@ -1,0 +1,55 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}Stories — unslog{% endblock %}
+
+{% block breadcrumbs %}<span>Stories</span>{% endblock %}
+
+{% block content %}
+<div class="grid gap-5">
+  <div>
+    <h1 class="font-heading text-2xl font-semibold">Stories</h1>
+    <p class="muted text-sm mt-1 max-w-2xl">
+      Build STAR+ stories one competency at a time. The coach probes your past experiences with one focused question per turn, then generates a scannable bullet summary you can refine over multiple versions. Distinct from <a class="link-primary" href="/practice">Practice</a>: this is prep, not a mock.
+    </p>
+  </div>
+
+  {% if tiles.is_empty() %}
+    <div class="card flex items-center gap-3">
+      <i data-lucide="inbox" class="h-6 w-6 text-[color:var(--color-text-tertiary)]"></i>
+      <div>
+        <p class="muted m-0">No competencies yet. The canonical 12 seed on first run; if this list is empty something didn't seed.</p>
+        <a class="link-primary text-sm" href="/categories">Manage competencies →</a>
+      </div>
+    </div>
+  {% else %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 stagger-children">
+      {% for t in tiles %}
+        {% match t.latest_story_id %}
+          {% when Some with (sid) %}
+            {# Has at least one story → tile is a link to the most recent. #}
+            <a href="/stories/{{ sid }}" class="card card-interactive grid gap-2 no-underline">
+              <h3 class="font-heading text-base font-semibold m-0 text-[color:var(--color-text-primary)]">{{ t.name }}</h3>
+              <p class="muted-soft text-xs m-0">{{ t.description }}</p>
+              <span class="muted-soft text-xs mt-1">
+                {{ t.in_progress }} in progress · {{ t.complete }} complete
+              </span>
+            </a>
+          {% when None %}
+            {# No stories yet → tile is a form-button that creates the first one. #}
+            <form method="post" action="/stories" class="m-0 contents">
+              <input type="hidden" name="competency_id" value="{{ t.id }}" />
+              <button type="submit" class="card card-interactive grid gap-2 text-left w-full">
+                <h3 class="font-heading text-base font-semibold m-0 text-[color:var(--color-text-primary)]">{{ t.name }}</h3>
+                <p class="muted-soft text-xs m-0">{{ t.description }}</p>
+                <span class="muted-soft text-xs mt-1">
+                  {{ t.in_progress }} in progress · {{ t.complete }} complete
+                </span>
+              </button>
+            </form>
+        {% endmatch %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

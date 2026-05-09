@@ -1,0 +1,86 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}Categories — unslog{% endblock %}
+
+{% block breadcrumbs %}<span>Categories</span>{% endblock %}
+
+{% block content %}
+<div class="grid gap-5">
+  <div>
+    <h1 class="font-heading text-2xl font-semibold">Categories</h1>
+    <p class="muted text-sm mt-1 max-w-2xl">
+      Canonical behavioral-interview competencies. The lite_model uses these to tag every question added to a company. The curator uses them to balance category diversity in each session and bias toward your recent recurring weaknesses.
+    </p>
+  </div>
+
+  <div class="card">
+    {% call ui::card_header("layers", "Existing categories") %}
+    {% if categories.is_empty() %}
+      <p class="muted m-0">No categories. Seed runs on first start; if this list is empty something didn't seed.</p>
+    {% else %}
+      <ul class="grid gap-2 list-none p-0 m-0">
+        {% for c in categories %}
+          <li class="grid grid-cols-1 sm:grid-cols-[max-content_1fr_auto] gap-3 items-start p-3 rounded-md border border-[color:var(--color-border)]">
+            <code class="font-mono text-sm muted">{{ c.id }}</code>
+            <div>
+              <form method="post" action="/categories/{{ c.id }}/edit" class="grid gap-2">
+                <input type="text" name="name" value="{{ c.name }}" required />
+                <textarea name="description" rows="2">{{ c.description }}</textarea>
+                <div class="flex gap-2 items-center justify-between">
+                  <div class="flex gap-2 items-center">
+                    <label class="muted-soft text-xs m-0">order</label>
+                    <input type="number" name="sort_order" value="{{ c.sort_order }}" class="w-24" />
+                  </div>
+                  <button type="submit" class="btn btn-sm">
+                    <i data-lucide="save" class="h-3.5 w-3.5"></i>
+                    Save
+                  </button>
+                </div>
+              </form>
+            </div>
+            <form method="post" action="/categories/{{ c.id }}/delete"
+                  onsubmit="return confirm('Delete this category? Questions tagged with it will lose the tag.')">
+              <button type="submit" class="btn btn-sm btn-danger">
+                <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
+                Delete
+              </button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    {% call ui::card_header("plus", "Add a category") %}
+    <form method="post" action="/categories" class="grid gap-3">
+      <div class="grid gap-3 grid-cols-1 sm:grid-cols-2">
+        <div class="grid gap-1.5">
+          <label for="cat_id">ID</label>
+          <input type="text" id="cat_id" name="id" placeholder="snake_case e.g. mentorship" required />
+          <div class="muted-soft text-xs">Lowercase, snake_case. Used in question tags.</div>
+        </div>
+        <div class="grid gap-1.5">
+          <label for="cat_name">Name</label>
+          <input type="text" id="cat_name" name="name" placeholder="e.g. Mentorship & Talent" required />
+        </div>
+      </div>
+      <div class="grid gap-1.5">
+        <label for="cat_desc">Description</label>
+        <textarea id="cat_desc" name="description" rows="2" placeholder="What does the question test?"></textarea>
+      </div>
+      <div class="flex gap-2 items-center justify-between">
+        <div class="flex gap-2 items-center">
+          <label class="muted-soft text-xs m-0" for="cat_order">order</label>
+          <input type="number" id="cat_order" name="sort_order" value="99" class="w-24" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-icon-spring">
+          <span class="btn-icon"><i data-lucide="plus" class="h-4 w-4"></i></span>
+          <span>Add category</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

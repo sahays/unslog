@@ -29,6 +29,7 @@ pub struct Asset {
     pub extraction_status: ExtractionStatus,
     #[serde(default)]
     pub extraction_error: Option<String>,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub uploaded_at: chrono::DateTime<chrono::Utc>,
 }
 

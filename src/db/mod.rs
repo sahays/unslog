@@ -1,6 +1,9 @@
 use mongodb::{Client, Collection, Database};
 
-use crate::models::{Asset, Company, Evaluation, PromptVersion, QuestionBank, Session, Summary};
+use crate::models::{
+    Asset, Category, Company, Evaluation, PromptVersion, Question, Session, Story, StoryVersion,
+    Summary,
+};
 
 pub async fn connect(uri: &str, db_name: &str) -> anyhow::Result<Database> {
     let client = Client::with_uri_str(uri).await?;
@@ -48,17 +51,21 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         .build();
     companies.create_index(name_idx).await?;
 
-    let banks: Collection<QuestionBank> = db.collection(QuestionBank::COLLECTION);
-    let bank_idx = IndexModel::builder()
-        .keys(bson::doc! { "company_id": 1 })
+    let questions: Collection<Question> = db.collection(Question::COLLECTION);
+    let q_company_idx = IndexModel::builder()
+        .keys(bson::doc! { "company_id": 1, "added_at": 1 })
         .options(
             IndexOptions::builder()
-                .unique(true)
-                .name("company_id_unique".to_string())
+                .name("company_id_added_at".to_string())
                 .build(),
         )
         .build();
-    banks.create_index(bank_idx).await?;
+    questions.create_index(q_company_idx).await?;
+    let q_role_idx = IndexModel::builder()
+        .keys(bson::doc! { "role": 1 })
+        .options(IndexOptions::builder().name("role".to_string()).build())
+        .build();
+    questions.create_index(q_role_idx).await?;
 
     let sessions: Collection<Session> = db.collection(Session::COLLECTION);
     let s_idx = IndexModel::builder()
@@ -112,6 +119,40 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         )
         .build();
     evals.create_index(e_idx2).await?;
+
+    let categories: Collection<Category> = db.collection(Category::COLLECTION);
+    let cat_idx = IndexModel::builder()
+        .keys(bson::doc! { "name": 1 })
+        .options(
+            IndexOptions::builder()
+                .unique(true)
+                .name("name_unique".to_string())
+                .build(),
+        )
+        .build();
+    categories.create_index(cat_idx).await?;
+
+    let stories: Collection<Story> = db.collection(Story::COLLECTION);
+    let story_idx = IndexModel::builder()
+        .keys(bson::doc! { "competency_id": 1, "status": 1, "updated_at": -1 })
+        .options(
+            IndexOptions::builder()
+                .name("competency_status_updated".to_string())
+                .build(),
+        )
+        .build();
+    stories.create_index(story_idx).await?;
+
+    let story_versions: Collection<StoryVersion> = db.collection(StoryVersion::COLLECTION);
+    let sv_idx = IndexModel::builder()
+        .keys(bson::doc! { "story_id": 1, "version_n": -1 })
+        .options(
+            IndexOptions::builder()
+                .name("story_version".to_string())
+                .build(),
+        )
+        .build();
+    story_versions.create_index(sv_idx).await?;
 
     Ok(())
 }

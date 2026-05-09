@@ -1,0 +1,199 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}{{ competency.name }} — Story{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="/stories">Stories</a>
+  <span>{{ competency.name }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-5 pb-44">
+  <div class="flex items-start justify-between gap-4">
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2 flex-wrap">
+        <h1 class="font-heading text-2xl font-semibold m-0">{{ competency.name }}</h1>
+        {% match story.status %}
+          {% when crate::models::StoryStatus::InProgress %}{% call ui::badge("in progress", "warn") %}
+          {% when crate::models::StoryStatus::Complete %}{% call ui::badge("complete", "good") %}
+        {% endmatch %}
+      </div>
+      {% if !competency.description.is_empty() %}
+        <p class="muted text-sm mt-1 m-0 max-w-2xl">{{ competency.description }}</p>
+      {% endif %}
+    </div>
+    <div class="flex gap-2 flex-shrink-0">
+      <a class="btn" href="/stories">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+        Back
+      </a>
+      <form method="post" action="/stories/{{ story.id }}/delete" class="m-0"
+            onsubmit="return confirm('Delete this story and all its versions? This can’t be undone.');">
+        <button type="submit" class="btn btn-ghost text-[color:var(--color-error)]">
+          <i data-lucide="trash-2" class="h-4 w-4"></i>
+          Discard
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {# ── Chat thread — last thing in normal flow; page scrolls. ── #}
+  <section id="story-thread" class="grid gap-4 max-w-3xl mx-auto w-full">
+    {% if story.chat.is_empty() %}
+      <p class="muted-soft text-sm m-0">
+        The coach will open with a focused question. If you don't see one, the model call may have failed — type your first thought below to kick it off.
+      </p>
+    {% else %}
+      {% for t in story.chat %}
+        {% match t.role %}
+          {% when crate::models::ChatRole::Assistant %}
+            <div class="rounded-md p-3 bg-[color:var(--color-accent-light)] border border-[color:var(--color-border)]">
+              <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Coach</div>
+              <div class="prose-chat text-sm">{{ t.content|markdown|safe }}</div>
+            </div>
+          {% when crate::models::ChatRole::User %}
+            <div class="rounded-md p-3 border border-[color:var(--color-border)]">
+              <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">You</div>
+              <div class="text-sm whitespace-pre-wrap">{{ t.content }}</div>
+            </div>
+        {% endmatch %}
+      {% endfor %}
+    {% endif %}
+  </section>
+</div>
+
+{# ── Composer — fixed to the viewport bottom (always visible, regardless
+     of page content height). The wrapper spans the viewport so the form
+     can be horizontally centered with the same max-width as the chat
+     thread. pointer-events-none lets clicks fall through the wrapper
+     where it overlaps content; pointer-events-auto restores them on the
+     form itself. ── #}
+<div class="chat-composer-wrapper">
+  <form method="post" action="/stories/{{ story.id }}/turns"
+        class="card chat-composer-card max-w-3xl mx-auto grid gap-2 pointer-events-auto"
+        data-loading-title="Thinking…"
+        data-loading-detail="The coach is reading your reply and choosing the next probe."
+        x-data="{ submitOnEnter(e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.target.form.requestSubmit(); } } }">
+    <textarea name="content" rows="3" required
+              @keydown="submitOnEnter"
+              placeholder="Answer the coach — concrete details: who, when, what was at stake, what you decided. (⌘/Ctrl + Enter to send)"></textarea>
+    <div class="flex items-center justify-between gap-2">
+      <span class="muted-soft text-xs">When the coach proposes locking it in and you agree, the bullets are generated automatically.</span>
+      <button type="submit" class="btn btn-primary btn-icon-spring">
+        <span class="btn-icon"><i data-lucide="send" class="h-4 w-4"></i></span>
+        <span>Send</span>
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+  // Scroll the page to bottom on load so the latest chat turn sits just
+  // above the fixed composer. Two extra ticks cover Lucide-icon and
+  // font-load reflows that change layout shortly after DOMContentLoaded.
+  (function () {
+    function pinBottom() {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', pinBottom);
+    } else {
+      pinBottom();
+    }
+    window.setTimeout(pinBottom, 60);
+    window.setTimeout(pinBottom, 240);
+  })();
+</script>
+{% endblock %}
+
+{% block rail %}
+  <div class="grid gap-5">
+    {# ── Versions for the current story ─────────────────────── #}
+    {% if !versions.is_empty() %}
+      <div class="grid gap-2">
+        <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Versions</h2>
+        <ul class="grid gap-1.5 list-none p-0 m-0">
+          {% for ve in versions %}
+            <li>
+              <a href="/stories/{{ story.id }}/versions/{{ ve.id }}" target="_blank" rel="noopener"
+                 class="flex items-center gap-2 p-2 px-2.5 rounded-md border no-underline
+                        {% if ve.is_current %}border-[color:var(--color-accent)] bg-[color:var(--color-accent-light)]{% else %}border-[color:var(--color-border)] hover:border-[color:var(--color-accent)]{% endif %}">
+                <i data-lucide="file-text" class="h-3.5 w-3.5 {% if ve.is_current %}text-[color:var(--color-accent)]{% endif %}"></i>
+                <span class="text-xs font-medium flex-1 min-w-0 truncate text-[color:var(--color-text-primary)]">{{ ve.label }}</span>
+                {% if ve.is_current %}
+                  <span class="muted-soft text-xs">current</span>
+                {% endif %}
+                <i data-lucide="external-link" class="h-3 w-3 text-[color:var(--color-text-tertiary)]"></i>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+        {% if current.is_some() %}
+          <form method="post" action="/stories/{{ story.id }}/continue" class="m-0"
+                data-loading-title="Reopening…"
+                data-loading-detail="The coach is picking the thinnest section to probe next.">
+            <button type="submit" class="btn btn-sm btn-icon-spring w-full">
+              <span class="btn-icon"><i data-lucide="message-circle-plus" class="h-3.5 w-3.5"></i></span>
+              <span>Continue chatting</span>
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {# ── Stories for this competency ─────────────────────────── #}
+    <div class="grid gap-2">
+      <div class="flex items-center justify-between gap-2">
+        <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Stories</h2>
+        <form method="post" action="/stories" class="m-0">
+          <input type="hidden" name="competency_id" value="{{ competency.id }}" />
+          <button type="submit" class="btn btn-primary btn-sm btn-icon-spring">
+            <span class="btn-icon"><i data-lucide="plus" class="h-3.5 w-3.5"></i></span>
+            <span>New</span>
+          </button>
+        </form>
+      </div>
+      <ul class="grid gap-1.5 list-none p-0 m-0">
+        {# Current story — shown at top, non-link, accent-marked #}
+        <li>
+          <div class="flex items-center gap-2 p-2 px-2.5 rounded-md border border-[color:var(--color-accent)] bg-[color:var(--color-accent-light)]">
+            {% match story.status %}
+              {% when crate::models::StoryStatus::InProgress %}
+                <i data-lucide="message-circle" class="h-3.5 w-3.5 text-[color:var(--color-warning)]"></i>
+              {% when crate::models::StoryStatus::Complete %}
+                <i data-lucide="check-circle-2" class="h-3.5 w-3.5 text-[color:var(--color-success)]"></i>
+            {% endmatch %}
+            <span class="text-xs font-medium flex-1 min-w-0 truncate text-[color:var(--color-text-primary)]">
+              {% match story.status %}
+                {% when crate::models::StoryStatus::InProgress %}In progress
+                {% when crate::models::StoryStatus::Complete %}Complete
+              {% endmatch %}
+            </span>
+            <span class="muted-soft text-xs">current</span>
+          </div>
+        </li>
+        {% for s in siblings %}
+          <li>
+            <a href="/stories/{{ s.id }}"
+               class="flex items-center gap-2 p-2 px-2.5 rounded-md border border-[color:var(--color-border)] no-underline hover:border-[color:var(--color-accent)]">
+              {% match s.status %}
+                {% when crate::models::StoryStatus::InProgress %}
+                  <i data-lucide="message-circle" class="h-3.5 w-3.5 text-[color:var(--color-warning)]"></i>
+                {% when crate::models::StoryStatus::Complete %}
+                  <i data-lucide="check-circle-2" class="h-3.5 w-3.5 text-[color:var(--color-success)]"></i>
+              {% endmatch %}
+              <span class="text-xs font-medium flex-1 min-w-0 truncate text-[color:var(--color-text-primary)]">
+                {% match s.status %}
+                  {% when crate::models::StoryStatus::InProgress %}In progress
+                  {% when crate::models::StoryStatus::Complete %}Complete
+                {% endmatch %}
+              </span>
+              <span class="muted-soft text-xs">{{ s.updated_label }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+{% endblock %}

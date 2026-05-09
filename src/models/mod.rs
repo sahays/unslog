@@ -1,17 +1,24 @@
 pub mod asset;
+pub mod category;
 pub mod company;
+pub mod datetime_compat;
 pub mod evaluation;
 pub mod prompt;
-pub mod question_bank;
+pub mod question;
+pub mod role;
 pub mod session;
 pub mod settings;
+pub mod story;
 pub mod summary;
 
 pub use asset::{Asset, AssetKind, ExtractionStatus};
+pub use category::Category;
 pub use company::{Company, ResearchPacket, ResearchSource};
 pub use evaluation::{Attempt, Citation, Critique, Evaluation, Scores};
 pub use prompt::{is_valid_prompt_name, Prompt, PromptVersion, PROMPT_NAMES};
-pub use question_bank::{Question, QuestionBank, QuestionSource};
+pub use question::{Question, QuestionSource};
+pub use role::Role;
 pub use session::{ModelSnapshot, PromptSnapshot, Session, SessionStatus};
 pub use settings::Settings;
+pub use story::{ChatRole, ChatTurn, Story, StoryBody, StoryStatus, StoryVersion};
 pub use summary::{Summary, SummaryPayload};

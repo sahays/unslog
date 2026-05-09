@@ -48,18 +48,56 @@ impl AppError {
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
+
+    /// User-facing label that names the kind of failure without leaking the
+    /// raw message. Pairs with the detailed message inside the error body.
+    fn kind_label(&self) -> &'static str {
+        match self {
+            Self::NotFound(_) => "Not found",
+            Self::BadRequest(_) => "Bad request",
+            Self::OpenRouterNotConfigured => "OpenRouter not configured",
+            Self::Upstream(_) => "Upstream service error",
+            Self::Mongo(_) | Self::Bson(_) | Self::BsonDe(_) => "Database error",
+            Self::Io(_) => "I/O error",
+            Self::Http(_) => "Network error",
+            Self::Json(_) => "Bad data",
+            Self::Other(_) => "Server error",
+        }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "errors/error.html")]
+struct ErrorTemplate<'a> {
+    status: u16,
+    kind_label: &'a str,
+    message: &'a str,
+    request_id: &'a str,
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         tracing::error!(error = %self, "request failed");
         let status = self.status();
-        let msg = self.to_string();
-        let body = format!(
-            r#"<div class="card" style="border-color: var(--danger);"><strong>Error</strong><div class="muted" style="margin-top:.5rem">{}</div></div>"#,
-            html_escape(&msg)
-        );
-        (status, Html(body)).into_response()
+        let kind_label = self.kind_label();
+        let message = self.to_string();
+
+        let html = ErrorTemplate {
+            status: status.as_u16(),
+            kind_label,
+            message: &message,
+            request_id: "",
+        }
+        .render()
+        // Defensive fallback: a render failure inside the error path
+        // shouldn't bubble into a second 500. Drop to a tiny inline card.
+        .unwrap_or_else(|_| {
+            format!(
+                r#"<div class="card" style="border-color: var(--color-error);"><strong>{kind_label}</strong><div class="muted" style="margin-top:.5rem">{}</div></div>"#,
+                html_escape(&message)
+            )
+        });
+        (status, Html(html)).into_response()
     }
 }
 

@@ -163,68 +163,6 @@ html, body {
   min-height: 100vh;
 }
 
-/* ── Frosted glass nav ─────────────────────────────────────── */
-.nav-frosted {
-  background: rgba(250, 248, 243, 0.85);
-  backdrop-filter: blur(16px) saturate(1.6);
-  -webkit-backdrop-filter: blur(16px) saturate(1.6);
-  border-bottom: 1px solid var(--color-border);
-  position: relative;
-}
-.nav-frosted::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg,
-    transparent 0%,
-    rgba(13, 110, 110, 0.30) 30%,
-    rgba(13, 110, 110, 0.45) 50%,
-    rgba(13, 110, 110, 0.30) 70%,
-    transparent 100%);
-  opacity: 0;
-  transition: opacity 300ms ease;
-}
-.nav-frosted:hover::after { opacity: 1; }
-.dark .nav-frosted {
-  background: rgba(26, 22, 16, 0.88);
-  border-bottom-color: var(--color-border);
-}
-.dark .nav-frosted::after {
-  background: linear-gradient(90deg,
-    transparent 0%,
-    rgba(74, 156, 140, 0.35) 30%,
-    rgba(98, 179, 163, 0.40) 50%,
-    rgba(74, 156, 140, 0.35) 70%,
-    transparent 100%);
-}
-
-/* Nav link active indicator */
-.nav-link {
-  position: relative;
-  padding-bottom: 2px;
-  color: var(--color-text-secondary);
-  font-weight: 500;
-  transition: color 150ms ease;
-}
-.nav-link:hover { color: var(--color-text-primary); transform: none; box-shadow: none; }
-.nav-link:active { transform: none; box-shadow: none; }
-.nav-link::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 50%;
-  width: 0;
-  height: 2px;
-  background: var(--color-accent);
-  border-radius: 1px;
-  transition: width 250ms var(--ease-spring), left 250ms var(--ease-spring);
-}
-.nav-link:hover::after,
-.nav-link.active::after { width: 100%; left: 0; }
-.nav-link.active { color: var(--color-text-primary); }
-
 /* ── YouTube-style top progress bar ────────────────────────── */
 /* Animated by base.html JS on link click, form submit, htmx requests, and
    completed on pageshow / load. Width and opacity are inline-styled by JS. */
@@ -947,4 +885,364 @@ button.btn-loading > i:first-child {
   height: 1rem;
   stroke-width: 1.75;
   flex-shrink: 0;
+}
+
+/* ── Three-column app shell ─────────────────────────────────
+   Mobile-first: single column. lg+ (1024px): sidebar + main. xl+
+   (1280px): sidebar + main + right rail. The shell is the sole
+   layout primitive — base.html provides the structure, every page
+   fills {% block content %} (main) and optionally {% block rail %}. */
+.app-shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas: "main";
+  min-height: 100vh;
+}
+@media (min-width: 1024px) {
+  .app-shell {
+    grid-template-columns: 14rem 1fr;
+    grid-template-areas: "sidebar main";
+  }
+}
+@media (min-width: 1280px) {
+  .app-shell {
+    grid-template-columns: 14rem minmax(0, 1fr) 18rem;
+    grid-template-areas: "sidebar main rail";
+  }
+}
+
+/* ── Sidebar — fixed drawer on mobile, sticky column on lg+ ── */
+.app-sidebar {
+  grid-area: sidebar;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 16rem;
+  z-index: var(--z-modal);
+  background: var(--color-bg-secondary);
+  border-right: 1px solid var(--color-border);
+  transform: translateX(-100%);
+  transition: transform 240ms var(--ease-out, cubic-bezier(0, 0, 0.2, 1));
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.app-sidebar.open { transform: translateX(0); }
+@media (min-width: 1024px) {
+  .app-sidebar {
+    position: sticky;
+    top: 0;
+    transform: none;
+    height: 100vh;
+    width: auto;
+    z-index: var(--z-sticky);
+  }
+}
+
+.app-sidebar__brand {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.app-sidebar__brand .brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 1.125rem;
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.app-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  padding: 0.625rem 0.5rem;
+  gap: 2px;
+  flex: 1;
+}
+
+/* Sidebar nav link — vertical variant (the existing .nav-link is
+   horizontal-only with an underline-on-hover affordance). */
+.nav-link-side {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.nav-link-side:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  transform: none;
+  box-shadow: none;
+}
+.nav-link-side.active {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border-left-color: var(--color-accent);
+}
+.nav-link-side.active:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+}
+.nav-link-side [data-lucide] { flex-shrink: 0; }
+
+/* ── Drawer backdrop — only shown when sidebar drawer is open on mobile. */
+.app-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: calc(var(--z-modal) - 1);
+}
+@media (min-width: 1024px) {
+  .app-drawer-backdrop { display: none !important; }
+}
+
+/* ── Main column — wraps the top bar and the page content. ── */
+.app-main {
+  grid-area: main;
+  min-width: 0;          /* let chat code blocks etc. shrink instead of pushing layout wider */
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Top bar — sticky, sits above page content. ── */
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 3rem;
+  padding: 0 1rem;
+  background: color-mix(in srgb, var(--color-bg-primary) 90%, transparent);
+  -webkit-backdrop-filter: blur(8px) saturate(1.4);
+  backdrop-filter: blur(8px) saturate(1.4);
+  border-bottom: 1px solid var(--color-border);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .app-topbar { background: var(--color-bg-primary); }
+}
+
+.app-hamburger,
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.375rem;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 120ms ease;
+}
+.app-hamburger:hover,
+.theme-toggle:hover {
+  background: var(--color-bg-tertiary);
+  transform: none;
+  box-shadow: none;
+}
+.app-hamburger:active,
+.theme-toggle:active { transform: none; box-shadow: none; }
+@media (min-width: 1024px) {
+  .app-hamburger { display: none; }
+}
+
+/* ── Breadcrumbs — auto-separator via ::after on every non-last child. */
+.app-breadcrumbs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  font-size: 0.875rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.app-breadcrumbs > * {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+.app-breadcrumbs > a:hover { color: var(--color-text-primary); }
+.app-breadcrumbs > *:last-child {
+  color: var(--color-text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.app-breadcrumbs > *:not(:last-child)::after {
+  content: '/';
+  color: var(--color-text-tertiary);
+  margin: 0 0.5rem;
+  display: inline-block;
+  font-weight: 400;
+}
+
+/* ── Page content — centered max-w-4xl, padded. ── */
+.app-content {
+  width: 100%;
+  max-width: 56rem;            /* 4xl */
+  margin: 0 auto;
+  padding: 1.25rem 1rem 2rem;
+}
+@media (min-width: 640px) {
+  .app-content { padding: 1.5rem 1.5rem 2.25rem; }
+}
+@media (min-width: 1024px) {
+  .app-content { padding: 1.75rem 2rem 2.5rem; }
+}
+
+/* ── Right rail — xl+ only. Sticky so its content stays in view as
+   the main column scrolls; gets its own scroll if it overflows. ── */
+.app-rail {
+  grid-area: rail;
+  display: none;
+}
+@media (min-width: 1280px) {
+  .app-rail {
+    display: block;
+    position: sticky;
+    top: 3rem;                  /* below top bar */
+    align-self: start;
+    height: calc(100vh - 3rem);
+    overflow-y: auto;
+    padding: 1.25rem 1.25rem 2rem;
+    border-left: 1px solid var(--color-border);
+  }
+}
+.rail-empty {
+  padding: 0.75rem;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+}
+
+
+/* ── Chat composer wrapper — fixed to viewport bottom but inset to
+   respect the app shell columns (sidebar at lg+, rail at xl+). The
+   form inside is pointer-events-auto and centered to max-w-3xl. */
+.chat-composer-wrapper {
+  position: fixed;
+  bottom: 0.75rem;
+  left: 0;
+  right: 0;
+  z-index: var(--z-sticky);
+  padding: 0 1rem;
+  pointer-events: none;
+}
+@media (min-width: 640px) { .chat-composer-wrapper { padding: 0 1.5rem; } }
+@media (min-width: 1024px) {
+  .chat-composer-wrapper {
+    left: 14rem;          /* skip sidebar */
+    padding: 0 2rem;
+  }
+}
+@media (min-width: 1280px) {
+  .chat-composer-wrapper {
+    right: 18rem;         /* skip rail */
+  }
+}
+
+/* ── Chat composer card — floating card pinned just above viewport
+   bottom. Page scrolls behind it; the card uses .card styling plus a
+   deeper shadow so it reads as elevated above the page background. */
+.chat-composer-card {
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.08),
+    0 2px 6px rgba(0, 0, 0, 0.04);
+  padding: 0.75rem 0.875rem;
+}
+.dark .chat-composer-card {
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.chat-composer-card textarea {
+  min-height: 5.25rem;
+}
+
+/* ── Markdown rendering for AI-emitted text ──────────────────
+   Applied to coach turns, critique narratives, summary debriefs, and
+   anything else that comes through `|markdown|safe`. Tight vertical
+   rhythm so multi-paragraph AI output doesn't dwarf surrounding chrome. */
+.prose-chat { line-height: 1.55; }
+.prose-chat > *:first-child { margin-top: 0; }
+.prose-chat > *:last-child { margin-bottom: 0; }
+.prose-chat p { margin: 0.5rem 0; }
+.prose-chat p:first-child { margin-top: 0; }
+.prose-chat p:last-child { margin-bottom: 0; }
+.prose-chat strong { font-weight: 600; color: var(--color-text-primary); }
+.prose-chat em { font-style: italic; }
+.prose-chat code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.0625rem 0.3125rem;
+  border-radius: 0.25rem;
+  background: var(--color-bg-tertiary);
+}
+.prose-chat pre {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  padding: 0.625rem 0.75rem;
+  margin: 0.625rem 0;
+  border-radius: var(--radius);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  overflow-x: auto;
+  white-space: pre;
+}
+.prose-chat pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+.prose-chat ul, .prose-chat ol {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+.prose-chat ul { list-style: disc; }
+.prose-chat ol { list-style: decimal; }
+.prose-chat li { margin: 0.125rem 0; }
+.prose-chat li > p { margin: 0; }
+.prose-chat blockquote {
+  margin: 0.625rem 0;
+  padding: 0.25rem 0 0.25rem 0.75rem;
+  border-left: 2px solid var(--color-accent);
+  color: var(--color-text-secondary);
+}
+.prose-chat h1, .prose-chat h2, .prose-chat h3, .prose-chat h4 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0.875rem 0 0.375rem;
+  line-height: 1.3;
+}
+.prose-chat h1 { font-size: 1.125rem; }
+.prose-chat h2 { font-size: 1.0625rem; }
+.prose-chat h3 { font-size: 1rem; }
+.prose-chat h4 { font-size: 0.9375rem; }
+.prose-chat a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-chat a:hover { color: var(--color-accent-hover); }
+.prose-chat hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  margin: 0.875rem 0;
 }

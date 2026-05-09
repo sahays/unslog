@@ -6,17 +6,37 @@ pub struct Scores {
     pub role_clarity: u8,
     pub star_plus_structure: u8,
     pub pitfalls_avoided: u8,
-    pub company_fit: u8,
+    /// `None` when the question has no source-company packet (role-only
+    /// questions or companies without a research packet). The critique prompt
+    /// is told to omit this axis in that case.
+    #[serde(default, deserialize_with = "deserialize_optional_u8")]
+    pub company_fit: Option<u8>,
+}
+
+/// Be forgiving on input: accept `null`, missing, or `0`-ish values when the
+/// model omitted the axis. We treat both null and absent as `None`.
+fn deserialize_optional_u8<'de, D>(de: D) -> Result<Option<u8>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    Option::<u8>::deserialize(de)
 }
 
 impl Scores {
+    /// Mean over the four always-present axes plus company_fit when set.
+    /// When company_fit is None (role-only question), the mean is over four.
     pub fn average(&self) -> f32 {
-        (self.specificity as f32
+        let mut sum = self.specificity as f32
             + self.role_clarity as f32
             + self.star_plus_structure as f32
-            + self.pitfalls_avoided as f32
-            + self.company_fit as f32)
-            / 5.0
+            + self.pitfalls_avoided as f32;
+        let mut n = 4.0;
+        if let Some(f) = self.company_fit {
+            sum += f as f32;
+            n += 1.0;
+        }
+        sum / n
     }
 }
 
@@ -52,6 +72,7 @@ pub struct Attempt {
     pub critique: Option<Critique>,
     #[serde(default)]
     pub critique_audio_path: Option<String>,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 

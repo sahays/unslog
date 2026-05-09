@@ -22,6 +22,9 @@ pub const DEFAULT_RESEARCH_MODEL: &str = "google/gemini-2.5-pro:online";
 pub const DEFAULT_STT_MODEL: &str = "google/gemini-2.5-pro";
 pub const DEFAULT_TTS_MODEL: &str = "openai/gpt-4o-mini-tts-2025-12-15";
 pub const DEFAULT_TTS_VOICE: &str = "alloy";
+/// Cheap fast classifier/curator. Used by `lite_model` in settings for
+/// question categorization and session curation.
+pub const DEFAULT_LITE_MODEL: &str = "google/gemini-2.5-flash";
 
 #[derive(Clone)]
 pub struct OpenRouter {
@@ -91,7 +94,34 @@ impl OpenRouter {
 
     /// Plain chat completion. `messages` and `model` are caller-controlled.
     /// `force_json` adds `response_format: { type: "json_object" }`.
+    /// Retries once on transient body-decode / network errors before failing
+    /// — same pattern as TTS, motivated by occasional reqwest "error decoding
+    /// response body" mid-stream cutoffs from OpenRouter.
     pub async fn chat(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        force_json: bool,
+    ) -> Result<String, AppError> {
+        match self.chat_once(model, messages.clone(), force_json).await {
+            Ok(s) => Ok(s),
+            Err(first) => {
+                let retryable = matches!(&first, AppError::Http(_) | AppError::Upstream(_));
+                if !retryable {
+                    return Err(first);
+                }
+                tracing::warn!(
+                    op = "openrouter.chat",
+                    model,
+                    error = %first,
+                    "first chat attempt failed, retrying once",
+                );
+                self.chat_once(model, messages, force_json).await
+            }
+        }
+    }
+
+    async fn chat_once(
         &self,
         model: &str,
         messages: Vec<ChatMessage>,

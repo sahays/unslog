@@ -32,10 +32,10 @@ struct SettingsTemplate {
 /// is a soft filter — a brand-new model from one of these providers shows up
 /// after the next /models refresh, and anything else is reachable by typing.
 const PREFERRED_PREFIXES: &[&str] = &[
-    "google/gemini",   // Gemini only — skip gemma, learnlm, palm
-    "openai/",         // gpt-*, o1-*, o3-*, chatgpt-*
-    "anthropic/",      // claude-*
-    "deepseek/",       // deepseek-*
+    "google/gemini", // Gemini only — skip gemma, learnlm, palm
+    "openai/",       // gpt-*, o1-*, o3-*, chatgpt-*
+    "anthropic/",    // claude-*
+    "deepseek/",     // deepseek-*
 ];
 
 fn is_preferred(id: &str) -> bool {
@@ -83,6 +83,7 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     // can render it as the selected option.
     ensure_present(&mut chat_models, &settings.critique_model);
     ensure_present(&mut chat_models, &settings.research_model);
+    ensure_present(&mut chat_models, &settings.lite_model);
     ensure_present(&mut audio_in_models, &settings.stt_model);
     ensure_present(&mut audio_out_models, &settings.tts_model);
 
@@ -125,6 +126,8 @@ pub struct SettingsForm {
     pub tts_voice: String,
     #[serde(default)]
     pub tts_speed: String,
+    #[serde(default)]
+    pub lite_model: String,
 }
 
 async fn save(
@@ -137,6 +140,10 @@ async fn save(
     let stt_model = trim(form.stt_model);
     let tts_model = trim(form.tts_model);
     let tts_voice = trim(form.tts_voice);
+    let mut lite_model = trim(form.lite_model);
+    if lite_model.is_empty() {
+        lite_model = crate::services::openrouter::DEFAULT_LITE_MODEL.into();
+    }
 
     if critique_model.is_empty()
         || research_model.is_empty()
@@ -172,6 +179,7 @@ async fn save(
         tts_model,
         tts_voice,
         tts_speed,
+        lite_model,
         updated_at: chrono::Utc::now(),
     };
     settings_store::save(&state.db, &next).await?;
@@ -183,6 +191,7 @@ async fn save(
         tts_model = %next.tts_model,
         tts_voice = %next.tts_voice,
         tts_speed = ?next.tts_speed,
+        lite_model = %next.lite_model,
         "settings updated",
     );
 

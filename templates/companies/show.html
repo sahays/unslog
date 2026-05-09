@@ -3,12 +3,20 @@
 
 {% block title %}{{ company.name }} — unslog{% endblock %}
 
+{% block breadcrumbs %}
+  <a href="/companies">Companies</a>
+  <span>{{ company.name }}</span>
+{% endblock %}
+
 {% block content %}
 <div class="grid gap-5">
   <div class="flex items-start justify-between gap-4">
     <div>
       <h1 class="font-heading text-2xl font-semibold">{{ company.name }}</h1>
-      <div class="muted text-sm mt-1">{{ company.role }}</div>
+      <div class="muted text-sm mt-1 flex items-center gap-2 flex-wrap">
+        <span>{{ company.role }}</span>
+        {% call ui::badge(company.canonical_role.display_name(), "accent") %}
+      </div>
     </div>
     <div class="flex gap-2 flex-shrink-0">
       <a class="btn" href="/companies">
@@ -45,12 +53,12 @@
         </button>
       </form>
     </div>
-    <div class="muted-soft text-xs mb-4">{{ bank.questions.len() }} question{% if bank.questions.len() != 1 %}s{% endif %} loaded</div>
+    <div class="muted-soft text-xs mb-4">{{ questions.len() }} question{% if questions.len() != 1 %}s{% endif %} loaded</div>
 
     <form method="post" action="/companies/{{ company.id }}/questions" class="grid gap-2 mb-5">
       <label for="paste-questions">Paste questions — one per line</label>
       <textarea id="paste-questions" name="text" rows="4" placeholder="Tell me about a time you missed a deadline.&#10;Walk me through a project you led end-to-end."></textarea>
-      <div>
+      <div class="flex justify-end">
         <button type="submit" class="btn btn-icon-spring">
           <span class="btn-icon"><i data-lucide="plus" class="h-4 w-4"></i></span>
           <span>Add questions</span>
@@ -58,61 +66,98 @@
       </div>
     </form>
 
-    {% if bank.questions.is_empty() %}
+    {% if questions.is_empty() %}
       <p class="muted m-0">No questions yet. Add some above, or hit "Refresh packet" to let the agent re-suggest.</p>
     {% else %}
       <ul class="grid gap-1.5 list-none p-0 m-0">
-        {% for q in bank.questions %}
-          <li class="flex gap-2 items-start p-2 px-3 rounded-md border border-[color:var(--color-border)]">
-            {% match q.source %}
-              {% when crate::models::QuestionSource::Agent %}{% call ui::badge("agent", "ai") %}
-              {% when crate::models::QuestionSource::Uploaded %}{% call ui::badge("uploaded", "default") %}
-            {% endmatch %}
-            <span class="flex-1">{{ q.text }}</span>
-            <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/delete">
-              <button type="submit" class="btn btn-sm btn-ghost" title="Delete">
-                <i data-lucide="x" class="h-3.5 w-3.5"></i>
-              </button>
-            </form>
+        {% for q in questions %}
+          <li class="grid gap-2 p-2 px-3 rounded-md border border-[color:var(--color-border)]">
+            {% if let Some(editing) = edit_qid.as_ref() %}{% if editing.as_str() == q.id.as_str() %}
+              <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/edit" class="grid gap-2">
+                <textarea name="text" rows="2" required>{{ q.text }}</textarea>
+                <div class="grid gap-2 grid-cols-1 sm:grid-cols-[max-content_1fr]">
+                  <label for="edit_role_{{ q.id }}">Role</label>
+                  <select id="edit_role_{{ q.id }}" name="role" data-n-select required>
+                    {% for r in role_options %}
+                      <option value="{{ r.0 }}"{% if q.role.as_str() == r.0 %} selected{% endif %}>{{ r.1 }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Categories</div>
+                  <div class="flex gap-1.5 flex-wrap">
+                    {% for c in canonical_categories %}
+                      <label class="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-[color:var(--color-border)] cursor-pointer text-xs" title="{{ c.description }}">
+                        <input type="checkbox" name="categories" value="{{ c.id }}" class="m-0 w-auto"
+                               {% if q.has_category(c.id.as_str()) %}checked{% endif %} />
+                        {{ c.name }}
+                      </label>
+                    {% endfor %}
+                  </div>
+                </div>
+                <div class="flex gap-2 justify-end">
+                  <a class="btn btn-sm" href="/companies/{{ company.id }}">
+                    <i data-lucide="x" class="h-3.5 w-3.5"></i>
+                    Cancel
+                  </a>
+                  <button type="submit" class="btn btn-primary btn-sm">
+                    <i data-lucide="save" class="h-3.5 w-3.5"></i>
+                    Save
+                  </button>
+                </div>
+              </form>
+            {% else %}
+              <div class="flex gap-2 items-start">
+                {% match q.source %}
+                  {% when crate::models::QuestionSource::Agent %}{% call ui::badge("agent", "ai") %}
+                  {% when crate::models::QuestionSource::Uploaded %}{% call ui::badge("uploaded", "default") %}
+                {% endmatch %}
+                <span class="flex-1">{{ q.text }}</span>
+                <a class="btn btn-sm btn-ghost" href="/companies/{{ company.id }}?edit={{ q.id }}" title="Edit">
+                  <i data-lucide="pencil" class="h-3.5 w-3.5"></i>
+                </a>
+                <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/delete">
+                  <button type="submit" class="btn btn-sm btn-ghost" title="Delete">
+                    <i data-lucide="x" class="h-3.5 w-3.5"></i>
+                  </button>
+                </form>
+              </div>
+              {% if !q.categories.is_empty() %}
+                <div class="flex gap-1 flex-wrap pl-2">
+                  {% for c in canonical_categories %}{% if q.has_category(c.id.as_str()) %}
+                    <span class="tag tag-accent" title="{{ c.description }}">{{ c.name }}</span>
+                  {% endif %}{% endfor %}
+                </div>
+              {% endif %}
+            {% endif %}{% else %}
+              <div class="flex gap-2 items-start">
+                {% match q.source %}
+                  {% when crate::models::QuestionSource::Agent %}{% call ui::badge("agent", "ai") %}
+                  {% when crate::models::QuestionSource::Uploaded %}{% call ui::badge("uploaded", "default") %}
+                {% endmatch %}
+                <span class="flex-1">{{ q.text }}</span>
+                <a class="btn btn-sm btn-ghost" href="/companies/{{ company.id }}?edit={{ q.id }}" title="Edit">
+                  <i data-lucide="pencil" class="h-3.5 w-3.5"></i>
+                </a>
+                <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/delete">
+                  <button type="submit" class="btn btn-sm btn-ghost" title="Delete">
+                    <i data-lucide="x" class="h-3.5 w-3.5"></i>
+                  </button>
+                </form>
+              </div>
+              {% if !q.categories.is_empty() %}
+                <div class="flex gap-1 flex-wrap pl-2">
+                  {% for c in canonical_categories %}{% if q.has_category(c.id.as_str()) %}
+                    <span class="tag tag-accent" title="{{ c.description }}">{{ c.name }}</span>
+                  {% endif %}{% endfor %}
+                </div>
+              {% endif %}
+            {% endif %}
           </li>
         {% endfor %}
       </ul>
     {% endif %}
   </div>
-
-  {% if !sessions.is_empty() %}
-    <div class="card">
-      {% call ui::card_header("history", "Past sessions") %}
-      <div class="muted-soft text-xs mb-3">{{ sessions.len() }} session{% if sessions.len() != 1 %}s{% endif %}</div>
-      <ul class="grid gap-2 list-none p-0 m-0 stagger-children">
-        {% for row in sessions %}
-          <li class="flex gap-3 items-center p-2 px-3 rounded-md border border-[color:var(--color-border)]">
-            {% match row.session.status %}
-              {% when crate::models::SessionStatus::Active %}{% call ui::badge("active", "accent") %}
-              {% when crate::models::SessionStatus::Ended %}{% call ui::badge("ended", "default") %}
-            {% endmatch %}
-            <div class="flex-1 min-w-0">
-              <div class="text-sm">
-                {{ row.session.started_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
-                <span class="muted">— {{ row.eval_count }} question{% if row.eval_count != 1 %}s{% endif %}</span>
-                {% if row.summary.is_some() %}<span class="muted">• has summary</span>{% endif %}
-              </div>
-            </div>
-            <a class="btn btn-sm" href="/sessions/{{ row.session.id }}/review">
-              <i data-lucide="clipboard-list" class="h-3.5 w-3.5"></i>
-              Review
-            </a>
-            {% if row.session.status == crate::models::SessionStatus::Active %}
-              <a class="btn btn-primary btn-sm" href="/sessions/{{ row.session.id }}">
-                <i data-lucide="play" class="h-3.5 w-3.5"></i>
-                Resume
-              </a>
-            {% endif %}
-          </li>
-        {% endfor %}
-      </ul>
-    </div>
-  {% endif %}
 
   {% if let Some(p) = company.research_packet.as_ref() %}
     <div class="card">
@@ -175,4 +220,39 @@
     </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block rail %}
+  <div class="grid gap-3">
+    <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Past sessions</h2>
+    {% if sessions.is_empty() %}
+      <p class="muted-soft text-xs m-0">No sessions yet for this company.</p>
+    {% else %}
+      <ul class="grid gap-1.5 list-none p-0 m-0">
+        {% for row in sessions %}
+          <li class="grid gap-1 p-2 px-2.5 rounded-md border border-[color:var(--color-border)]">
+            <div class="flex items-center gap-1.5">
+              {% match row.session.status %}
+                {% when crate::models::SessionStatus::Active %}{% call ui::badge("active", "accent") %}
+                {% when crate::models::SessionStatus::Ended %}{% call ui::badge("ended", "default") %}
+              {% endmatch %}
+              <span class="muted-soft text-xs truncate">
+                {{ row.session.started_at.format("%b %d, %H:%M").to_string() }}
+              </span>
+            </div>
+            <div class="muted-soft text-xs truncate">
+              {{ row.eval_count }} question{% if row.eval_count != 1 %}s{% endif %}
+              {% if row.summary.is_some() %} · debrief{% endif %}
+            </div>
+            <div class="flex items-center gap-2">
+              <a href="/sessions/{{ row.session.id }}/review" class="link-primary text-xs">Review →</a>
+              {% if row.session.status == crate::models::SessionStatus::Active %}
+                <a href="/sessions/{{ row.session.id }}" class="link-primary text-xs ml-auto">Resume →</a>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
 {% endblock %}

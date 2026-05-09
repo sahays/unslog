@@ -209,7 +209,8 @@ async fn restore(
             "version does not belong to this prompt".into(),
         ));
     }
-    let restored = store::save_version(&state.db, &name, target.body, Some(target.id.clone())).await?;
+    let restored =
+        store::save_version(&state.db, &name, target.body, Some(target.id.clone())).await?;
     tracing::info!(
         event = "prompt.restore",
         prompt = %name,

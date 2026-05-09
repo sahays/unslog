@@ -16,6 +16,7 @@ pub struct Summary {
     pub blind_spots: Vec<String>,
     #[serde(default)]
     pub company_fit_signal: String,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 

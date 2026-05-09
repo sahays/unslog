@@ -52,9 +52,8 @@ pub async fn request_context_middleware(mut request: Request<Body>, next: Next) 
 
     // Skip the static-asset and recordings noise — those are routine
     // browser fetches and would drown the log.
-    let is_noisy_static = path.starts_with("/static/")
-        || path.starts_with("/recordings/")
-        || path == "/health";
+    let is_noisy_static =
+        path.starts_with("/static/") || path.starts_with("/recordings/") || path == "/health";
 
     if !is_noisy_static {
         tracing::info!(

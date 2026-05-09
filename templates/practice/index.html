@@ -1,0 +1,100 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}Practice — unslog{% endblock %}
+
+{% block breadcrumbs %}<span>Practice</span>{% endblock %}
+
+{% block content %}
+<div class="grid gap-5">
+  <div>
+    <h1 class="font-heading text-2xl font-semibold">Practice</h1>
+    <p class="muted text-sm mt-1 max-w-2xl">
+      Cross-company practice session. Pick the role you're prepping for, choose which companies' question banks to draw from, and the curator picks 4–6 questions tailored to your recent recurring weaknesses.
+    </p>
+  </div>
+
+  {% if companies.is_empty() %}
+    <div class="card flex items-center gap-3">
+      <i data-lucide="inbox" class="h-6 w-6 text-[color:var(--color-text-tertiary)]"></i>
+      <div>
+        <p class="muted m-0">No companies yet. Add at least one before starting a practice session.</p>
+        <a class="link-primary text-sm" href="/companies">Add a company →</a>
+      </div>
+    </div>
+  {% else %}
+    <form method="post" action="/practice" class="card grid gap-5"
+          data-loading-title="Curating today's session…"
+          data-loading-detail="Picking 4–6 questions tailored to past weaknesses across the selected companies. This usually takes 1–3s.">
+      {% call ui::card_header("target", "Today's session") %}
+
+      <section class="grid gap-1.5">
+        <label for="role">Role</label>
+        <select id="role" name="role" data-n-select required>
+          <option value="">Pick a role…</option>
+          {% for r in role_options %}
+            <option value="{{ r.0 }}">{{ r.1 }}</option>
+          {% endfor %}
+        </select>
+      </section>
+
+      <section class="grid gap-1.5">
+        <label>Companies (pick at least one)</label>
+        <p class="muted-soft text-xs">
+          Only companies whose canonical role matches will contribute questions. Mix Anthropic + Meta + Amazon to broaden your pool when one company alone is too thin.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+          {% for c in companies %}
+            <label class="flex items-center gap-2 p-2 px-3 rounded-md border border-[color:var(--color-border)] cursor-pointer">
+              <input type="checkbox" name="companies" value="{{ c.id }}" class="m-0 w-auto" />
+              <div class="flex-1 min-w-0">
+                <div class="font-medium text-sm truncate">{{ c.name }}</div>
+                <div class="muted-soft text-xs truncate">{{ c.role }}</div>
+              </div>
+              {% call ui::badge(c.canonical_role.display_name(), "default") %}
+            </label>
+          {% endfor %}
+        </div>
+      </section>
+
+      <div class="flex gap-3 items-center justify-between mt-2">
+        <span class="muted-soft text-xs">Curated 4–6 questions, hard-capped, then auto-debrief.</span>
+        <button type="submit" class="btn btn-primary btn-icon-spring">
+          <span class="btn-icon"><i data-lucide="play" class="h-4 w-4"></i></span>
+          <span>Start practice session</span>
+        </button>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block rail %}
+  <div class="grid gap-3">
+    <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">In progress</h2>
+    {% if in_progress.is_empty() %}
+      <p class="muted-soft text-xs m-0">No in-progress sessions.</p>
+    {% else %}
+      <ul class="grid gap-1.5 list-none p-0 m-0">
+        {% for s in in_progress %}
+          <li class="grid gap-1 p-2 px-2.5 rounded-md border border-[color:var(--color-border)]">
+            <div class="text-xs font-medium truncate text-[color:var(--color-text-primary)]">
+              {{ s.anchor_company }}{% if s.companies_n > 1 %} <span class="muted-soft">+ {{ s.companies_n - 1 }}</span>{% endif %}
+              {% if s.stale %}<span class="muted-soft">(stale)</span>{% endif %}
+            </div>
+            <div class="muted-soft text-xs truncate">{{ s.role_label }} · {{ s.started_at }} · {{ s.answered }}/{{ s.total }}</div>
+            <div class="flex items-center gap-1">
+              {% if !s.stale %}
+                <a href="/sessions/{{ s.session_id }}" class="link-primary text-xs">Resume →</a>
+              {% endif %}
+              <form method="post" action="/sessions/{{ s.session_id }}/delete" class="m-0 ml-auto"
+                    onsubmit="return confirm('Delete this session and any answers from it? This can’t be undone.');">
+                <button type="submit" class="text-xs text-[color:var(--color-error)] bg-transparent border-0 p-0 cursor-pointer">Delete</button>
+              </form>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+{% endblock %}

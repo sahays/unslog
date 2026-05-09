@@ -13,7 +13,7 @@ use crate::error::AppError;
 use crate::models::{
     Attempt, Company, Evaluation, ModelSnapshot, PromptSnapshot, Session, SessionStatus, Summary,
 };
-use crate::services::{critique, prompt_store, question_bank, settings_store, stt, summary, tts};
+use crate::services::{critique, prompt_store, questions, settings_store, stt, summary, tts};
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -26,10 +26,44 @@ pub fn routes() -> Router<AppState> {
         .route("/sessions/:id/answers", post(submit_answer))
         .route("/sessions/:id/toggle-voice", post(toggle_voice))
         .route("/sessions/:id/end", post(end))
+        .route("/sessions/:id/delete", post(delete_session))
         .route(
             "/sessions/:id/attempts/:eval_id/:n/regenerate-audio",
             post(regenerate_critique_audio),
         )
+}
+
+async fn delete_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    let sessions = state.db.collection::<Session>(Session::COLLECTION);
+    let evals = state.db.collection::<Evaluation>(Evaluation::COLLECTION);
+    let summaries = state.db.collection::<Summary>(Summary::COLLECTION);
+
+    let evals_deleted = evals
+        .delete_many(bson::doc! { "session_id": &id })
+        .await?
+        .deleted_count;
+    let summaries_deleted = summaries
+        .delete_many(bson::doc! { "session_id": &id })
+        .await?
+        .deleted_count;
+    let session_deleted = sessions
+        .delete_one(bson::doc! { "_id": &id })
+        .await?
+        .deleted_count;
+
+    tracing::info!(
+        event = "session.delete",
+        session_id = %id,
+        session_deleted,
+        evals_deleted,
+        summaries_deleted,
+        "session deleted",
+    );
+
+    Ok(Redirect::to("/practice").into_response())
 }
 
 async fn start(
@@ -37,7 +71,7 @@ async fn start(
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     let coll = crate::db::companies(&state.db);
-    let _company: Company = coll
+    let company: Company = coll
         .find_one(bson::doc! { "_id": &id })
         .await?
         .ok_or_else(|| AppError::NotFound(format!("company {id}")))?;
@@ -50,9 +84,24 @@ async fn start(
         .ok_or_else(|| AppError::NotFound("summary prompt".into()))?;
     let settings = settings_store::load(&state.db).await?;
 
+    // Single-company entry: scope = just this company.
+    let selected_company_ids = vec![company.id.clone()];
+    let curated = crate::services::curator::curate(
+        &state.openrouter,
+        &state.db,
+        &settings.lite_model,
+        company.canonical_role,
+        &selected_company_ids,
+    )
+    .await?;
+
     let session = Session {
         id: uuid::Uuid::now_v7().to_string(),
         company_id: id,
+        role: company.canonical_role,
+        selected_company_ids,
+        curated_question_ids: curated.question_ids.clone(),
+        focus_line: curated.focus_line.clone(),
         started_at: chrono::Utc::now(),
         ended_at: None,
         status: SessionStatus::Active,
@@ -63,6 +112,7 @@ async fn start(
             research: settings.research_model.clone(),
             tts_voice: settings.tts_voice.clone(),
             tts_speed: settings.tts_speed,
+            lite: settings.lite_model.clone(),
         },
         prompt_snapshot: PromptSnapshot {
             critique: critique_prompt.current_version_id,
@@ -83,10 +133,16 @@ async fn start(
         event = "session.start",
         session_id = %session.id,
         company_id = %session.company_id,
+        role = session.role.as_str(),
         critique_model = %session.model_snapshot.critique,
         research_model = %session.model_snapshot.research,
+        curated_count = session.curated_question_ids.len(),
         "session started",
     );
+
+    if let Err(e) = advance_to_next(&state, &session).await {
+        tracing::warn!(error = %e, session_id = %session.id, "failed to auto-load first question; user can pick manually");
+    }
 
     Ok(Redirect::to(&format!("/sessions/{}", session.id)).into_response())
 }
@@ -191,25 +247,50 @@ async fn next_question(
         return Err(AppError::BadRequest("session has ended".into()));
     }
 
-    let bank = question_bank::ensure_for(&state.db, &session.company_id).await?;
+    match advance_to_next(&state, &session).await? {
+        Some(()) => Ok(Redirect::to(&format!("/sessions/{id}")).into_response()),
+        None => end_inline(&state, &session).await,
+    }
+}
+
+/// Pick the next question for an active session and persist it as
+/// `current_question_*`. Returns `Some(())` if a question was loaded;
+/// `None` if there is nothing to load (curated list exhausted, or no
+/// fallback questions exist). Used by both the next-question button and
+/// the session-start handlers — landing on a fresh session shouldn't
+/// require an extra click to see the first question.
+pub(crate) async fn advance_to_next(
+    state: &AppState,
+    session: &Session,
+) -> Result<Option<()>, AppError> {
     let evals: Vec<Evaluation> = state
         .db
         .collection::<Evaluation>(Evaluation::COLLECTION)
-        .find(bson::doc! { "session_id": &id })
+        .find(bson::doc! { "session_id": &session.id })
         .await?
         .try_collect()
         .await?;
-    let seen: Vec<String> = evals.iter().map(|e| e.question_id.clone()).collect();
+    let answered: std::collections::HashSet<String> =
+        evals.iter().map(|e| e.question_id.clone()).collect();
 
-    let Some(next) = question_bank::pick_next(&bank, &seen) else {
-        return Err(AppError::BadRequest(
-            "no unseen questions left in this bank".into(),
-        ));
+    let next_id = crate::services::curator::next_curated(session, &answered);
+
+    let pair = if let Some(next_id) = next_id {
+        load_question_by_id(state, session, &next_id).await?
+    } else if session.curated_question_ids.is_empty() {
+        // Legacy fallback: random from the company's questions.
+        let pool = questions::list_for_company(&state.db, &session.company_id).await?;
+        let seen: Vec<String> = answered.iter().cloned().collect();
+        questions::pick_random(&pool, &seen).map(|q| (q.id.clone(), q.text.clone()))
+    } else {
+        return Ok(None);
     };
 
-    // Best-effort TTS of the question text. If TTS fails (no key, model error,
-    // network), keep the question but skip the audio — the page still works.
-    let audio_path = match maybe_tts_question(&state, &session, next).await {
+    let Some((qid, qtext)) = pair else {
+        return Ok(None);
+    };
+
+    let audio_path = match maybe_tts_question_by_text(state, session, &qid, &qtext).await {
         Ok(p) => Some(p),
         Err(e) => {
             tracing::warn!(error = %e, "tts of question failed; continuing without audio");
@@ -221,22 +302,64 @@ async fn next_question(
         .db
         .collection::<Session>(Session::COLLECTION)
         .update_one(
-            bson::doc! { "_id": &id },
+            bson::doc! { "_id": &session.id },
             bson::doc! { "$set": {
-                "current_question_id": &next.id,
-                "current_question_text": &next.text,
-                "current_question_audio_path": audio_path.clone(),
+                "current_question_id": &qid,
+                "current_question_text": &qtext,
+                "current_question_audio_path": audio_path,
             } },
         )
         .await?;
 
-    Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
+    Ok(Some(()))
 }
 
-async fn maybe_tts_question(
+/// Look up a question's text by its ID. With a top-level Questions
+/// collection this is a direct lookup — no need to walk per-company banks.
+async fn load_question_by_id(
+    state: &AppState,
+    _session: &Session,
+    qid: &str,
+) -> Result<Option<(String, String)>, AppError> {
+    let q = questions::get(&state.db, qid).await?;
+    Ok(q.map(|q| (q.id, q.text)))
+}
+
+/// Fire the existing `end` flow inline (used when curated list is exhausted).
+async fn end_inline(state: &AppState, session: &Session) -> Result<Response, AppError> {
+    let session_id = session.id.clone();
+    let company = load_company(state, &session.company_id).await?;
+    if let Err(e) =
+        summary::generate_and_save(&state.openrouter, &state.db, session, &company).await
+    {
+        tracing::warn!(error = %e, session_id = %session_id, "summary generation failed at auto-end");
+    }
+    state
+        .db
+        .collection::<Session>(Session::COLLECTION)
+        .update_one(
+            bson::doc! { "_id": &session_id },
+            bson::doc! { "$set": {
+                "status": "ended",
+                "ended_at": chrono::Utc::now().to_rfc3339(),
+                "current_question_id": null,
+                "current_question_text": null,
+            } },
+        )
+        .await?;
+    tracing::info!(
+        event = "session.auto_end",
+        session_id = %session_id,
+        "session auto-ended after curated questions exhausted",
+    );
+    Ok(Redirect::to(&format!("/sessions/{session_id}")).into_response())
+}
+
+async fn maybe_tts_question_by_text(
     state: &AppState,
     session: &Session,
-    question: &crate::models::Question,
+    qid: &str,
+    qtext: &str,
 ) -> Result<String, AppError> {
     if !state.openrouter.configured() {
         return Err(AppError::OpenRouterNotConfigured);
@@ -244,7 +367,7 @@ async fn maybe_tts_question(
     let dir =
         crate::recordings::session_dir(&state.config.data_dir, &session.company_id, &session.id);
     crate::recordings::ensure_dir(&dir).await?;
-    let path = dir.join(format!("question_{}.mp3", question.id));
+    let path = dir.join(format!("question_{qid}.mp3"));
     let voice = if session.model_snapshot.tts_voice.is_empty() {
         crate::services::openrouter::DEFAULT_TTS_VOICE
     } else {
@@ -254,7 +377,7 @@ async fn maybe_tts_question(
         &state.openrouter,
         &session.model_snapshot.tts,
         voice,
-        &question.text,
+        qtext,
         session.model_snapshot.tts_speed,
         path,
     )
@@ -504,9 +627,14 @@ async fn regenerate_critique_audio(
         "regenerating critique audio",
     );
 
-    let audio_path =
-        maybe_tts_critique(&state, &session, &critique.narrative, attempt_n, &eval.question_id)
-            .await?;
+    let audio_path = maybe_tts_critique(
+        &state,
+        &session,
+        &critique.narrative,
+        attempt_n,
+        &eval.question_id,
+    )
+    .await?;
 
     // Update the matched array element. MongoDB positional `$` operator finds
     // the right attempt by attempt_n in the array filter.
@@ -557,7 +685,7 @@ async fn end(State(state): State<AppState>, Path(id): Path<String>) -> Result<Re
             bson::doc! { "_id": &id },
             bson::doc! { "$set": {
                 "status": "ended",
-                "ended_at": bson::DateTime::now(),
+                "ended_at": chrono::Utc::now().to_rfc3339(),
                 "current_question_id": null,
                 "current_question_text": null,
             } },

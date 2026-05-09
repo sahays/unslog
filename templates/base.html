@@ -25,54 +25,100 @@
     <script src="/static/js/recorder.js" defer></script>
     {% block head %}{% endblock %}
   </head>
-  <body class="bg-accent-gradient antialiased min-h-screen">
+  <body class="bg-accent-gradient antialiased min-h-screen"
+        x-data="{ navOpen: false }"
+        @keydown.escape.window="navOpen = false">
 
     <!-- Top progress bar (HTMX-driven) -->
     <div id="progress-bar" class="progress-bar"></div>
 
-    <!-- Navigation -->
-    <nav class="nav-frosted sticky top-0 z-[var(--z-sticky)]">
-      <div class="mx-auto max-w-5xl px-6 sm:px-8 lg:px-12">
-        <div class="flex h-14 items-center justify-between">
-          <a href="/" class="flex items-center gap-2 font-heading text-lg font-semibold text-[color:var(--color-accent)]">
+    <div class="app-shell">
+
+      <!-- ── Sidebar (fixed-drawer on mobile, sticky on lg+) ─────────── -->
+      <aside class="app-sidebar"
+             :class="navOpen && 'open'"
+             aria-label="Primary navigation">
+        <div class="app-sidebar__brand">
+          <a href="/" class="brand-link" @click="navOpen = false">
             <i data-lucide="layers" class="h-5 w-5"></i>
-            unslog
+            <span>unslog</span>
           </a>
-
-          <div class="flex items-center gap-5 text-sm">
-            <a href="/companies" class="nav-link inline-flex items-center gap-1.5">
-              <i data-lucide="briefcase" class="h-4 w-4"></i>
-              <span>Companies</span>
-            </a>
-            <a href="/assets" class="nav-link inline-flex items-center gap-1.5">
-              <i data-lucide="book-open" class="h-4 w-4"></i>
-              <span>Assets</span>
-            </a>
-            <a href="/prompts" class="nav-link inline-flex items-center gap-1.5">
-              <i data-lucide="file-text" class="h-4 w-4"></i>
-              <span>Prompts</span>
-            </a>
-            <a href="/settings" class="nav-link inline-flex items-center gap-1.5">
-              <i data-lucide="sliders" class="h-4 w-4"></i>
-              <span>Settings</span>
-            </a>
-
-            <button
-              @click="darkMode = !darkMode"
-              class="btn btn-ghost p-2"
-              :aria-label="darkMode ? 'Switch to light mode' : 'Switch to dark mode'"
-              title="Toggle theme">
-              <i x-show="!darkMode" x-cloak data-lucide="moon" class="h-4 w-4"></i>
-              <i x-show="darkMode" x-cloak data-lucide="sun" class="h-4 w-4"></i>
-            </button>
-          </div>
         </div>
-      </div>
-    </nav>
+        <nav class="app-sidebar__nav">
+          <a href="/companies" class="nav-link-side" data-nav-key="companies" @click="navOpen = false">
+            <i data-lucide="briefcase" class="h-4 w-4"></i>
+            <span>Companies</span>
+          </a>
+          <a href="/practice" class="nav-link-side" data-nav-key="practice" @click="navOpen = false">
+            <i data-lucide="target" class="h-4 w-4"></i>
+            <span>Practice</span>
+          </a>
+          <a href="/stories" class="nav-link-side" data-nav-key="stories" @click="navOpen = false">
+            <i data-lucide="book-marked" class="h-4 w-4"></i>
+            <span>Stories</span>
+          </a>
+          <a href="/assets" class="nav-link-side" data-nav-key="assets" @click="navOpen = false">
+            <i data-lucide="book-open" class="h-4 w-4"></i>
+            <span>Assets</span>
+          </a>
+          <a href="/prompts" class="nav-link-side" data-nav-key="prompts" @click="navOpen = false">
+            <i data-lucide="file-text" class="h-4 w-4"></i>
+            <span>Prompts</span>
+          </a>
+          <a href="/settings" class="nav-link-side" data-nav-key="settings" @click="navOpen = false">
+            <i data-lucide="sliders" class="h-4 w-4"></i>
+            <span>Settings</span>
+          </a>
+        </nav>
+      </aside>
 
-    <main class="mx-auto max-w-5xl px-6 sm:px-8 lg:px-12 py-8">
-      {% block content %}{% endblock %}
-    </main>
+      <!-- Mobile drawer backdrop (only visible while drawer is open on small screens) -->
+      <div class="app-drawer-backdrop"
+           x-show="navOpen"
+           x-cloak
+           @click="navOpen = false"
+           x-transition.opacity></div>
+
+      <!-- ── Main column: top bar + page content ─────────────────────── -->
+      <div class="app-main">
+        <header class="app-topbar">
+          <button type="button"
+                  class="app-hamburger"
+                  @click="navOpen = !navOpen"
+                  :aria-expanded="navOpen"
+                  aria-label="Toggle navigation">
+            <i data-lucide="menu" class="h-4 w-4"></i>
+          </button>
+
+          <nav class="app-breadcrumbs" aria-label="Breadcrumb">
+            {% block breadcrumbs %}{% endblock %}
+          </nav>
+
+          <button type="button"
+                  class="theme-toggle"
+                  @click="darkMode = !darkMode"
+                  :aria-label="darkMode ? 'Switch to light mode' : 'Switch to dark mode'"
+                  title="Toggle theme">
+            <i x-show="!darkMode" x-cloak data-lucide="moon" class="h-4 w-4"></i>
+            <i x-show="darkMode" x-cloak data-lucide="sun" class="h-4 w-4"></i>
+          </button>
+        </header>
+
+        <main class="app-content">
+          {% block content %}{% endblock %}
+        </main>
+      </div>
+
+      <!-- ── Right rail (xl+ only) ───────────────────────────────────── -->
+      <aside class="app-rail" aria-label="Page context">
+        {% block rail %}
+          <div class="rail-empty">
+            <p class="muted-soft text-xs m-0">Context for this view will appear here as you use the app.</p>
+          </div>
+        {% endblock %}
+      </aside>
+
+    </div>
 
     <!-- App overlay: shown while a long form (answer, end-session, research) is in flight -->
     <div id="app-overlay" class="app-overlay" aria-hidden="true">
@@ -100,6 +146,31 @@
         }
         document.body.addEventListener('htmx:afterSwap', renderIcons);
         document.body.addEventListener('htmx:load', renderIcons);
+
+        /* ── Sidebar active-route highlight (URL-based fallback until
+             SSR nav_active is wired in Phase 3). Matches the longest
+             data-nav-key prefix against the current pathname. */
+        function markActiveNav() {
+          var path = window.location.pathname;
+          var links = document.querySelectorAll('.nav-link-side[data-nav-key]');
+          var best = null;
+          var bestLen = -1;
+          links.forEach(function (a) {
+            try {
+              var href = new URL(a.getAttribute('href'), window.location.origin).pathname;
+              if (path === href || path.startsWith(href + '/')) {
+                if (href.length > bestLen) { best = a; bestLen = href.length; }
+              }
+            } catch (_) {}
+            a.classList.remove('active');
+          });
+          if (best) best.classList.add('active');
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', markActiveNav);
+        } else {
+          markActiveNav();
+        }
 
         /* ── YouTube-style progress bar ──────────────────────── */
         var bar = document.getElementById('progress-bar');

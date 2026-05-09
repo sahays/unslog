@@ -27,6 +27,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     let db = crate::db::connect(&config.mongo_uri, &config.mongo_db).await?;
     crate::db::ensure_indexes(&db).await?;
     crate::services::prompt_store::seed_defaults(&db).await?;
+    crate::services::category_store::seed_defaults(&db).await?;
 
     tokio::fs::create_dir_all(&config.data_dir).await.ok();
     tokio::fs::create_dir_all(format!("{}/recordings", config.data_dir))

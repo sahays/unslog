@@ -1,6 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROMPT_NAMES: &[&str] = &["critique", "research", "summary"];
+pub const PROMPT_NAMES: &[&str] = &[
+    "critique",
+    "research",
+    "summary",
+    "story_chat",
+    "story_summarize",
+    "story_refine_open",
+];
 
 pub fn is_valid_prompt_name(name: &str) -> bool {
     PROMPT_NAMES.contains(&name)
@@ -11,6 +18,7 @@ pub struct Prompt {
     #[serde(rename = "_id")]
     pub name: String,
     pub current_version_id: String,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -24,6 +32,7 @@ pub struct PromptVersion {
     pub id: String,
     pub prompt_name: String,
     pub body: String,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub created_at: chrono::DateTime<chrono::Utc>,
     #[serde(default)]
     pub restored_from: Option<String>,

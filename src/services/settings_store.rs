@@ -23,6 +23,7 @@ pub async fn load(db: &Database) -> Result<Settings, AppError> {
         tts_model: openrouter::DEFAULT_TTS_MODEL.into(),
         tts_voice: openrouter::DEFAULT_TTS_VOICE.into(),
         tts_speed: None,
+        lite_model: openrouter::DEFAULT_LITE_MODEL.into(),
         updated_at: chrono::Utc::now(),
     };
     coll.insert_one(&seeded).await?;

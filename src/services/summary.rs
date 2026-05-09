@@ -215,15 +215,22 @@ fn render_eval(idx: usize, e: &Evaluation) -> String {
             .iter()
             .map(|a| {
                 let crit = match &a.critique {
-                    Some(c) => format!(
-                        "\nScores: spec {}/5, role {}/5, STAR+ {}/5, pitfalls {}/5, fit {}/5\nCritique: {}",
-                        c.scores.specificity,
-                        c.scores.role_clarity,
-                        c.scores.star_plus_structure,
-                        c.scores.pitfalls_avoided,
-                        c.scores.company_fit,
-                        c.narrative
-                    ),
+                    Some(c) => {
+                        let fit = c
+                            .scores
+                            .company_fit
+                            .map(|v| format!("{v}/5"))
+                            .unwrap_or_else(|| "n/a".to_string());
+                        format!(
+                            "\nScores: spec {}/5, role {}/5, STAR+ {}/5, pitfalls {}/5, fit {}\nCritique: {}",
+                            c.scores.specificity,
+                            c.scores.role_clarity,
+                            c.scores.star_plus_structure,
+                            c.scores.pitfalls_avoided,
+                            fit,
+                            c.narrative
+                        )
+                    }
                     None => String::new(),
                 };
                 format!(

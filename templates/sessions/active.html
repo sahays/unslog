@@ -3,10 +3,16 @@
 
 {% block title %}Session — {{ company.name }}{% endblock %}
 
+{% block breadcrumbs %}
+  <a href="/practice">Practice</a>
+  <a href="/companies/{{ company.id }}">{{ company.name }}</a>
+  <span>Session {{ session.started_at.format("%b %d, %H:%M").to_string() }}</span>
+{% endblock %}
+
 {% block content %}
 <div
   x-data="{
-    tab: '{% if session.status == crate::models::SessionStatus::Ended %}{% if summary.is_some() %}debrief{% else %}history{% endif %}{% else %}current{% endif %}',
+    tab: '{% if session.status == crate::models::SessionStatus::Ended && summary.is_some() %}debrief{% else %}current{% endif %}',
     recording: window.unslogRecording === true
   }"
   x-init="
@@ -15,7 +21,7 @@
   class="grid gap-5"
 >
   <div class="flex items-start justify-between gap-4">
-    <div>
+    <div class="min-w-0 flex-1">
       <h1 class="font-heading text-2xl font-semibold">{{ company.name }} <span class="muted text-base font-normal">— {{ company.role }}</span></h1>
       <div class="muted text-sm mt-1 flex items-center gap-2 flex-wrap">
         {% match session.status %}
@@ -24,7 +30,15 @@
         {% endmatch %}
         <span>started {{ session.started_at.format("%Y-%m-%d %H:%M").to_string() }}</span>
         <span>• model <code class="font-mono">{{ session.model_snapshot.critique }}</code></span>
+        {% if !session.curated_question_ids.is_empty() %}
+          <span>• {{ session.curated_question_ids.len() }} curated question{% if session.curated_question_ids.len() != 1 %}s{% endif %}</span>
+        {% endif %}
       </div>
+      {% if !session.focus_line.is_empty() %}
+        <div class="mt-2 italic muted-soft text-sm border-l-2 border-[color:var(--color-accent)] pl-3 py-1">
+          {{ session.focus_line }}
+        </div>
+      {% endif %}
     </div>
     <div class="flex gap-2 flex-shrink-0">
       <a class="btn" href="/companies/{{ company.id }}">
@@ -71,14 +85,6 @@
       </button>
     {% endif %}
 
-    <button type="button" role="tab" class="tab-button" :class="tab === 'history' && 'active'" @click="tab = 'history'">
-      <i data-lucide="history" class="h-4 w-4"></i>
-      <span>Session history</span>
-      {% if !history.is_empty() || current_eval.is_some() %}
-        <span class="tag tag-accent ml-1">{% if current_eval.is_some() %}{{ history.len() + 1 }}{% else %}{{ history.len() }}{% endif %}</span>
-      {% endif %}
-    </button>
-
     {% if session.status == crate::models::SessionStatus::Ended && summary.is_some() %}
       <button type="button" role="tab" class="tab-button" :class="tab === 'debrief' && 'active'" @click="tab = 'debrief'">
         <i data-lucide="clipboard-check" class="h-4 w-4"></i>
@@ -118,9 +124,11 @@
                     <span class="tag">role clarity {{ c.scores.role_clarity }}/5</span>
                     <span class="tag">STAR+ {{ c.scores.star_plus_structure }}/5</span>
                     <span class="tag">pitfalls {{ c.scores.pitfalls_avoided }}/5</span>
-                    <span class="tag">company fit {{ c.scores.company_fit }}/5</span>
+                    {% if let Some(fit) = c.scores.company_fit %}
+                      <span class="tag">company fit {{ fit }}/5</span>
+                    {% endif %}
                   </div>
-                  <div class="whitespace-pre-wrap mt-2">{{ c.narrative }}</div>
+                  <div class="prose-chat mt-2">{{ c.narrative|markdown|safe }}</div>
                   {% if let Some(p) = a.critique_audio_path.as_ref() %}
                     <div class="critique-audio">
                       <i data-lucide="volume-2" class="h-4 w-4"></i>
@@ -143,7 +151,7 @@
                   {% if !c.improved_vs_prior.is_empty() %}
                     <div class="mt-2 p-2 px-3 border-l-2 border-[color:var(--color-accent)] bg-[color:var(--color-bg-tertiary)] rounded-r-md">
                       <div class="muted-soft text-xs uppercase tracking-wider font-medium">Vs. prior attempt</div>
-                      <div class="whitespace-pre-wrap">{{ c.improved_vs_prior }}</div>
+                      <div class="prose-chat">{{ c.improved_vs_prior|markdown|safe }}</div>
                     </div>
                   {% endif %}
                   {% if !c.citations.is_empty() %}
@@ -186,15 +194,15 @@
               <textarea id="answer" name="transcript" data-record-target placeholder="Speak above, or type your answer…" required></textarea>
             </div>
             <input type="hidden" name="audio_path" data-record-audio value="" />
-            <div class="flex gap-3 items-center">
+            <div class="flex gap-3 items-center justify-between">
+              <span class="muted-soft text-xs htmx-indicator">Critiquing… can take 20–40s.</span>
               <button type="submit" class="btn btn-primary btn-icon-spring">
                 <span class="btn-icon"><i data-lucide="send" class="h-4 w-4"></i></span>
                 <span>{% if let Some(eval) = current_eval.as_ref() %}{% if !eval.attempts.is_empty() %}Submit retry (attempt {{ eval.attempts.len() + 1 }}){% else %}Submit answer{% endif %}{% else %}Submit answer{% endif %}</span>
               </button>
-              <span class="muted-soft text-xs htmx-indicator">Critiquing… can take 20–40s.</span>
             </div>
           </form>
-          <form method="post" action="/sessions/{{ session.id }}/next-question" class="mt-2"
+          <form method="post" action="/sessions/{{ session.id }}/next-question" class="mt-2 flex justify-end"
                 data-loading-title="Picking the next question…"
                 data-loading-detail="Selecting from your bank and reading it aloud with <code>{{ session.model_snapshot.tts }}</code>.">
             <button type="submit" class="btn">
@@ -219,53 +227,6 @@
       {% endif %}
     </div>
   {% endif %}
-
-  <!-- ─────────── History tab ─────────── -->
-  <div role="tabpanel" x-show="tab === 'history'" x-cloak>
-    {% if history.is_empty() && current_eval.is_none() %}
-      <div class="card flex items-center gap-3">
-        <i data-lucide="inbox" class="h-6 w-6 text-[color:var(--color-text-tertiary)]"></i>
-        <p class="muted m-0">No questions answered yet.</p>
-      </div>
-    {% else %}
-      <div class="grid gap-3 stagger-children">
-        {% if let Some(eval) = current_eval.as_ref() %}
-          {% if !eval.attempts.is_empty() %}
-            <div class="card">
-              <div class="flex items-center gap-2 mb-1">
-                <div class="font-medium">{{ eval.question_text }}</div>
-                {% call ui::badge("current", "accent") %}
-              </div>
-              {% for a in eval.attempts %}
-                <div class="mt-2 pt-2 border-t border-[color:var(--color-border)]">
-                  <div class="muted-soft text-xs">Attempt {{ a.attempt_n }}</div>
-                  <div class="whitespace-pre-wrap text-sm mt-1">{{ a.answer_transcript }}</div>
-                  {% if let Some(c) = a.critique.as_ref() %}
-                    <div class="muted text-sm whitespace-pre-wrap mt-1">{{ c.narrative }}</div>
-                  {% endif %}
-                </div>
-              {% endfor %}
-            </div>
-          {% endif %}
-        {% endif %}
-
-        {% for eval in history %}
-          <div class="card">
-            <div class="font-medium">{{ eval.question_text }}</div>
-            {% for a in eval.attempts %}
-              <div class="mt-2 pt-2 border-t border-[color:var(--color-border)]">
-                <div class="muted-soft text-xs">Attempt {{ a.attempt_n }}</div>
-                <div class="whitespace-pre-wrap text-sm mt-1">{{ a.answer_transcript }}</div>
-                {% if let Some(c) = a.critique.as_ref() %}
-                  <div class="muted text-sm whitespace-pre-wrap mt-1">{{ c.narrative }}</div>
-                {% endif %}
-              </div>
-            {% endfor %}
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  </div>
 
   <!-- ─────────── Debrief tab ─────────── -->
   {% if session.status == crate::models::SessionStatus::Ended && summary.is_some() %}
@@ -313,4 +274,30 @@
     {% endif %}
   {% endif %}
 </div>
+{% endblock %}
+
+{% block rail %}
+  <div class="grid gap-3">
+    <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Session history</h2>
+    {% if history.is_empty() && current_eval.is_none() %}
+      <p class="muted-soft text-xs m-0">No questions answered yet.</p>
+    {% else %}
+      <ul class="grid gap-1.5 list-none p-0 m-0">
+        {% if let Some(eval) = current_eval.as_ref() %}
+          {% if !eval.attempts.is_empty() %}
+            <li class="grid gap-1 p-2 px-2.5 rounded-md border border-[color:var(--color-accent)]">
+              <div class="text-xs font-medium text-[color:var(--color-text-primary)]">{{ eval.question_text }}</div>
+              <div class="muted-soft text-xs">{{ eval.attempts.len() }} attempt{% if eval.attempts.len() != 1 %}s{% endif %} · current</div>
+            </li>
+          {% endif %}
+        {% endif %}
+        {% for eval in history %}
+          <li class="grid gap-1 p-2 px-2.5 rounded-md border border-[color:var(--color-border)]">
+            <div class="text-xs font-medium text-[color:var(--color-text-primary)]">{{ eval.question_text }}</div>
+            <div class="muted-soft text-xs">{{ eval.attempts.len() }} attempt{% if eval.attempts.len() != 1 %}s{% endif %}</div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
 {% endblock %}

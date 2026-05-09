@@ -1,9 +1,12 @@
 pub mod assets;
+pub mod categorize;
+pub mod category_store;
 pub mod critique;
+pub mod curator;
 pub mod openrouter;
 pub mod openrouter_models;
 pub mod prompt_store;
-pub mod question_bank;
+pub mod questions;
 pub mod research;
 pub mod settings_store;
 pub mod stt;

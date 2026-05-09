@@ -1,0 +1,35 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}{{ status }} — unslog{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 max-w-2xl mx-auto py-10">
+  <div>
+    <div class="muted-soft text-xs uppercase tracking-wider font-medium">Error {{ status }}</div>
+    <h1 class="font-heading text-3xl font-semibold mt-1">{{ kind_label }}</h1>
+  </div>
+
+  <div class="alert alert-error" role="alert">
+    <i data-lucide="alert-triangle" class="h-5 w-5 mt-0.5"></i>
+    <div class="grid gap-2 min-w-0 flex-1">
+      <strong class="font-medium">Something went wrong handling that request.</strong>
+      <pre class="font-mono text-xs muted whitespace-pre-wrap break-words m-0">{{ message }}</pre>
+      {% if request_id|trim != "" %}
+        <div class="muted-soft text-xs">request id: <code class="font-mono">{{ request_id }}</code></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="flex gap-2 mt-2">
+    <a class="btn" href="javascript:history.back()">
+      <i data-lucide="arrow-left" class="h-4 w-4"></i>
+      Back
+    </a>
+    <a class="btn btn-ghost" href="/">
+      <i data-lucide="home" class="h-4 w-4"></i>
+      Home
+    </a>
+  </div>
+</div>
+{% endblock %}

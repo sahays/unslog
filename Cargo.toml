@@ -13,7 +13,7 @@ tower-http = { version = "0.5", features = ["fs", "trace", "limit"] }
 http = "1.0"
 
 # Templates
-askama = { version = "0.12", features = ["serde-json"] }
+askama = { version = "0.12", features = ["serde-json", "markdown"] }
 askama_axum = "0.4"
 
 # Async runtime
@@ -55,3 +55,4 @@ base64 = "0.22"
 
 # Random shuffle
 rand = "0.8"
+

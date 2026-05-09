@@ -3,6 +3,8 @@
 
 {% block title %}Companies — unslog{% endblock %}
 
+{% block breadcrumbs %}<span>Companies</span>{% endblock %}
+
 {% block content %}
 <div class="grid gap-6">
   <div class="card">
@@ -23,18 +25,32 @@
       </div>
     {% endif %}
 
-    <form method="post" action="/companies" class="grid gap-3 grid-cols-1 sm:grid-cols-[1fr_1fr_auto]"
+    <form method="post" action="/companies" class="grid gap-4"
           data-loading-title="Researching the company…"
-          data-loading-detail="Searching the web for company values, role JD, and sample questions. This usually takes 30–60s.">
-      <div class="grid gap-1.5">
-        <label for="company_name">Company</label>
-        <input type="text" id="company_name" name="name" placeholder="e.g. Anthropic" required />
+          data-loading-detail="Searching the web for company values, role JD, and sample questions, then tagging questions with canonical categories. This usually takes 30–60s.">
+      <div class="grid gap-3 grid-cols-1 sm:grid-cols-2">
+        <div class="grid gap-1.5">
+          <label for="company_name">Company</label>
+          <input type="text" id="company_name" name="name" placeholder="e.g. Anthropic" required />
+        </div>
+        <div class="grid gap-1.5">
+          <label for="company_canonical_role">Canonical role</label>
+          <select id="company_canonical_role" name="canonical_role" data-n-select required>
+            <option value="">Pick a role…</option>
+            {% for r in role_options %}
+              <option value="{{ r.0 }}">{{ r.1 }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
+
       <div class="grid gap-1.5">
-        <label for="company_role">Role</label>
+        <label for="company_role">Role title (specific)</label>
         <input type="text" id="company_role" name="role" placeholder="e.g. Applied AI Solutions Architect" required />
+        <div class="muted-soft text-xs">Used verbatim in research and critique prompts. The canonical role above is what cross-company sessions filter by.</div>
       </div>
-      <div class="self-end">
+
+      <div class="flex justify-end">
         <button type="submit" class="btn btn-primary btn-icon-spring">
           <span class="btn-icon"><i data-lucide="search" class="h-4 w-4"></i></span>
           <span>Add &amp; research</span>

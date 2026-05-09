@@ -1,0 +1,76 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}{{ competency.name }} — v{{ version.version_n }}{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="/stories">Stories</a>
+  <a href="/stories/{{ story.id }}">{{ competency.name }}</a>
+  <span>v{{ version.version_n }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-5">
+  <div class="flex items-start justify-between gap-4">
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2 flex-wrap">
+        <h1 class="font-heading text-2xl font-semibold m-0">{{ competency.name }}</h1>
+        <span class="tag tag-accent">v{{ version.version_n }}</span>
+        {% if is_current %}{% call ui::badge("current", "good") %}{% else %}{% call ui::badge("past version", "default") %}{% endif %}
+      </div>
+      <p class="muted-soft text-xs mt-1 m-0">
+        Generated {{ version.created_at.format("%Y-%m-%d %H:%M").to_string() }}. Read-only — past versions are immutable.
+      </p>
+    </div>
+    <div class="flex gap-2 flex-shrink-0">
+      <a class="btn" href="/stories/{{ story.id }}">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+        Back to story
+      </a>
+    </div>
+  </div>
+
+  <section class="card grid gap-4">
+    {% if !version.body.situation.is_empty() %}
+      <div>
+        <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Situation</div>
+        <ul class="grid gap-1 m-0 pl-5 list-disc">
+          {% for b in version.body.situation %}<li class="text-sm">{{ b }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    {% if !version.body.task.is_empty() %}
+      <div>
+        <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Task</div>
+        <ul class="grid gap-1 m-0 pl-5 list-disc">
+          {% for b in version.body.task %}<li class="text-sm">{{ b }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    {% if !version.body.action.is_empty() %}
+      <div>
+        <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Action</div>
+        <ul class="grid gap-1 m-0 pl-5 list-disc">
+          {% for b in version.body.action %}<li class="text-sm">{{ b }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    {% if !version.body.result.is_empty() %}
+      <div>
+        <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Result</div>
+        <ul class="grid gap-1 m-0 pl-5 list-disc">
+          {% for b in version.body.result %}<li class="text-sm">{{ b }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    {% if !version.body.reflection.is_empty() %}
+      <div>
+        <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Reflection (+)</div>
+        <ul class="grid gap-1 m-0 pl-5 list-disc">
+          {% for b in version.body.reflection %}<li class="text-sm">{{ b }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -3,6 +3,11 @@
 
 {% block title %}{{ name }} — prompts{% endblock %}
 
+{% block breadcrumbs %}
+  <a href="/prompts">Prompts</a>
+  <span>{{ name }}</span>
+{% endblock %}
+
 {% block content %}
 <div class="grid gap-5">
   <div class="flex items-start justify-between gap-4">
@@ -27,12 +32,12 @@
 
   <form method="post" action="/prompts/{{ name }}" class="grid gap-3">
     <textarea name="body" spellcheck="false" class="min-h-[60vh]">{{ body }}</textarea>
-    <div class="flex gap-3 items-center">
+    <div class="flex gap-3 items-center justify-between">
+      <span class="muted-soft text-xs">Saving creates a new version — your earlier text stays in history.</span>
       <button type="submit" class="btn btn-primary btn-icon-spring">
         <span class="btn-icon"><i data-lucide="save" class="h-4 w-4"></i></span>
         <span>Save as new version</span>
       </button>
-      <span class="muted-soft text-xs">Saving creates a new version — your earlier text stays in history.</span>
     </div>
   </form>
 </div>

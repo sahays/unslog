@@ -3,6 +3,8 @@
 
 {% block title %}Settings — unslog{% endblock %}
 
+{% block breadcrumbs %}<span>Settings</span>{% endblock %}
+
 {% block content %}
 <div class="grid gap-5">
   <div class="flex items-center justify-between gap-4">
@@ -88,6 +90,22 @@
       </select>
     </section>
 
+    <section class="grid gap-1.5">
+      <label for="lite_model">Lite model</label>
+      <p class="muted-soft text-xs">
+        Cheap fast model used for question categorization and session curation.
+        Pick one of the small variants — <code class="font-mono">google/gemini-2.5-flash</code>,
+        <code class="font-mono">openai/gpt-4o-mini</code>, <code class="font-mono">anthropic/claude-haiku-4.5</code>,
+        or <code class="font-mono">deepseek/deepseek-chat</code>.
+      </p>
+      <select id="lite_model" name="lite_model" data-n-select data-allow-custom required>
+        <option value="">Pick a model…</option>
+        {% for m in chat_models %}
+          <option value="{{ m.id }}"{% if m.id == settings.lite_model %} selected{% endif %}>{{ m.id }}</option>
+        {% endfor %}
+      </select>
+    </section>
+
     <div class="grid gap-3 grid-cols-1 sm:grid-cols-2">
       <section class="grid gap-1.5">
         <label for="tts_voice">TTS voice</label>
@@ -103,14 +121,14 @@
       </section>
     </div>
 
-    <div class="flex items-center gap-3 mt-2">
+    <div class="flex items-center justify-between gap-3 mt-2">
+      <span class="muted-soft text-xs">
+        Last updated {{ settings.updated_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+      </span>
       <button type="submit" class="btn btn-primary btn-icon-spring">
         <span class="btn-icon"><i data-lucide="save" class="h-4 w-4"></i></span>
         <span>Save settings</span>
       </button>
-      <span class="muted-soft text-xs">
-        Last updated {{ settings.updated_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
-      </span>
     </div>
   </form>
 </div>

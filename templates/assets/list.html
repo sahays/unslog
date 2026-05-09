@@ -3,6 +3,8 @@
 
 {% block title %}Assets — unslog{% endblock %}
 
+{% block breadcrumbs %}<span>Assets</span>{% endblock %}
+
 {% block content %}
 <div class="grid gap-6">
   <div class="card">
@@ -27,7 +29,7 @@
         <label for="asset_file">PDF file</label>
         <input type="file" id="asset_file" name="file" accept="application/pdf,.pdf" required />
       </div>
-      <div>
+      <div class="flex justify-end">
         <button type="submit" class="btn btn-primary btn-icon-spring">
           <span class="btn-icon"><i data-lucide="upload" class="h-4 w-4"></i></span>
           <span>Upload &amp; extract</span>

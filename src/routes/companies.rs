@@ -8,8 +8,10 @@ use mongodb::options::FindOptions;
 use serde::Deserialize;
 
 use crate::error::AppError;
-use crate::models::{Company, Evaluation, QuestionBank, QuestionSource, Session, Summary};
-use crate::services::{question_bank, research, summary as summary_svc};
+use crate::models::{Company, Evaluation, Question, QuestionSource, Session, Summary};
+use crate::services::{
+    categorize, category_store, questions, research, settings_store, summary as summary_svc,
+};
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -23,6 +25,7 @@ pub fn routes() -> Router<AppState> {
             "/companies/:id/questions/:qid/delete",
             post(delete_question),
         )
+        .route("/companies/:id/questions/:qid/edit", post(edit_question))
 }
 
 #[derive(Template)]
@@ -30,6 +33,14 @@ pub fn routes() -> Router<AppState> {
 struct ListTemplate {
     companies: Vec<Company>,
     openrouter_configured: bool,
+    role_options: Vec<(&'static str, &'static str)>,
+}
+
+fn role_options() -> Vec<(&'static str, &'static str)> {
+    crate::models::Role::ALL
+        .iter()
+        .map(|r| (r.as_str(), r.display_name()))
+        .collect()
 }
 
 async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
@@ -42,6 +53,7 @@ async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let body = ListTemplate {
         companies,
         openrouter_configured: state.openrouter.configured(),
+        role_options: role_options(),
     }
     .render()
     .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
@@ -52,6 +64,11 @@ async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
 pub struct NewCompanyForm {
     pub name: String,
     pub role: String,
+    /// Canonical role bucket — string form like "solutions_architect".
+    /// Optional in Phase 1 (defaults to SolutionsArchitect); Phase 4 makes
+    /// the form's dropdown render and require it.
+    #[serde(default)]
+    pub canonical_role: String,
 }
 
 async fn create(
@@ -63,9 +80,11 @@ async fn create(
     if name.is_empty() || role.is_empty() {
         return Err(AppError::BadRequest("name and role are required".into()));
     }
+    let canonical_role = crate::models::Role::parse(form.canonical_role.trim())
+        .unwrap_or(crate::models::Role::SolutionsArchitect);
 
     let coll = crate::db::companies(&state.db);
-    let mut company = Company::new(name.clone(), role.clone());
+    let mut company = Company::new(name.clone(), role.clone(), canonical_role);
 
     // Run research synchronously — single user, expected to wait. Failures
     // become a packet-less company; user can hit "refresh packet" to retry.
@@ -82,14 +101,30 @@ async fn create(
     };
 
     coll.insert_one(&company).await?;
-    question_bank::ensure_for(&state.db, &company.id).await?;
     let agent_questions_n = agent_questions.len();
     if !agent_questions.is_empty() {
-        question_bank::append_questions(
+        // Categorize via lite_model — best-effort. Untagged questions still land.
+        let settings = settings_store::load(&state.db).await?;
+        let canonical = category_store::list_all(&state.db).await?;
+        let tags = categorize::classify_batch(
+            &state.openrouter,
+            &settings.lite_model,
+            &agent_questions,
+            &canonical,
+        )
+        .await;
+        let by_text: std::collections::HashMap<String, Vec<String>> = agent_questions
+            .iter()
+            .cloned()
+            .zip(tags.into_iter())
+            .collect();
+        questions::append(
             &state.db,
-            &company.id,
             agent_questions,
             QuestionSource::Agent,
+            canonical_role,
+            Some(company.id.clone()),
+            |text| by_text.get(text).cloned().unwrap_or_default(),
         )
         .await?;
     }
@@ -98,6 +133,7 @@ async fn create(
         company_id = %company.id,
         company_name = %company.name,
         role = %company.role,
+        canonical_role = canonical_role.as_str(),
         has_packet = company.research_packet.is_some(),
         agent_questions_n,
         "company created",
@@ -115,20 +151,30 @@ pub struct SessionRow {
 #[template(path = "companies/show.html")]
 struct ShowTemplate {
     company: Company,
-    bank: QuestionBank,
+    questions: Vec<Question>,
     sessions: Vec<SessionRow>,
+    canonical_categories: Vec<crate::models::Category>,
+    role_options: Vec<(&'static str, &'static str)>,
+    edit_qid: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ShowQuery {
+    #[serde(default)]
+    pub edit: Option<String>,
 }
 
 async fn show(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<ShowQuery>,
 ) -> Result<Html<String>, AppError> {
     let coll = crate::db::companies(&state.db);
     let company: Company = coll
         .find_one(bson::doc! { "_id": &id })
         .await?
         .ok_or_else(|| AppError::NotFound(format!("company {id}")))?;
-    let bank = question_bank::ensure_for(&state.db, &id).await?;
+    let questions_list = questions::list_for_company(&state.db, &id).await?;
 
     let opts = FindOptions::builder()
         .sort(bson::doc! { "started_at": -1 })
@@ -157,10 +203,15 @@ async fn show(
         });
     }
 
+    let canonical_categories = category_store::list_all(&state.db).await?;
+
     let body = ShowTemplate {
         company,
-        bank,
+        questions: questions_list,
         sessions,
+        canonical_categories,
+        role_options: role_options(),
+        edit_qid: query.edit,
     }
     .render()
     .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
@@ -188,7 +239,29 @@ async fn add_questions(
             "paste one or more questions, one per line".into(),
         ));
     }
-    question_bank::append_questions(&state.db, &id, lines, QuestionSource::Uploaded).await?;
+    let company: Company = crate::db::companies(&state.db)
+        .find_one(bson::doc! { "_id": &id })
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("company {id}")))?;
+
+    // Tag pasted questions via lite_model (best-effort).
+    let settings = settings_store::load(&state.db).await?;
+    let canonical = category_store::list_all(&state.db).await?;
+    let tags =
+        categorize::classify_batch(&state.openrouter, &settings.lite_model, &lines, &canonical)
+            .await;
+    let by_text: std::collections::HashMap<String, Vec<String>> =
+        lines.iter().cloned().zip(tags.into_iter()).collect();
+
+    questions::append(
+        &state.db,
+        lines,
+        QuestionSource::Uploaded,
+        company.canonical_role,
+        Some(id.clone()),
+        |text| by_text.get(text).cloned().unwrap_or_default(),
+    )
+    .await?;
     Ok(Redirect::to(&format!("/companies/{id}")).into_response())
 }
 
@@ -196,7 +269,51 @@ async fn delete_question(
     State(state): State<AppState>,
     Path((id, qid)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    question_bank::delete_question(&state.db, &id, &qid).await?;
+    questions::delete(&state.db, &qid).await?;
+    Ok(Redirect::to(&format!("/companies/{id}")).into_response())
+}
+
+#[derive(Deserialize)]
+pub struct EditQuestionForm {
+    pub text: String,
+    pub role: String,
+    /// Comma-separated list of category IDs (form-encoded as repeated
+    /// "categories" entries from a checkbox group).
+    #[serde(default)]
+    pub categories: Vec<String>,
+}
+
+async fn edit_question(
+    State(state): State<AppState>,
+    Path((id, qid)): Path<(String, String)>,
+    Form(form): Form<EditQuestionForm>,
+) -> Result<Response, AppError> {
+    let text = form.text.trim().to_string();
+    if text.is_empty() {
+        return Err(AppError::BadRequest("question text is required".into()));
+    }
+    let role = crate::models::Role::parse(form.role.trim())
+        .ok_or_else(|| AppError::BadRequest(format!("unknown role {}", form.role)))?;
+
+    // Filter categories to known IDs only.
+    let canonical = category_store::list_all(&state.db).await?;
+    let valid: std::collections::HashSet<String> = canonical.iter().map(|c| c.id.clone()).collect();
+    let categories: Vec<String> = form
+        .categories
+        .into_iter()
+        .map(|c| c.trim().to_string())
+        .filter(|c| valid.contains(c))
+        .collect();
+
+    questions::update(&state.db, &qid, &text, role, &categories).await?;
+    tracing::info!(
+        event = "question.edit",
+        company_id = %id,
+        question_id = %qid,
+        role = role.as_str(),
+        categories_n = categories.len(),
+        "question edited",
+    );
     Ok(Redirect::to(&format!("/companies/{id}")).into_response())
 }
 
@@ -212,16 +329,57 @@ async fn refresh_packet(
 
     let packet = research::run(&state.openrouter, &state.db, &company.name, &company.role).await?;
 
+    // Capture sample questions for tagging before the packet gets moved into BSON.
+    let sample_questions = packet.sample_questions.clone();
+
     coll.update_one(
         bson::doc! { "_id": &id },
         bson::doc! {
             "$set": {
                 "research_packet": bson::to_bson(&packet)?,
-                "updated_at": bson::DateTime::now(),
+                // Match the datetime_compat serializer (RFC 3339 string).
+                "updated_at": chrono::Utc::now().to_rfc3339(),
             }
         },
     )
     .await?;
+
+    // Append + categorize new sample questions, but skip ones whose text is
+    // already saved (so user edits + tags survive a refresh).
+    if !sample_questions.is_empty() {
+        let existing = questions::list_for_company(&state.db, &id).await?;
+        let existing_texts: std::collections::HashSet<String> =
+            existing.iter().map(|q| q.text.clone()).collect();
+        let new_questions: Vec<String> = sample_questions
+            .into_iter()
+            .filter(|q| !existing_texts.contains(q))
+            .collect();
+        if !new_questions.is_empty() {
+            let settings = settings_store::load(&state.db).await?;
+            let canonical = category_store::list_all(&state.db).await?;
+            let tags = categorize::classify_batch(
+                &state.openrouter,
+                &settings.lite_model,
+                &new_questions,
+                &canonical,
+            )
+            .await;
+            let by_text: std::collections::HashMap<String, Vec<String>> = new_questions
+                .iter()
+                .cloned()
+                .zip(tags.into_iter())
+                .collect();
+            questions::append(
+                &state.db,
+                new_questions,
+                QuestionSource::Agent,
+                company.canonical_role,
+                Some(id.clone()),
+                |text| by_text.get(text).cloned().unwrap_or_default(),
+            )
+            .await?;
+        }
+    }
 
     Ok(Redirect::to(&format!("/companies/{id}")).into_response())
 }
@@ -232,5 +390,12 @@ async fn delete(
 ) -> Result<Response, AppError> {
     let coll = crate::db::companies(&state.db);
     coll.delete_one(bson::doc! { "_id": &id }).await?;
+    let removed = questions::delete_for_company(&state.db, &id).await?;
+    tracing::info!(
+        event = "company.delete",
+        company_id = %id,
+        questions_removed = removed,
+        "company deleted, questions cascaded",
+    );
     Ok(Redirect::to("/companies").into_response())
 }
