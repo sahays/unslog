@@ -3,10 +3,10 @@
 use std::path::PathBuf;
 
 use crate::error::AppError;
-use crate::services::openrouter::OpenRouter;
+use crate::services::openrouter::LlmClient;
 
 pub async fn synthesize(
-    or: &OpenRouter,
+    or: &dyn LlmClient,
     model: &str,
     voice: &str,
     text: &str,

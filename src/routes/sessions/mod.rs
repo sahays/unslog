@@ -86,7 +86,7 @@ async fn tts_to(
         &session.model_snapshot.tts_voice
     };
     let path = tts::synthesize(
-        &state.openrouter,
+        &*state.openrouter,
         &session.model_snapshot.tts,
         voice,
         text,
@@ -131,8 +131,9 @@ async fn end(State(state): State<AppState>, Path(id): Path<String>) -> Result<Re
         );
         // Best-effort: if the LLM call fails (no key, model down), still let
         // the session end so the user isn't stuck with an unkillable session.
+        let summary_ctx = summary::SummaryCtx { db: &state.db };
         if let Err(e) =
-            summary::generate_and_save(&state.openrouter, &state.db, &session, &company).await
+            summary::generate_and_save(&summary_ctx, &*state.openrouter, &session, &company).await
         {
             tracing::warn!(error = %e, session_id = %id, "summary generation failed; ending session anyway");
         }

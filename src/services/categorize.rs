@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::models::Category;
-use crate::services::openrouter::{parse_json, ChatMessage, OpenRouter};
+use crate::services::openrouter::{parse_json, ChatMessage, LlmClient};
 
 #[derive(Debug, Deserialize)]
 struct ClassificationItem {
@@ -32,7 +32,7 @@ struct ClassificationOutput {
 /// input question, in order. On any failure (LLM, parse, etc.) returns
 /// empty vectors — caller should treat that as "untagged" and continue.
 pub async fn classify_batch(
-    or: &OpenRouter,
+    or: &dyn LlmClient,
     lite_model: &str,
     questions: &[String],
     canonical: &[Category],
@@ -68,7 +68,7 @@ pub async fn classify_batch(
 }
 
 async fn try_classify_batch(
-    or: &OpenRouter,
+    or: &dyn LlmClient,
     lite_model: &str,
     questions: &[String],
     canonical: &[Category],

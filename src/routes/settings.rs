@@ -47,7 +47,7 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
 
     let (mut chat_models, mut audio_in_models, mut audio_out_models, models_error) =
         if state.openrouter.configured() {
-            match state.models_cache.get(&state.openrouter).await {
+            match state.models_cache.get(&*state.openrouter).await {
                 Ok(all) => {
                     let chat: Vec<_> = all
                         .iter()

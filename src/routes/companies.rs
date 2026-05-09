@@ -88,7 +88,7 @@ async fn create(
 
     // Run research synchronously — single user, expected to wait. Failures
     // become a packet-less company; user can hit "refresh packet" to retry.
-    let agent_questions = match research::run(&state.openrouter, &state.db, &name, &role).await {
+    let agent_questions = match research::run(&*state.openrouter, &state.db, &name, &role).await {
         Ok(packet) => {
             let qs = packet.sample_questions.clone();
             company.research_packet = Some(packet);
@@ -104,7 +104,7 @@ async fn create(
     let agent_questions_n = agent_questions.len();
     questions::categorize_and_append(
         &state.db,
-        &state.openrouter,
+        &*state.openrouter,
         agent_questions,
         QuestionSource::Agent,
         canonical_role,
@@ -247,7 +247,7 @@ async fn add_questions(
 
     questions::categorize_and_append(
         &state.db,
-        &state.openrouter,
+        &*state.openrouter,
         lines,
         QuestionSource::Uploaded,
         company.canonical_role,
@@ -319,7 +319,7 @@ async fn refresh_packet(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("company {id}")))?;
 
-    let packet = research::run(&state.openrouter, &state.db, &company.name, &company.role).await?;
+    let packet = research::run(&*state.openrouter, &state.db, &company.name, &company.role).await?;
 
     // Capture sample questions for tagging before the packet gets moved into BSON.
     let sample_questions = packet.sample_questions.clone();
@@ -348,7 +348,7 @@ async fn refresh_packet(
             .collect();
         questions::categorize_and_append(
             &state.db,
-            &state.openrouter,
+            &*state.openrouter,
             new_questions,
             QuestionSource::Agent,
             company.canonical_role,

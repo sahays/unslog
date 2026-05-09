@@ -12,7 +12,7 @@ use serde::Deserialize;
 use tokio::sync::Mutex;
 
 use crate::error::AppError;
-use crate::services::openrouter::OpenRouter;
+use crate::services::openrouter::LlmClient;
 
 const CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 
@@ -80,7 +80,7 @@ impl ModelsCache {
     /// Returns models, refreshing if the cache is empty or expired. On a
     /// network error with no prior cache, surfaces the error; if there's a
     /// stale cache we keep using it and log the failure.
-    pub async fn get(&self, or: &OpenRouter) -> Result<Vec<ModelInfo>, AppError> {
+    pub async fn get(&self, or: &dyn LlmClient) -> Result<Vec<ModelInfo>, AppError> {
         {
             let guard = self.inner.lock().await;
             if let Some(entry) = guard.as_ref() {
@@ -117,7 +117,7 @@ impl ModelsCache {
     }
 }
 
-async fn fetch_models(or: &OpenRouter) -> Result<Vec<ModelInfo>, AppError> {
+async fn fetch_models(or: &dyn LlmClient) -> Result<Vec<ModelInfo>, AppError> {
     let raw = or.list_models_raw().await?;
     let parsed: ModelsResponse = serde_json::from_value(raw)
         .map_err(|e| AppError::Upstream(format!("/models parse: {e}")))?;

@@ -19,7 +19,7 @@ pub struct AppState {
     pub config: Arc<AppConfig>,
     pub db: Database,
     pub http: reqwest::Client,
-    pub openrouter: crate::services::openrouter::OpenRouter,
+    pub openrouter: Arc<dyn crate::services::openrouter::LlmClient>,
     pub models_cache: crate::services::openrouter_models::ModelsCache,
     pub book_cache: crate::services::assets::BookCache,
 }
@@ -45,10 +45,11 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| anyhow::anyhow!("reqwest client: {e}"))?;
-    let openrouter = crate::services::openrouter::OpenRouter::new(
-        http.clone(),
-        config.openrouter_api_key.clone(),
-    );
+    let openrouter: Arc<dyn crate::services::openrouter::LlmClient> =
+        Arc::new(crate::services::openrouter::OpenRouter::new(
+            http.clone(),
+            config.openrouter_api_key.clone(),
+        ));
     let state = AppState {
         config: Arc::new(config),
         db,

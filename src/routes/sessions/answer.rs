@@ -58,10 +58,13 @@ pub(super) async fn submit_answer(
     .map(|s| s.narrative)
     .collect();
 
+    let critique_ctx = critique::CritiqueCtx {
+        db: &state.db,
+        book_cache: &state.book_cache,
+    };
     let critique = critique::run(
-        &state.openrouter,
-        &state.db,
-        &state.book_cache,
+        &critique_ctx,
+        &*state.openrouter,
         &session,
         &company,
         &qtext,
@@ -143,7 +146,7 @@ pub(super) async fn transcribe(
     }
 
     let (audio_path, transcript) = stt::save_and_transcribe(
-        &state.openrouter,
+        &*state.openrouter,
         &session.model_snapshot.stt,
         &state.config.data_dir,
         &session.company_id,

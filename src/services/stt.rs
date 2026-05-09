@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use crate::error::AppError;
-use crate::services::openrouter::OpenRouter;
+use crate::services::openrouter::LlmClient;
 
 pub fn audio_path_for(
     data_dir: &str,
@@ -17,7 +17,7 @@ pub fn audio_path_for(
 }
 
 pub async fn save_and_transcribe(
-    or: &OpenRouter,
+    or: &dyn LlmClient,
     model: &str,
     data_dir: &str,
     company_id: &str,

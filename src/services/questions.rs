@@ -12,7 +12,7 @@ use crate::error::AppError;
 use crate::models::{Question, QuestionSource, Role};
 use crate::services::categorize;
 use crate::services::category_store;
-use crate::services::openrouter::OpenRouter;
+use crate::services::openrouter::LlmClient;
 use crate::services::settings_store;
 
 fn coll(db: &Database) -> Collection<Question> {
@@ -139,7 +139,7 @@ pub fn pick_random<'a>(pool: &'a [Question], seen: &HashSet<String>) -> Option<&
 /// shape, so it lives here. Returns the number of questions inserted.
 pub async fn categorize_and_append(
     db: &Database,
-    openrouter: &OpenRouter,
+    openrouter: &dyn LlmClient,
     texts: Vec<String>,
     source: QuestionSource,
     role: Role,

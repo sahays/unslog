@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::models::company::{ResearchPacket, ResearchSource};
-use crate::services::openrouter::{self, parse_json, ChatMessage, OpenRouter};
+use crate::services::openrouter::{self, parse_json, ChatMessage, LlmClient};
 use crate::services::{prompt_store, settings_store};
 
 #[derive(Debug, Deserialize)]
@@ -19,7 +19,7 @@ struct AgentOutput {
 }
 
 pub async fn run(
-    or: &OpenRouter,
+    or: &dyn LlmClient,
     db: &mongodb::Database,
     company_name: &str,
     role: &str,

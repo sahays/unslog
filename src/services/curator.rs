@@ -16,7 +16,7 @@ use serde::Deserialize;
 use crate::error::AppError;
 use crate::models::{Category, Question, Role, Session, SessionStatus, Summary};
 use crate::services::category_store;
-use crate::services::openrouter::{parse_json, ChatMessage, OpenRouter};
+use crate::services::openrouter::{parse_json, ChatMessage, LlmClient};
 use crate::services::questions;
 
 const TARGET_MIN: usize = 4;
@@ -42,7 +42,7 @@ struct CuratorJson {
 
 /// Pick the curated session for a (role, selected_companies) tuple.
 pub async fn curate(
-    or: &OpenRouter,
+    or: &dyn LlmClient,
     db: &Database,
     lite_model: &str,
     role: Role,
@@ -213,7 +213,7 @@ async fn recently_asked_ids(
 }
 
 async fn try_llm_curate(
-    or: &OpenRouter,
+    or: &dyn LlmClient,
     lite_model: &str,
     pool: &[PoolItem],
     recent_summaries: &[Summary],

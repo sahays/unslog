@@ -61,3 +61,8 @@ rand = "0.8"
 pulldown-cmark = { version = "0.10", default-features = false, features = ["html"] }
 ammonia = "4"
 
+[dev-dependencies]
+# Auto-generated mocks for trait-based DB and LLM seams.
+mockall = "0.12"
+# tempdir helper for tests that need a real filesystem path.
+tempfile = "3"

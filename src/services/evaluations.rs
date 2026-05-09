@@ -7,32 +7,70 @@
 
 use std::collections::HashMap;
 
+use async_trait::async_trait;
 use futures::TryStreamExt;
 use mongodb::Database;
 
 use crate::error::AppError;
 use crate::models::{Attempt, Evaluation, Session};
 
+/// Persistence seam for [`load_or_create`] and [`commit_attempt`]. Production
+/// impl is the inherent `mongodb::Database`; tests inject a mock generated
+/// by `mockall::automock`.
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait EvalSource: Send + Sync {
+    async fn find(
+        &self,
+        session_id: &str,
+        question_id: &str,
+    ) -> Result<Option<Evaluation>, AppError>;
+
+    /// First attempt inserts the row; subsequent attempts replace it.
+    async fn upsert(&self, eval: &Evaluation) -> Result<(), AppError>;
+}
+
+#[async_trait]
+impl EvalSource for Database {
+    async fn find(
+        &self,
+        session_id: &str,
+        question_id: &str,
+    ) -> Result<Option<Evaluation>, AppError> {
+        Ok(self
+            .collection::<Evaluation>(Evaluation::COLLECTION)
+            .find_one(bson::doc! { "session_id": session_id, "question_id": question_id })
+            .await?)
+    }
+
+    async fn upsert(&self, eval: &Evaluation) -> Result<(), AppError> {
+        let coll = self.collection::<Evaluation>(Evaluation::COLLECTION);
+        if eval.attempts.len() == 1 {
+            coll.insert_one(eval).await?;
+        } else {
+            coll.replace_one(bson::doc! { "_id": &eval.id }, eval)
+                .await?;
+        }
+        Ok(())
+    }
+}
+
 /// Load the eval row for `(session, qid)` or build a fresh one. Returns the
 /// row and the attempt number the next push should use.
 pub async fn load_or_create(
-    db: &Database,
+    deps: &dyn EvalSource,
     session: &Session,
     qid: &str,
     qtext: &str,
 ) -> Result<(Evaluation, u32), AppError> {
-    let coll = db.collection::<Evaluation>(Evaluation::COLLECTION);
-    let eval = coll
-        .find_one(bson::doc! { "session_id": &session.id, "question_id": qid })
-        .await?
-        .unwrap_or_else(|| {
-            Evaluation::new(
-                session.id.clone(),
-                session.company_id.clone(),
-                qid.to_string(),
-                qtext.to_string(),
-            )
-        });
+    let eval = deps.find(&session.id, qid).await?.unwrap_or_else(|| {
+        Evaluation::new(
+            session.id.clone(),
+            session.company_id.clone(),
+            qid.to_string(),
+            qtext.to_string(),
+        )
+    });
     let attempt_n = (eval.attempts.len() as u32) + 1;
     Ok((eval, attempt_n))
 }
@@ -40,18 +78,12 @@ pub async fn load_or_create(
 /// Push `attempt` onto `eval` and persist. First attempt inserts the row;
 /// subsequent attempts replace it.
 pub async fn commit_attempt(
-    db: &Database,
+    deps: &dyn EvalSource,
     mut eval: Evaluation,
     attempt: Attempt,
 ) -> Result<(), AppError> {
     eval.attempts.push(attempt);
-    let coll = db.collection::<Evaluation>(Evaluation::COLLECTION);
-    if eval.attempts.len() == 1 {
-        coll.insert_one(&eval).await?;
-    } else {
-        coll.replace_one(bson::doc! { "_id": &eval.id }, &eval)
-            .await?;
-    }
+    deps.upsert(&eval).await?;
     Ok(())
 }
 
@@ -88,4 +120,112 @@ pub async fn counts_by_session(
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{ModelSnapshot, PromptSnapshot, Role, SessionStatus};
+    use mockall::predicate;
+
+    fn fixture_session() -> Session {
+        Session {
+            id: "sess-1".into(),
+            company_id: "co-1".into(),
+            role: Role::ProductManager,
+            selected_company_ids: vec!["co-1".into()],
+            curated_question_ids: vec![],
+            focus_line: String::new(),
+            started_at: chrono::Utc::now(),
+            ended_at: None,
+            status: SessionStatus::Active,
+            model_snapshot: ModelSnapshot {
+                stt: "stt".into(),
+                tts: "tts".into(),
+                critique: "c".into(),
+                research: "r".into(),
+                tts_voice: "alloy".into(),
+                tts_speed: Some(1.0),
+                lite: "l".into(),
+            },
+            prompt_snapshot: PromptSnapshot {
+                critique: "p-c".into(),
+                summary: "p-s".into(),
+            },
+            voice_critique_enabled: false,
+            current_question_id: None,
+            current_question_text: None,
+            current_question_audio_path: None,
+        }
+    }
+
+    fn eval_with_attempts(n: u32) -> Evaluation {
+        let attempts: Vec<Attempt> = (1..=n)
+            .map(|i| Attempt {
+                attempt_n: i,
+                answer_audio_path: None,
+                answer_transcript: format!("a{i}"),
+                critique: None,
+                critique_audio_path: None,
+                created_at: chrono::Utc::now(),
+            })
+            .collect();
+        Evaluation {
+            id: "eval-x".into(),
+            session_id: "sess-1".into(),
+            company_id: "co-1".into(),
+            question_id: "q-1".into(),
+            question_text: "tell me a time...".into(),
+            attempts,
+        }
+    }
+
+    #[tokio::test]
+    async fn case_load_or_create_returns_existing() {
+        // Existing eval with 2 attempts → next attempt_n should be 3.
+        let mut deps = MockEvalSource::new();
+        deps.expect_find()
+            .with(predicate::eq("sess-1"), predicate::eq("q-1"))
+            .times(1)
+            .returning(|_, _| Ok(Some(eval_with_attempts(2))));
+
+        let session = fixture_session();
+        let (eval, attempt_n) = load_or_create(&deps, &session, "q-1", "ignored")
+            .await
+            .expect("ok");
+        assert_eq!(eval.attempts.len(), 2);
+        assert_eq!(attempt_n, 3);
+    }
+
+    #[tokio::test]
+    async fn case_load_or_create_creates_when_missing() {
+        // Nothing on disk → returns a fresh Evaluation, attempts empty,
+        // attempt_n == 1.
+        let mut deps = MockEvalSource::new();
+        deps.expect_find().times(1).returning(|_, _| Ok(None));
+
+        let session = fixture_session();
+        let (eval, attempt_n) = load_or_create(&deps, &session, "q-new", "fresh question")
+            .await
+            .expect("ok");
+        assert!(eval.attempts.is_empty());
+        assert_eq!(attempt_n, 1);
+        assert_eq!(eval.session_id, "sess-1");
+        assert_eq!(eval.question_id, "q-new");
+        assert_eq!(eval.question_text, "fresh question");
+    }
+
+    #[tokio::test]
+    async fn case_load_or_create_propagates_error() {
+        let mut deps = MockEvalSource::new();
+        deps.expect_find()
+            .times(1)
+            .returning(|_, _| Err(AppError::Other(anyhow::anyhow!("db down"))));
+
+        let session = fixture_session();
+        let err = load_or_create(&deps, &session, "q-1", "x")
+            .await
+            .expect_err("expected error");
+        assert!(matches!(err, AppError::Other(_)));
+    }
 }

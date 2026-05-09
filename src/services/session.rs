@@ -9,7 +9,7 @@ use mongodb::Database;
 
 use crate::error::AppError;
 use crate::models::{ModelSnapshot, PromptSnapshot, Role, Session, SessionStatus};
-use crate::services::{curator, openrouter::OpenRouter, prompt_store, settings_store};
+use crate::services::{curator, openrouter::LlmClient, prompt_store, settings_store};
 
 pub struct StartInput {
     pub role: Role,
@@ -22,7 +22,11 @@ pub struct StartInput {
 /// Build a fresh `Session` (snapshotting current models + prompt versions),
 /// run the curator to pick questions, and insert. Returns the inserted row.
 /// Routes layer their own logging on top.
-pub async fn start(db: &Database, or: &OpenRouter, input: StartInput) -> Result<Session, AppError> {
+pub async fn start(
+    db: &Database,
+    or: &dyn LlmClient,
+    input: StartInput,
+) -> Result<Session, AppError> {
     let critique_prompt = prompt_store::get_prompt(db, "critique")
         .await?
         .ok_or_else(|| AppError::NotFound("critique prompt".into()))?;

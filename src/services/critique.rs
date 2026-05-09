@@ -1,22 +1,60 @@
 //! Critique pipeline: assemble prompt, call OpenRouter, parse JSON.
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use mongodb::Database;
 
 use crate::error::AppError;
 use crate::models::{Attempt, Company, Critique, Session};
 use crate::services::{
     assets::BookCache,
-    openrouter::{self, ChatMessage, OpenRouter},
+    openrouter::{self, ChatMessage, LlmClient},
     prompt_store,
 };
 
 const MAX_PRIOR_SUMMARIES: usize = 3;
 
+/// Dependencies the critique pipeline needs out of the world: the snapshotted
+/// prompt body and the cached book text. Anything else (the LLM, the company
+/// packet, prior summaries) is passed in by the caller.
+///
+/// Implemented in production by [`CritiqueCtx`] over `(&Database, &BookCache)`,
+/// and mocked in tests via `mockall::automock`.
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait CritiqueDeps: Send + Sync {
+    /// Fetch a critique-prompt version body by ID.
+    async fn get_critique_prompt_body(&self, version_id: &str) -> Result<String, AppError>;
+
+    /// Fetch the cached book text used as `<book_excerpts>`.
+    async fn get_book_text(&self) -> Result<Arc<String>, AppError>;
+}
+
+/// Production impl of [`CritiqueDeps`].
+pub struct CritiqueCtx<'a> {
+    pub db: &'a Database,
+    pub book_cache: &'a BookCache,
+}
+
+#[async_trait]
+impl<'a> CritiqueDeps for CritiqueCtx<'a> {
+    async fn get_critique_prompt_body(&self, version_id: &str) -> Result<String, AppError> {
+        let v = prompt_store::get_version(self.db, version_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("critique prompt version".into()))?;
+        Ok(v.body)
+    }
+
+    async fn get_book_text(&self) -> Result<Arc<String>, AppError> {
+        self.book_cache.get(self.db).await
+    }
+}
+
 /// Build the critique prompt content (system + user messages) for a given attempt.
 #[allow(clippy::too_many_arguments)]
 pub async fn build_messages(
-    db: &Database,
-    book_cache: &BookCache,
+    deps: &dyn CritiqueDeps,
     session: &Session,
     company: &Company,
     question_text: &str,
@@ -25,12 +63,12 @@ pub async fn build_messages(
     prior_summary_narratives: &[String],
 ) -> Result<Vec<ChatMessage>, AppError> {
     // 1. System message — load by version_id from the session snapshot.
-    let critique_prompt = prompt_store::get_version(db, &session.prompt_snapshot.critique)
-        .await?
-        .ok_or_else(|| AppError::NotFound("critique prompt version".into()))?;
+    let critique_prompt_body = deps
+        .get_critique_prompt_body(&session.prompt_snapshot.critique)
+        .await?;
 
     // 2. Book excerpts — primary asset's extracted text (cached).
-    let book = book_cache.get(db).await?;
+    let book = deps.get_book_text().await?;
 
     // 3. Company packet
     let packet_str = render_packet(company);
@@ -100,16 +138,15 @@ This is attempt {next_attempt_n}. Produce the critique now. Return only the JSON
     );
 
     Ok(vec![
-        ChatMessage::system(critique_prompt.body),
+        ChatMessage::system(critique_prompt_body),
         ChatMessage::user(user),
     ])
 }
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
-    or: &OpenRouter,
-    db: &Database,
-    book_cache: &BookCache,
+    deps: &dyn CritiqueDeps,
+    or: &dyn LlmClient,
     session: &Session,
     company: &Company,
     question_text: &str,
@@ -129,8 +166,7 @@ pub async fn run(
     let start = std::time::Instant::now();
 
     let messages = build_messages(
-        db,
-        book_cache,
+        deps,
         session,
         company,
         question_text,
@@ -183,5 +219,151 @@ fn render_packet(company: &Company) -> String {
                 .join("\n"),
         ),
         None => format!("{header}\n(no research packet — proceed with role-name signal only)"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{ModelSnapshot, PromptSnapshot, Role, SessionStatus};
+    use crate::services::openrouter::MockLlmClient;
+    use mockall::predicate;
+
+    fn fixture_session() -> Session {
+        Session {
+            id: "sess-1".to_string(),
+            company_id: "co-1".to_string(),
+            role: Role::ProductManager,
+            selected_company_ids: vec!["co-1".to_string()],
+            curated_question_ids: vec![],
+            focus_line: String::new(),
+            started_at: chrono::Utc::now(),
+            ended_at: None,
+            status: SessionStatus::Active,
+            model_snapshot: ModelSnapshot {
+                stt: "stt".into(),
+                tts: "tts".into(),
+                critique: "critique-model".into(),
+                research: "research".into(),
+                tts_voice: "alloy".into(),
+                tts_speed: Some(1.0),
+                lite: "lite".into(),
+            },
+            prompt_snapshot: PromptSnapshot {
+                critique: "prompt-v-7".into(),
+                summary: "prompt-v-8".into(),
+            },
+            voice_critique_enabled: false,
+            current_question_id: None,
+            current_question_text: None,
+            current_question_audio_path: None,
+        }
+    }
+
+    fn fixture_company() -> Company {
+        let now = chrono::Utc::now();
+        Company {
+            id: "co-1".into(),
+            name: "Acme".into(),
+            role: "PM".into(),
+            canonical_role: Role::ProductManager,
+            research_packet: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[tokio::test]
+    async fn case_run_parses_critique_json() {
+        let mut deps = MockCritiqueDeps::new();
+        deps.expect_get_critique_prompt_body()
+            .with(predicate::eq("prompt-v-7"))
+            .times(1)
+            .returning(|_| Ok("be a critic".to_string()));
+        deps.expect_get_book_text()
+            .times(1)
+            .returning(|| Ok(Arc::new("BOOK".to_string())));
+
+        let mut llm = MockLlmClient::new();
+        llm.expect_chat()
+            .with(
+                predicate::eq("critique-model"),
+                predicate::always(),
+                predicate::eq(true),
+            )
+            .times(1)
+            .returning(|_, _, _| {
+                Ok(r#"```json
+{
+  "scores": {"specificity": 4, "role_clarity": 3, "star_plus_structure": 4, "pitfalls_avoided": 3, "company_fit": 5},
+  "narrative": "solid attempt",
+  "citations": [],
+  "improved_vs_prior": ""
+}
+```"#
+                    .to_string())
+            });
+
+        let session = fixture_session();
+        let company = fixture_company();
+        let out = run(
+            &deps,
+            &llm,
+            &session,
+            &company,
+            "tell me about a time...",
+            "i did the thing",
+            &[],
+            &[],
+        )
+        .await
+        .expect("run should succeed");
+
+        assert_eq!(out.scores.specificity, 4);
+        assert_eq!(out.scores.company_fit, Some(5));
+        assert_eq!(out.narrative, "solid attempt");
+    }
+
+    #[tokio::test]
+    async fn case_run_propagates_llm_error() {
+        let mut deps = MockCritiqueDeps::new();
+        deps.expect_get_critique_prompt_body()
+            .returning(|_| Ok("p".to_string()));
+        deps.expect_get_book_text()
+            .returning(|| Ok(Arc::new("b".to_string())));
+
+        let mut llm = MockLlmClient::new();
+        llm.expect_chat()
+            .returning(|_, _, _| Err(AppError::Upstream("boom".into())));
+
+        let session = fixture_session();
+        let company = fixture_company();
+        let err = run(&deps, &llm, &session, &company, "q", "a", &[], &[])
+            .await
+            .expect_err("expected upstream error");
+        assert!(matches!(err, AppError::Upstream(_)));
+    }
+
+    #[tokio::test]
+    async fn case_run_returns_parse_error_on_garbage() {
+        let mut deps = MockCritiqueDeps::new();
+        deps.expect_get_critique_prompt_body()
+            .returning(|_| Ok("p".to_string()));
+        deps.expect_get_book_text()
+            .returning(|| Ok(Arc::new("b".to_string())));
+
+        let mut llm = MockLlmClient::new();
+        llm.expect_chat()
+            .returning(|_, _, _| Ok("not json at all".to_string()));
+
+        let session = fixture_session();
+        let company = fixture_company();
+        let err = run(&deps, &llm, &session, &company, "q", "a", &[], &[])
+            .await
+            .expect_err("expected parse error");
+        let msg = err.to_string();
+        // The function maps the parse error into an Upstream that contains a
+        // preview of the raw garbage — pin that contract.
+        assert!(msg.contains("invalid JSON"), "got: {msg}");
     }
 }
