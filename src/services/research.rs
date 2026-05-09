@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::models::company::{ResearchPacket, ResearchSource};
-use crate::services::openrouter::{parse_json, ChatMessage, OpenRouter};
+use crate::services::openrouter::{self, parse_json, ChatMessage, OpenRouter};
 use crate::services::{prompt_store, settings_store};
 
 #[derive(Debug, Deserialize)]
@@ -52,10 +52,10 @@ pub async fn run(
         .await?;
 
     let out: AgentOutput = parse_json(&raw).map_err(|e| {
-        tracing::warn!(error = %e, raw_preview = %preview(&raw, 240), "research JSON parse failed");
+        tracing::warn!(error = %e, raw_preview = %openrouter::preview(&raw, 240), "research JSON parse failed");
         AppError::Upstream(format!(
             "research agent returned invalid JSON: {e} — raw: {}",
-            preview(&raw, 240)
+            openrouter::preview(&raw, 240)
         ))
     })?;
 
@@ -76,12 +76,4 @@ pub async fn run(
         research_prompt_version_id: prompt.current_version_id,
         last_refreshed_at: chrono::Utc::now(),
     })
-}
-
-fn preview(s: &str, n: usize) -> String {
-    if s.chars().count() <= n {
-        s.to_string()
-    } else {
-        s.chars().take(n).collect::<String>() + "…"
-    }
 }

@@ -3,20 +3,20 @@
 use mongodb::Database;
 
 use crate::error::AppError;
-use crate::models::{Asset, Attempt, Company, Critique, ResearchPacket, Session};
+use crate::models::{Attempt, Company, Critique, Session};
 use crate::services::{
-    assets as asset_svc,
-    openrouter::{ChatMessage, OpenRouter},
+    assets::BookCache,
+    openrouter::{self, ChatMessage, OpenRouter},
     prompt_store,
 };
 
-const MAX_BOOK_CHARS: usize = 200_000;
 const MAX_PRIOR_SUMMARIES: usize = 3;
 
 /// Build the critique prompt content (system + user messages) for a given attempt.
 #[allow(clippy::too_many_arguments)]
 pub async fn build_messages(
     db: &Database,
+    book_cache: &BookCache,
     session: &Session,
     company: &Company,
     question_text: &str,
@@ -29,8 +29,8 @@ pub async fn build_messages(
         .await?
         .ok_or_else(|| AppError::NotFound("critique prompt version".into()))?;
 
-    // 2. Book excerpts — primary asset's extracted text.
-    let book = load_primary_asset_text(db).await?;
+    // 2. Book excerpts — primary asset's extracted text (cached).
+    let book = book_cache.get(db).await?;
 
     // 3. Company packet
     let packet_str = render_packet(company);
@@ -109,6 +109,7 @@ This is attempt {next_attempt_n}. Produce the critique now. Return only the JSON
 pub async fn run(
     or: &OpenRouter,
     db: &Database,
+    book_cache: &BookCache,
     session: &Session,
     company: &Company,
     question_text: &str,
@@ -129,6 +130,7 @@ pub async fn run(
 
     let messages = build_messages(
         db,
+        book_cache,
         session,
         company,
         question_text,
@@ -143,10 +145,10 @@ pub async fn run(
         .await?;
 
     let critique: Critique = crate::services::openrouter::parse_json(&raw).map_err(|e| {
-        tracing::warn!(error = %e, raw_preview = %preview(&raw, 240), "critique JSON parse failed");
+        tracing::warn!(error = %e, raw_preview = %openrouter::preview(&raw, 240), "critique JSON parse failed");
         AppError::Upstream(format!(
             "critique returned invalid JSON: {e} — raw: {}",
-            preview(&raw, 280)
+            openrouter::preview(&raw, 280)
         ))
     })?;
 
@@ -159,26 +161,6 @@ pub async fn run(
     );
 
     Ok(critique)
-}
-
-async fn load_primary_asset_text(db: &Database) -> Result<String, AppError> {
-    let assets = crate::db::assets(db);
-    let primary = assets
-        .find_one(bson::doc! { "primary": true })
-        .await?
-        .ok_or_else(|| {
-            AppError::BadRequest(
-                "no primary asset configured — upload the book and mark it primary".into(),
-            )
-        })?;
-
-    let text = asset_svc::read_extracted(&primary).await?;
-    if text.chars().count() > MAX_BOOK_CHARS {
-        Ok(text.chars().take(MAX_BOOK_CHARS).collect::<String>()
-            + "\n\n[…truncated for context length]")
-    } else {
-        Ok(text)
-    }
 }
 
 fn render_packet(company: &Company) -> String {
@@ -203,15 +185,3 @@ fn render_packet(company: &Company) -> String {
         None => format!("{header}\n(no research packet — proceed with role-name signal only)"),
     }
 }
-
-fn preview(s: &str, n: usize) -> String {
-    if s.chars().count() <= n {
-        s.to_string()
-    } else {
-        s.chars().take(n).collect::<String>() + "…"
-    }
-}
-
-// (only used for compile-time dependency on Asset — silences "unused import" if any)
-#[allow(dead_code)]
-fn _typecheck(_a: &Asset, _p: &ResearchPacket) {}

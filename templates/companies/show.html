@@ -71,8 +71,9 @@
     {% else %}
       <ul class="grid gap-1.5 list-none p-0 m-0">
         {% for q in questions %}
+          {% let is_editing = edit_qid.as_deref() == Some(q.id.as_str()) %}
           <li class="grid gap-2 p-2 px-3 rounded-md border border-[color:var(--color-border)]">
-            {% if let Some(editing) = edit_qid.as_ref() %}{% if editing.as_str() == q.id.as_str() %}
+            {% if is_editing %}
               <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/edit" class="grid gap-2">
                 <textarea name="text" rows="2" required>{{ q.text }}</textarea>
                 <div class="grid gap-2 grid-cols-1 sm:grid-cols-[max-content_1fr]">
@@ -107,29 +108,6 @@
                 </div>
               </form>
             {% else %}
-              <div class="flex gap-2 items-start">
-                {% match q.source %}
-                  {% when crate::models::QuestionSource::Agent %}{% call ui::badge("agent", "ai") %}
-                  {% when crate::models::QuestionSource::Uploaded %}{% call ui::badge("uploaded", "default") %}
-                {% endmatch %}
-                <span class="flex-1">{{ q.text }}</span>
-                <a class="btn btn-sm btn-ghost" href="/companies/{{ company.id }}?edit={{ q.id }}" title="Edit">
-                  <i data-lucide="pencil" class="h-3.5 w-3.5"></i>
-                </a>
-                <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/delete">
-                  <button type="submit" class="btn btn-sm btn-ghost" title="Delete">
-                    <i data-lucide="x" class="h-3.5 w-3.5"></i>
-                  </button>
-                </form>
-              </div>
-              {% if !q.categories.is_empty() %}
-                <div class="flex gap-1 flex-wrap pl-2">
-                  {% for c in canonical_categories %}{% if q.has_category(c.id.as_str()) %}
-                    <span class="tag tag-accent" title="{{ c.description }}">{{ c.name }}</span>
-                  {% endif %}{% endfor %}
-                </div>
-              {% endif %}
-            {% endif %}{% else %}
               <div class="flex gap-2 items-start">
                 {% match q.source %}
                   {% when crate::models::QuestionSource::Agent %}{% call ui::badge("agent", "ai") %}

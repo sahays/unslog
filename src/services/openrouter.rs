@@ -49,20 +49,33 @@ impl OpenRouter {
         }
     }
 
+    /// Common headers — bearer + the referer/title pair OpenRouter expects.
+    fn auth_get(&self, url: &str) -> Result<reqwest::RequestBuilder, AppError> {
+        let key = self.require_key()?;
+        Ok(self
+            .http
+            .get(url)
+            .bearer_auth(key)
+            .header("HTTP-Referer", "https://github.com/sahays/unslog")
+            .header("X-Title", "unslog"))
+    }
+
+    fn auth_post(&self, url: &str) -> Result<reqwest::RequestBuilder, AppError> {
+        let key = self.require_key()?;
+        Ok(self
+            .http
+            .post(url)
+            .bearer_auth(key)
+            .header("HTTP-Referer", "https://github.com/sahays/unslog")
+            .header("X-Title", "unslog"))
+    }
+
     /// List available models from OpenRouter. Returns the raw `data` array
     /// JSON so callers can parse into their own shape.
     pub async fn list_models_raw(&self) -> Result<serde_json::Value, AppError> {
-        let key = self.require_key()?;
         let url = format!("{BASE_URL}/models");
         let start = Instant::now();
-        let resp = self
-            .http
-            .get(&url)
-            .bearer_auth(key)
-            .header("HTTP-Referer", "https://github.com/sahays/unslog")
-            .header("X-Title", "unslog")
-            .send()
-            .await?;
+        let resp = self.auth_get(&url)?.send().await?;
         let duration_ms = start.elapsed().as_millis() as u64;
         if !resp.status().is_success() {
             let status = resp.status();
@@ -127,8 +140,6 @@ impl OpenRouter {
         messages: Vec<ChatMessage>,
         force_json: bool,
     ) -> Result<String, AppError> {
-        let key = self.require_key()?;
-
         let prompt_chars: usize = messages.iter().map(|m| m.content.chars().count()).sum();
 
         let mut body = serde_json::json!({
@@ -141,15 +152,7 @@ impl OpenRouter {
 
         let url = format!("{BASE_URL}/chat/completions");
         let start = Instant::now();
-        let resp = self
-            .http
-            .post(&url)
-            .bearer_auth(key)
-            .header("HTTP-Referer", "https://github.com/sahays/unslog")
-            .header("X-Title", "unslog")
-            .json(&body)
-            .send()
-            .await?;
+        let resp = self.auth_post(&url)?.json(&body).send().await?;
         let duration_ms = start.elapsed().as_millis() as u64;
 
         if !resp.status().is_success() {
@@ -220,7 +223,6 @@ impl OpenRouter {
         text: &str,
         speed: Option<f32>,
     ) -> Result<bytes::Bytes, AppError> {
-        let key = self.require_key()?;
         let url = format!("{BASE_URL}/audio/speech");
         let input_chars = text.chars().count();
 
@@ -235,15 +237,7 @@ impl OpenRouter {
         }
 
         let start = Instant::now();
-        let resp = self
-            .http
-            .post(&url)
-            .bearer_auth(key)
-            .header("HTTP-Referer", "https://github.com/sahays/unslog")
-            .header("X-Title", "unslog")
-            .json(&body)
-            .send()
-            .await?;
+        let resp = self.auth_post(&url)?.json(&body).send().await?;
         let duration_ms = start.elapsed().as_millis() as u64;
 
         if !resp.status().is_success() {
@@ -278,7 +272,32 @@ impl OpenRouter {
     /// Speech-to-text via chat-with-input_audio. Sends audio base64-encoded
     /// and asks the model to transcribe verbatim. Returns the model's text
     /// output, which we treat as the transcript after a light scrub.
+    /// Retries once on transient body-decode / network errors — same pattern
+    /// as `chat`/`tts`.
     pub async fn stt(
+        &self,
+        model: &str,
+        audio_bytes: &[u8],
+        format: &str,
+    ) -> Result<String, AppError> {
+        match self.stt_once(model, audio_bytes, format).await {
+            Ok(s) => Ok(s),
+            Err(first) => {
+                let retryable = matches!(&first, AppError::Http(_) | AppError::Upstream(_));
+                if !retryable {
+                    return Err(first);
+                }
+                tracing::warn!(
+                    op = "openrouter.stt",
+                    error = %first,
+                    "first STT attempt failed, retrying once",
+                );
+                self.stt_once(model, audio_bytes, format).await
+            }
+        }
+    }
+
+    async fn stt_once(
         &self,
         model: &str,
         audio_bytes: &[u8],
@@ -286,7 +305,6 @@ impl OpenRouter {
     ) -> Result<String, AppError> {
         use base64::engine::general_purpose::STANDARD;
         use base64::Engine;
-        let key = self.require_key()?;
         let audio_len = audio_bytes.len();
 
         let b64 = STANDARD.encode(audio_bytes);
@@ -315,15 +333,7 @@ impl OpenRouter {
         });
 
         let start = Instant::now();
-        let resp = self
-            .http
-            .post(&url)
-            .bearer_auth(key)
-            .header("HTTP-Referer", "https://github.com/sahays/unslog")
-            .header("X-Title", "unslog")
-            .json(&body)
-            .send()
-            .await?;
+        let resp = self.auth_post(&url)?.json(&body).send().await?;
         let duration_ms = start.elapsed().as_millis() as u64;
 
         if !resp.status().is_success() {
@@ -420,4 +430,131 @@ pub fn parse_json<T: for<'de> Deserialize<'de>>(s: &str) -> Result<T, AppError> 
     let inner = unwrap_fenced_json(s);
     let v: Value = serde_json::from_str(inner)?;
     Ok(serde_json::from_value(v)?)
+}
+
+/// Truncate a string to `n` codepoints, appending an ellipsis if cut.
+/// Used by services that log a preview of failing model output.
+pub fn preview(s: &str, n: usize) -> String {
+    if s.chars().count() <= n {
+        s.to_string()
+    } else {
+        s.chars().take(n).collect::<String>() + "…"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── unwrap_fenced_json ───────────────────────────────────────────────
+
+    #[test]
+    fn case_plain_json_passthrough() {
+        assert_eq!(unwrap_fenced_json(r#"{"a":1}"#), r#"{"a":1}"#);
+    }
+
+    #[test]
+    fn case_json_fence_stripped() {
+        let input = "```json\n{\"a\":1}\n```";
+        assert_eq!(unwrap_fenced_json(input), r#"{"a":1}"#);
+    }
+
+    #[test]
+    fn case_bare_fence_stripped() {
+        let input = "```\n{\"a\":1}\n```";
+        assert_eq!(unwrap_fenced_json(input), r#"{"a":1}"#);
+    }
+
+    #[test]
+    fn case_unclosed_fence_falls_through() {
+        // No closing fence: the rfind("```") on `rest` finds the same prefix
+        // we just stripped (when ```json), or finds nothing for bare ```.
+        // Either way the function should not panic; if it falls through it
+        // returns the trimmed input.
+        let input = "```json\n{\"a\":1}";
+        let out = unwrap_fenced_json(input);
+        // Body still contains the JSON regardless of branch taken.
+        assert!(out.contains(r#"{"a":1}"#), "got: {out}");
+    }
+
+    #[test]
+    fn case_leading_whitespace_trimmed() {
+        let input = "   \n```json\n{\"a\":1}\n```\n   ";
+        assert_eq!(unwrap_fenced_json(input), r#"{"a":1}"#);
+    }
+
+    #[test]
+    fn case_empty_input() {
+        assert_eq!(unwrap_fenced_json(""), "");
+    }
+
+    #[test]
+    fn case_fence_with_inner_backticks() {
+        // rfind matches the LAST ``` so a JSON string containing single
+        // backticks is preserved.
+        let input = "```json\n{\"a\":\"`x`\"}\n```";
+        assert_eq!(unwrap_fenced_json(input), r#"{"a":"`x`"}"#);
+    }
+
+    // ── parse_json<T> ────────────────────────────────────────────────────
+
+    #[test]
+    fn case_parse_struct_from_fenced() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Toy {
+            a: u32,
+            b: String,
+        }
+        let raw = "```json\n{\"a\": 7, \"b\": \"hi\"}\n```";
+        let out: Toy = parse_json(raw).expect("parse should succeed");
+        assert_eq!(
+            out,
+            Toy {
+                a: 7,
+                b: "hi".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn case_parse_error_on_garbage() {
+        #[derive(Deserialize)]
+        struct Toy {
+            #[allow(dead_code)]
+            a: u32,
+        }
+        assert!(parse_json::<Toy>("not json").is_err());
+    }
+
+    // ── preview ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn case_preview_short_passthrough() {
+        assert_eq!(preview("hello", 10), "hello");
+    }
+
+    #[test]
+    fn case_preview_exact_length() {
+        // length == n: no ellipsis
+        assert_eq!(preview("hello", 5), "hello");
+    }
+
+    #[test]
+    fn case_preview_truncates_with_ellipsis() {
+        assert_eq!(preview("hello world", 5), "hello…");
+    }
+
+    #[test]
+    fn case_preview_multibyte() {
+        // Each emoji is a single codepoint; count is 4. Truncating to 2
+        // must not slice mid-byte.
+        let input = "🎉🎊🎈🎂";
+        let out = preview(input, 2);
+        assert_eq!(out, "🎉🎊…");
+    }
+
+    #[test]
+    fn case_preview_n_zero_nonempty() {
+        assert_eq!(preview("hi", 0), "…");
+    }
 }

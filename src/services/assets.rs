@@ -6,12 +6,19 @@
 //! file written to `data/assets/extracted/<asset_id>.md`.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use mongodb::Database;
 use tokio::process::Command;
+use tokio::sync::RwLock;
 
 use crate::error::AppError;
 use crate::models::{Asset, AssetKind, ExtractionStatus};
 
 const MIN_EXTRACTED_CHARS: usize = 200;
+/// Critique inlines the book up to this many codepoints. The cache stores
+/// the already-truncated form so we don't re-truncate per call.
+pub const MAX_BOOK_CHARS: usize = 200_000;
 
 pub fn originals_dir(data_dir: &str) -> PathBuf {
     Path::new(data_dir).join("assets").join("originals")
@@ -134,4 +141,68 @@ pub async fn read_extracted(asset: &Asset) -> Result<String, AppError> {
         return Ok(String::new());
     };
     Ok(tokio::fs::read_to_string(path).await.unwrap_or_default())
+}
+
+/// One slot keyed by `asset_id`. The text is `Arc<String>` so cache hits
+/// don't clone the body — callers borrow into the prompt template.
+type CacheSlot = Option<(String, Arc<String>)>;
+
+/// Process-local cache of the primary asset's extracted+truncated text.
+///
+/// Critique runs on every answer submit and previously re-read the entire
+/// 200 K-char book file from disk per call. The book is immutable for the
+/// lifetime of a primary asset row, so we hold an `Arc<String>` keyed by
+/// asset id; on `set_primary` / `reextract` / `delete` the routes call
+/// `invalidate` and the next read repopulates.
+#[derive(Clone, Default)]
+pub struct BookCache {
+    inner: Arc<RwLock<CacheSlot>>,
+}
+
+impl BookCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Return the primary asset's truncated extracted text. Loads from disk
+    /// on first call (or after invalidation); subsequent calls hit memory.
+    pub async fn get(&self, db: &Database) -> Result<Arc<String>, AppError> {
+        let primary = crate::db::assets(db)
+            .find_one(bson::doc! { "primary": true })
+            .await?
+            .ok_or_else(|| {
+                AppError::BadRequest(
+                    "no primary asset configured — upload the book and mark it primary".into(),
+                )
+            })?;
+
+        {
+            let guard = self.inner.read().await;
+            if let Some((cached_id, text)) = guard.as_ref() {
+                if cached_id == &primary.id {
+                    return Ok(text.clone());
+                }
+            }
+        }
+
+        let raw = read_extracted(&primary).await?;
+        let body = if raw.chars().count() > MAX_BOOK_CHARS {
+            raw.chars().take(MAX_BOOK_CHARS).collect::<String>()
+                + "\n\n[…truncated for context length]"
+        } else {
+            raw
+        };
+        let arc = Arc::new(body);
+        {
+            let mut guard = self.inner.write().await;
+            *guard = Some((primary.id.clone(), arc.clone()));
+        }
+        Ok(arc)
+    }
+
+    /// Drop the cache. Called by routes that mutate the primary asset.
+    pub async fn invalidate(&self) {
+        let mut guard = self.inner.write().await;
+        *guard = None;
+    }
 }

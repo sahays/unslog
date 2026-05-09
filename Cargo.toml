@@ -13,7 +13,7 @@ tower-http = { version = "0.5", features = ["fs", "trace", "limit"] }
 http = "1.0"
 
 # Templates
-askama = { version = "0.12", features = ["serde-json", "markdown"] }
+askama = { version = "0.12", features = ["serde-json"] }
 askama_axum = "0.4"
 
 # Async runtime
@@ -55,4 +55,9 @@ base64 = "0.22"
 
 # Random shuffle
 rand = "0.8"
+
+# Markdown rendering + HTML sanitization (LLM output is rendered as markdown
+# but treated as untrusted — strip raw HTML, then ammonia-clean the result).
+pulldown-cmark = { version = "0.10", default-features = false, features = ["html"] }
+ammonia = "4"
 

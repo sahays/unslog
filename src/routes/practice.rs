@@ -14,10 +14,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::error::AppError;
-use crate::models::{
-    Company, Evaluation, ModelSnapshot, PromptSnapshot, Role, Session, SessionStatus,
-};
-use crate::services::{curator, prompt_store, settings_store};
+use crate::models::{Company, Role, Session};
+use crate::services::evaluations;
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -68,13 +66,14 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
         .await?;
     let active_sessions: Vec<Session> = active_cursor.try_collect().await?;
 
+    // Bulk eval counts: one aggregate keyed by session_id instead of N
+    // count_documents calls.
+    let session_ids: Vec<&str> = active_sessions.iter().map(|s| s.id.as_str()).collect();
+    let answered_by_session = evaluations::counts_by_session(&state.db, &session_ids).await?;
+
     let mut in_progress: Vec<InProgress> = Vec::with_capacity(active_sessions.len());
     for s in &active_sessions {
-        let answered_n = state
-            .db
-            .collection::<Evaluation>(Evaluation::COLLECTION)
-            .count_documents(bson::doc! { "session_id": &s.id })
-            .await? as usize;
+        let answered_n = answered_by_session.get(&s.id).copied().unwrap_or(0);
 
         let total = if s.curated_question_ids.is_empty() {
             answered_n
@@ -171,63 +170,23 @@ async fn start(
         )));
     }
 
-    let critique_prompt = prompt_store::get_prompt(&state.db, "critique")
-        .await?
-        .ok_or_else(|| AppError::NotFound("critique prompt".into()))?;
-    let summary_prompt = prompt_store::get_prompt(&state.db, "summary")
-        .await?
-        .ok_or_else(|| AppError::NotFound("summary prompt".into()))?;
-    let settings = settings_store::load(&state.db).await?;
-
-    let selected_company_ids: Vec<String> = matched.iter().map(|c| c.id.clone()).collect();
-    let curated = curator::curate(
-        &state.openrouter,
-        &state.db,
-        &settings.lite_model,
-        role,
-        &selected_company_ids,
-    )
-    .await?;
-
     // Anchor company = first selected. The critique still uses the *source*
     // question's company packet (handled in critique service), but the
     // session has a company_id field for reverse-lookup.
-    let anchor = matched[0].clone();
+    let selected_company_ids: Vec<String> = matched.iter().map(|c| c.id.clone()).collect();
+    let anchor_id = matched[0].id.clone();
 
-    let session = Session {
-        id: uuid::Uuid::now_v7().to_string(),
-        company_id: anchor.id.clone(),
-        role,
-        selected_company_ids,
-        curated_question_ids: curated.question_ids.clone(),
-        focus_line: curated.focus_line.clone(),
-        started_at: chrono::Utc::now(),
-        ended_at: None,
-        status: SessionStatus::Active,
-        model_snapshot: ModelSnapshot {
-            stt: settings.stt_model.clone(),
-            tts: settings.tts_model.clone(),
-            critique: settings.critique_model.clone(),
-            research: settings.research_model.clone(),
-            tts_voice: settings.tts_voice.clone(),
-            tts_speed: settings.tts_speed,
-            lite: settings.lite_model.clone(),
+    let session = crate::services::session::start(
+        &state.db,
+        &state.openrouter,
+        crate::services::session::StartInput {
+            role,
+            anchor_company_id: anchor_id,
+            selected_company_ids,
         },
-        prompt_snapshot: PromptSnapshot {
-            critique: critique_prompt.current_version_id,
-            summary: summary_prompt.current_version_id,
-        },
-        voice_critique_enabled: false,
-        current_question_id: None,
-        current_question_text: None,
-        current_question_audio_path: None,
-    };
+    )
+    .await?;
 
-    state
-        .db
-        .collection::<Session>(Session::COLLECTION)
-        .insert_one(&session)
-        .await?;
     tracing::info!(
         event = "session.start",
         kind = "cross_company",

@@ -112,6 +112,9 @@ async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Re
         asset.primary = true;
     }
     coll.insert_one(&asset).await?;
+    if asset.primary {
+        state.book_cache.invalidate().await;
+    }
     tracing::info!(
         event = "asset.upload",
         asset_id = %asset.id,
@@ -142,6 +145,7 @@ async fn set_primary(
     if res.matched_count == 0 {
         return Err(AppError::NotFound(format!("asset {id}")));
     }
+    state.book_cache.invalidate().await;
     Ok(Redirect::to("/assets").into_response())
 }
 
@@ -167,6 +171,9 @@ async fn reextract(
         },
     )
     .await?;
+    if asset.primary {
+        state.book_cache.invalidate().await;
+    }
 
     Ok(Redirect::to("/assets").into_response())
 }
@@ -204,6 +211,7 @@ async fn delete(
             )
             .await?;
         }
+        state.book_cache.invalidate().await;
     }
 
     Ok(Redirect::to("/assets").into_response())

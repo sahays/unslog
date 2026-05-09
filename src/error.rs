@@ -77,16 +77,27 @@ struct ErrorTemplate<'a> {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        tracing::error!(error = %self, "request failed");
         let status = self.status();
         let kind_label = self.kind_label();
         let message = self.to_string();
+        let request_id = crate::middleware::current_request_id();
+
+        // Severity tracks status: user-input errors (4xx) shouldn't pollute
+        // the error stream, but server faults (5xx) and the OpenRouter-not-
+        // configured case (503) deserve attention.
+        if status.is_server_error() {
+            tracing::error!(error = %self, status = status.as_u16(), "request failed");
+        } else if status == StatusCode::SERVICE_UNAVAILABLE {
+            tracing::warn!(error = %self, status = status.as_u16(), "request unavailable");
+        } else {
+            tracing::info!(error = %self, status = status.as_u16(), "request rejected");
+        }
 
         let html = ErrorTemplate {
             status: status.as_u16(),
             kind_label,
             message: &message,
-            request_id: "",
+            request_id: &request_id,
         }
         .render()
         // Defensive fallback: a render failure inside the error path

@@ -114,56 +114,7 @@
 
           {% if let Some(eval) = current_eval.as_ref() %}
             {% for a in eval.attempts %}
-              <div class="border-t border-[color:var(--color-border)] pt-3 mt-3">
-                <div class="muted-soft text-xs uppercase tracking-wider font-medium">Attempt {{ a.attempt_n }} — your answer</div>
-                <div class="whitespace-pre-wrap mt-1">{{ a.answer_transcript }}</div>
-                {% if let Some(c) = a.critique.as_ref() %}
-                  <div class="muted-soft text-xs uppercase tracking-wider font-medium mt-3">Critique</div>
-                  <div class="flex gap-2 flex-wrap mt-1">
-                    <span class="tag">specificity {{ c.scores.specificity }}/5</span>
-                    <span class="tag">role clarity {{ c.scores.role_clarity }}/5</span>
-                    <span class="tag">STAR+ {{ c.scores.star_plus_structure }}/5</span>
-                    <span class="tag">pitfalls {{ c.scores.pitfalls_avoided }}/5</span>
-                    {% if let Some(fit) = c.scores.company_fit %}
-                      <span class="tag">company fit {{ fit }}/5</span>
-                    {% endif %}
-                  </div>
-                  <div class="prose-chat mt-2">{{ c.narrative|markdown|safe }}</div>
-                  {% if let Some(p) = a.critique_audio_path.as_ref() %}
-                    <div class="critique-audio">
-                      <i data-lucide="volume-2" class="h-4 w-4"></i>
-                      <span class="critique-audio__label">Listen</span>
-                      <audio controls preload="auto" src="{{ crate::recordings::to_url(p) }}"
-                             {% if loop.last && session.voice_critique_enabled %}autoplay{% endif %}></audio>
-                    </div>
-                  {% else %}
-                    <form method="post"
-                          action="/sessions/{{ session.id }}/attempts/{{ eval.id }}/{{ a.attempt_n }}/regenerate-audio"
-                          class="mt-2"
-                          data-loading-title="Generating audio…"
-                          data-loading-detail="Synthesising the critique with <code>{{ session.model_snapshot.tts }}</code>. Usually a few seconds.">
-                      <button type="submit" class="btn btn-sm">
-                        <i data-lucide="volume-2" class="h-3.5 w-3.5"></i>
-                        Generate audio
-                      </button>
-                    </form>
-                  {% endif %}
-                  {% if !c.improved_vs_prior.is_empty() %}
-                    <div class="mt-2 p-2 px-3 border-l-2 border-[color:var(--color-accent)] bg-[color:var(--color-bg-tertiary)] rounded-r-md">
-                      <div class="muted-soft text-xs uppercase tracking-wider font-medium">Vs. prior attempt</div>
-                      <div class="prose-chat">{{ c.improved_vs_prior|markdown|safe }}</div>
-                    </div>
-                  {% endif %}
-                  {% if !c.citations.is_empty() %}
-                    <div class="muted-soft text-xs uppercase tracking-wider font-medium mt-3">Citations</div>
-                    <ul class="list-disc pl-5 m-0 mt-1 text-sm grid gap-0.5">
-                      {% for cit in c.citations %}
-                        <li><strong>{{ cit.chapter }}</strong>{% if !cit.section.is_empty() %} — {{ cit.section }}{% endif %}: {{ cit.quote }}</li>
-                      {% endfor %}
-                    </ul>
-                  {% endif %}
-                {% endif %}
-              </div>
+              {% call ui::attempt_block(session, eval, a, false, loop.last && session.voice_critique_enabled) %}
             {% endfor %}
           {% endif %}
 

@@ -1,0 +1,140 @@
+//! `/stories/*` routes — Story Builder.
+//!
+//! Pick a competency → AI-led probing chat → Generate locks in a STAR+ bullet
+//! version. Refine = continue chat → vN+1.
+//!
+//! Split into:
+//! * `landing` — `index` (the tile grid + completed cards) and `create`.
+//! * `show` — show one story (chat + composer + side panels) and one
+//!   read-only past version.
+//! * `chat` — post a turn, generate the bullet version, kick off a refine.
+//!
+//! Helpers shared between the three sit here.
+
+use axum::extract::{Path, State};
+use axum::response::{IntoResponse, Redirect, Response};
+use axum::routing::{get, post};
+use axum::Router;
+
+use crate::error::AppError;
+use crate::models::{Category, ChatTurn, Story, StoryVersion};
+use crate::services::openrouter::ChatMessage;
+use crate::services::{prompt_store, settings_store};
+use crate::startup::AppState;
+
+mod chat;
+mod landing;
+mod show;
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/stories", get(landing::index).post(landing::create))
+        .route("/stories/:id", get(show::show))
+        .route("/stories/:id/turns", post(chat::post_turn))
+        .route("/stories/:id/generate", post(chat::generate))
+        .route("/stories/:id/continue", post(chat::continue_chat))
+        .route("/stories/:id/delete", post(delete_story))
+        .route("/stories/:id/versions/:vid", get(show::show_version))
+}
+
+// ── Helpers shared by landing + show + chat ──────────────────────────────
+
+async fn load_story(state: &AppState, id: &str) -> Result<Story, AppError> {
+    state
+        .db
+        .collection::<Story>(Story::COLLECTION)
+        .find_one(bson::doc! { "_id": id })
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("story {id}")))
+}
+
+/// Append a chat turn and bump `updated_at`.
+async fn push_turn(state: &AppState, story: &mut Story, turn: ChatTurn) -> Result<(), AppError> {
+    let now = chrono::Utc::now();
+    let turn_doc = bson::to_bson(&turn)?;
+    state
+        .db
+        .collection::<Story>(Story::COLLECTION)
+        .update_one(
+            bson::doc! { "_id": &story.id },
+            bson::doc! {
+                "$push": { "chat": turn_doc },
+                "$set":  { "updated_at": now.to_rfc3339() },
+            },
+        )
+        .await?;
+    story.chat.push(turn);
+    story.updated_at = now;
+    Ok(())
+}
+
+/// Build [system, ...history] and call the chat model. Returns the model's
+/// next assistant message content.
+async fn run_chat_model(
+    state: &AppState,
+    story: &Story,
+    competency: &Category,
+) -> Result<String, AppError> {
+    let settings = settings_store::load(&state.db).await?;
+    let system_body = prompt_store::get_current_body(&state.db, "story_chat").await?;
+    let competency_block = format!(
+        "<competency>\nname: {}\nid: {}\ndescription: {}\n</competency>",
+        competency.name, competency.id, competency.description
+    );
+    let system = format!("{system_body}\n\n{competency_block}");
+
+    let mut messages: Vec<ChatMessage> = Vec::with_capacity(story.chat.len() + 2);
+    messages.push(ChatMessage::system(system));
+    for t in &story.chat {
+        messages.push(ChatMessage {
+            role: t.role.as_str().to_string(),
+            content: t.content.clone(),
+        });
+    }
+    // Most chat models won't generate from a system-only message. When the
+    // chat is empty, prepend a one-line user nudge so the assistant produces
+    // its opening probe.
+    if story.chat.is_empty() {
+        messages.push(ChatMessage::user(
+            "Begin the conversation with one focused opening probe for this competency.",
+        ));
+    }
+
+    let reply = state
+        .openrouter
+        .chat(&settings.critique_model, messages, false)
+        .await?;
+    Ok(reply.trim().to_string())
+}
+
+// ── Small handler ────────────────────────────────────────────────────────
+
+async fn delete_story(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    state
+        .db
+        .collection::<Story>(Story::COLLECTION)
+        .delete_one(bson::doc! { "_id": &id })
+        .await?;
+    state
+        .db
+        .collection::<StoryVersion>(StoryVersion::COLLECTION)
+        .delete_many(bson::doc! { "story_id": &id })
+        .await?;
+    tracing::info!(event = "story.delete", story_id = %id, "story cascade-deleted");
+    Ok(Redirect::to("/stories").into_response())
+}
+
+/// Synthesize a placeholder Category when the real row is missing — story.show
+/// and story.show_version both want to render *something* rather than 404.
+fn unknown_competency(id: &str) -> Category {
+    Category {
+        id: id.to_string(),
+        name: "Unknown competency".to_string(),
+        description: String::new(),
+        sort_order: 0,
+        created_at: chrono::Utc::now(),
+    }
+}

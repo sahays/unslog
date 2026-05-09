@@ -7,11 +7,11 @@ use futures::TryStreamExt;
 use mongodb::options::FindOptions;
 use serde::Deserialize;
 
+use std::collections::HashMap;
+
 use crate::error::AppError;
-use crate::models::{Company, Evaluation, Question, QuestionSource, Session, Summary};
-use crate::services::{
-    categorize, category_store, questions, research, settings_store, summary as summary_svc,
-};
+use crate::models::{Company, Question, QuestionSource, Session, Summary};
+use crate::services::{category_store, evaluations, questions, research};
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -102,32 +102,15 @@ async fn create(
 
     coll.insert_one(&company).await?;
     let agent_questions_n = agent_questions.len();
-    if !agent_questions.is_empty() {
-        // Categorize via lite_model — best-effort. Untagged questions still land.
-        let settings = settings_store::load(&state.db).await?;
-        let canonical = category_store::list_all(&state.db).await?;
-        let tags = categorize::classify_batch(
-            &state.openrouter,
-            &settings.lite_model,
-            &agent_questions,
-            &canonical,
-        )
-        .await;
-        let by_text: std::collections::HashMap<String, Vec<String>> = agent_questions
-            .iter()
-            .cloned()
-            .zip(tags.into_iter())
-            .collect();
-        questions::append(
-            &state.db,
-            agent_questions,
-            QuestionSource::Agent,
-            canonical_role,
-            Some(company.id.clone()),
-            |text| by_text.get(text).cloned().unwrap_or_default(),
-        )
-        .await?;
-    }
+    questions::categorize_and_append(
+        &state.db,
+        &state.openrouter,
+        agent_questions,
+        QuestionSource::Agent,
+        canonical_role,
+        Some(company.id.clone()),
+    )
+    .await?;
     tracing::info!(
         event = "company.create",
         company_id = %company.id,
@@ -188,20 +171,38 @@ async fn show(
         .try_collect()
         .await?;
 
-    let mut sessions = Vec::with_capacity(sessions_raw.len());
-    for s in sessions_raw {
-        let eval_count = state
+    // Bulk-load eval counts and summaries in two queries instead of 2× per
+    // session.
+    let session_ids: Vec<&str> = sessions_raw.iter().map(|s| s.id.as_str()).collect();
+    let counts = evaluations::counts_by_session(&state.db, &session_ids).await?;
+    let summary_by_session: HashMap<String, Summary> = if session_ids.is_empty() {
+        HashMap::new()
+    } else {
+        let summaries: Vec<Summary> = state
             .db
-            .collection::<Evaluation>(Evaluation::COLLECTION)
-            .count_documents(bson::doc! { "session_id": &s.id })
+            .collection::<Summary>(Summary::COLLECTION)
+            .find(bson::doc! { "session_id": { "$in": &session_ids } })
+            .await?
+            .try_collect()
             .await?;
-        let summary = summary_svc::for_session(&state.db, &s.id).await?;
-        sessions.push(SessionRow {
-            session: s,
-            eval_count,
-            summary,
-        });
-    }
+        summaries
+            .into_iter()
+            .map(|s| (s.session_id.clone(), s))
+            .collect()
+    };
+
+    let sessions: Vec<SessionRow> = sessions_raw
+        .into_iter()
+        .map(|s| {
+            let eval_count = counts.get(&s.id).copied().unwrap_or(0) as u64;
+            let summary = summary_by_session.get(&s.id).cloned();
+            SessionRow {
+                session: s,
+                eval_count,
+                summary,
+            }
+        })
+        .collect();
 
     let canonical_categories = category_store::list_all(&state.db).await?;
 
@@ -244,22 +245,13 @@ async fn add_questions(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("company {id}")))?;
 
-    // Tag pasted questions via lite_model (best-effort).
-    let settings = settings_store::load(&state.db).await?;
-    let canonical = category_store::list_all(&state.db).await?;
-    let tags =
-        categorize::classify_batch(&state.openrouter, &settings.lite_model, &lines, &canonical)
-            .await;
-    let by_text: std::collections::HashMap<String, Vec<String>> =
-        lines.iter().cloned().zip(tags.into_iter()).collect();
-
-    questions::append(
+    questions::categorize_and_append(
         &state.db,
+        &state.openrouter,
         lines,
         QuestionSource::Uploaded,
         company.canonical_role,
         Some(id.clone()),
-        |text| by_text.get(text).cloned().unwrap_or_default(),
     )
     .await?;
     Ok(Redirect::to(&format!("/companies/{id}")).into_response())
@@ -354,31 +346,15 @@ async fn refresh_packet(
             .into_iter()
             .filter(|q| !existing_texts.contains(q))
             .collect();
-        if !new_questions.is_empty() {
-            let settings = settings_store::load(&state.db).await?;
-            let canonical = category_store::list_all(&state.db).await?;
-            let tags = categorize::classify_batch(
-                &state.openrouter,
-                &settings.lite_model,
-                &new_questions,
-                &canonical,
-            )
-            .await;
-            let by_text: std::collections::HashMap<String, Vec<String>> = new_questions
-                .iter()
-                .cloned()
-                .zip(tags.into_iter())
-                .collect();
-            questions::append(
-                &state.db,
-                new_questions,
-                QuestionSource::Agent,
-                company.canonical_role,
-                Some(id.clone()),
-                |text| by_text.get(text).cloned().unwrap_or_default(),
-            )
-            .await?;
-        }
+        questions::categorize_and_append(
+            &state.db,
+            &state.openrouter,
+            new_questions,
+            QuestionSource::Agent,
+            company.canonical_role,
+            Some(id.clone()),
+        )
+        .await?;
     }
 
     Ok(Redirect::to(&format!("/companies/{id}")).into_response())

@@ -50,7 +50,7 @@
           {% when crate::models::ChatRole::Assistant %}
             <div class="rounded-md p-3 bg-[color:var(--color-accent-light)] border border-[color:var(--color-border)]">
               <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Coach</div>
-              <div class="prose-chat text-sm">{{ t.content|markdown|safe }}</div>
+              <div class="prose-chat text-sm">{{ t.content|safe_markdown|safe }}</div>
             </div>
           {% when crate::models::ChatRole::User %}
             <div class="rounded-md p-3 border border-[color:var(--color-border)]">

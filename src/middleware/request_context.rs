@@ -17,6 +17,18 @@ use uuid::Uuid;
 
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 
+tokio::task_local! {
+    /// Per-request UUID, set inside `request_context_middleware` and read by
+    /// the error renderer (which has no access to request extensions).
+    pub static REQUEST_ID: Uuid;
+}
+
+/// Best-effort lookup. Returns the empty string outside a request scope —
+/// the error template tolerates that.
+pub fn current_request_id() -> String {
+    REQUEST_ID.try_with(|id| id.to_string()).unwrap_or_default()
+}
+
 /// Carried through the request lifecycle via extensions, so handlers and
 /// services that need to log can pull the request_id out.
 #[derive(Clone, Debug)]
@@ -46,7 +58,9 @@ pub async fn request_context_middleware(mut request: Request<Body>, next: Next) 
         path = %path,
     );
 
-    let mut response = next.run(request).instrument(span).await;
+    let mut response = REQUEST_ID
+        .scope(request_id, next.run(request).instrument(span))
+        .await;
     let duration_ms = start.elapsed().as_millis() as u64;
     let status = response.status().as_u16();
 

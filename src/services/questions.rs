@@ -1,6 +1,8 @@
 //! Top-level Question CRUD. Replaces the old per-company embedded-array
 //! `QuestionBank.questions[]`. Each question is its own document.
 
+use std::collections::HashSet;
+
 use futures::TryStreamExt;
 use mongodb::options::FindOptions;
 use mongodb::{Collection, Database};
@@ -8,6 +10,10 @@ use rand::seq::SliceRandom;
 
 use crate::error::AppError;
 use crate::models::{Question, QuestionSource, Role};
+use crate::services::categorize;
+use crate::services::category_store;
+use crate::services::openrouter::OpenRouter;
+use crate::services::settings_store;
 
 fn coll(db: &Database) -> Collection<Question> {
     db.collection(Question::COLLECTION)
@@ -122,10 +128,34 @@ pub async fn delete_for_company(db: &Database, company_id: &str) -> Result<u64, 
 
 /// Pick one random unanswered question from a list. Used as the curator
 /// fallback path inside `next_question`.
-pub fn pick_random<'a>(pool: &'a [Question], seen: &[String]) -> Option<&'a Question> {
-    let candidates: Vec<&Question> = pool
-        .iter()
-        .filter(|q| !seen.iter().any(|s| s == &q.id))
-        .collect();
+pub fn pick_random<'a>(pool: &'a [Question], seen: &HashSet<String>) -> Option<&'a Question> {
+    let candidates: Vec<&Question> = pool.iter().filter(|q| !seen.contains(&q.id)).collect();
     candidates.choose(&mut rand::thread_rng()).copied()
+}
+
+/// Tag a batch of question texts via the lite_model classifier and persist
+/// them. Three callers (manual paste, agent-suggested, packet-refresh) share
+/// this exact "load settings → load canonical → classify → zip → append"
+/// shape, so it lives here. Returns the number of questions inserted.
+pub async fn categorize_and_append(
+    db: &Database,
+    openrouter: &OpenRouter,
+    texts: Vec<String>,
+    source: QuestionSource,
+    role: Role,
+    company_id: Option<String>,
+) -> Result<usize, AppError> {
+    if texts.is_empty() {
+        return Ok(0);
+    }
+    let settings = settings_store::load(db).await?;
+    let canonical = category_store::list_all(db).await?;
+    let tags =
+        categorize::classify_batch(openrouter, &settings.lite_model, &texts, &canonical).await;
+    let by_text: std::collections::HashMap<String, Vec<String>> =
+        texts.iter().cloned().zip(tags.into_iter()).collect();
+    append(db, texts, source, role, company_id, |t| {
+        by_text.get(t).cloned().unwrap_or_default()
+    })
+    .await
 }

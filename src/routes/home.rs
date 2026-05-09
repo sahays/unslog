@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use askama::Template;
 use axum::{extract::State, response::Html, routing::get, Router};
 use futures::TryStreamExt;
@@ -51,25 +53,52 @@ async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> 
         .try_collect()
         .await?;
 
-    let mut recent = Vec::with_capacity(recent_sessions.len());
-    for s in recent_sessions {
-        let company_name = crate::db::companies(&state.db)
-            .find_one(bson::doc! { "_id": &s.company_id })
+    // Bulk-load company names and summary presence in two queries instead of
+    // 2× per session.
+    let company_ids: Vec<&str> = recent_sessions
+        .iter()
+        .map(|s| s.company_id.as_str())
+        .collect();
+    let session_ids: Vec<&str> = recent_sessions.iter().map(|s| s.id.as_str()).collect();
+    let companies: Vec<Company> = if company_ids.is_empty() {
+        Vec::new()
+    } else {
+        crate::db::companies(&state.db)
+            .find(bson::doc! { "_id": { "$in": &company_ids } })
             .await?
-            .map(|c: Company| c.name)
-            .unwrap_or_else(|| "(deleted company)".into());
-        let has_summary = state
+            .try_collect()
+            .await?
+    };
+    let company_by_id: HashMap<String, String> =
+        companies.into_iter().map(|c| (c.id, c.name)).collect();
+    let sessions_with_summary: HashSet<String> = if session_ids.is_empty() {
+        HashSet::new()
+    } else {
+        let summaries: Vec<Summary> = state
             .db
             .collection::<Summary>(Summary::COLLECTION)
-            .count_documents(bson::doc! { "session_id": &s.id })
+            .find(bson::doc! { "session_id": { "$in": &session_ids } })
             .await?
-            > 0;
-        recent.push(RecentRow {
-            session: s,
-            company_name,
-            has_summary,
-        });
-    }
+            .try_collect()
+            .await?;
+        summaries.into_iter().map(|s| s.session_id).collect()
+    };
+
+    let recent: Vec<RecentRow> = recent_sessions
+        .into_iter()
+        .map(|s| {
+            let company_name = company_by_id
+                .get(&s.company_id)
+                .cloned()
+                .unwrap_or_else(|| "(deleted company)".into());
+            let has_summary = sessions_with_summary.contains(&s.id);
+            RecentRow {
+                session: s,
+                company_name,
+                has_summary,
+            }
+        })
+        .collect();
 
     let body = HomeTemplate {
         company_count,

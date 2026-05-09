@@ -11,7 +11,7 @@ use mongodb::Database;
 use crate::error::AppError;
 use crate::models::{Company, Evaluation, Session, Summary, SummaryPayload};
 use crate::services::{
-    openrouter::{ChatMessage, OpenRouter},
+    openrouter::{self, ChatMessage, OpenRouter},
     prompt_store,
 };
 
@@ -80,10 +80,10 @@ pub async fn generate_and_save(
         .await?;
 
     let payload: SummaryPayload = crate::services::openrouter::parse_json(&raw).map_err(|e| {
-        tracing::warn!(error = %e, raw_preview = %preview(&raw, 240), "summary JSON parse failed");
+        tracing::warn!(error = %e, raw_preview = %openrouter::preview(&raw, 240), "summary JSON parse failed");
         AppError::Upstream(format!(
             "summary returned invalid JSON: {e} — raw: {}",
-            preview(&raw, 280)
+            openrouter::preview(&raw, 280)
         ))
     })?;
 
@@ -253,13 +253,5 @@ fn company_packet(c: &Company) -> String {
             p.summary, p.values_signal
         ),
         None => header,
-    }
-}
-
-fn preview(s: &str, n: usize) -> String {
-    if s.chars().count() <= n {
-        s.to_string()
-    } else {
-        s.chars().take(n).collect::<String>() + "…"
     }
 }

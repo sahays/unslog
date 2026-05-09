@@ -35,46 +35,11 @@
   </div>
 
   <section class="card grid gap-4">
-    {% if !version.body.situation.is_empty() %}
-      <div>
-        <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Situation</div>
-        <ul class="grid gap-1 m-0 pl-5 list-disc">
-          {% for b in version.body.situation %}<li class="text-sm">{{ b }}</li>{% endfor %}
-        </ul>
-      </div>
-    {% endif %}
-    {% if !version.body.task.is_empty() %}
-      <div>
-        <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Task</div>
-        <ul class="grid gap-1 m-0 pl-5 list-disc">
-          {% for b in version.body.task %}<li class="text-sm">{{ b }}</li>{% endfor %}
-        </ul>
-      </div>
-    {% endif %}
-    {% if !version.body.action.is_empty() %}
-      <div>
-        <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Action</div>
-        <ul class="grid gap-1 m-0 pl-5 list-disc">
-          {% for b in version.body.action %}<li class="text-sm">{{ b }}</li>{% endfor %}
-        </ul>
-      </div>
-    {% endif %}
-    {% if !version.body.result.is_empty() %}
-      <div>
-        <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Result</div>
-        <ul class="grid gap-1 m-0 pl-5 list-disc">
-          {% for b in version.body.result %}<li class="text-sm">{{ b }}</li>{% endfor %}
-        </ul>
-      </div>
-    {% endif %}
-    {% if !version.body.reflection.is_empty() %}
-      <div>
-        <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Reflection (+)</div>
-        <ul class="grid gap-1 m-0 pl-5 list-disc">
-          {% for b in version.body.reflection %}<li class="text-sm">{{ b }}</li>{% endfor %}
-        </ul>
-      </div>
-    {% endif %}
+    {% call ui::star_section("Situation", version.body.situation) %}
+    {% call ui::star_section("Task", version.body.task) %}
+    {% call ui::star_section("Action", version.body.action) %}
+    {% call ui::star_section("Result", version.body.result) %}
+    {% call ui::star_section("Reflection (+)", version.body.reflection) %}
   </section>
 </div>
 {% endblock %}

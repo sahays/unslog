@@ -85,6 +85,81 @@
 </a>
 {%- endmacro %}
 
+{# Render one critique attempt — used by both the active session view and
+   the review view, which previously copied the same ~50 lines of markup.
+   `show_answer_audio` is true for the review page (where the user wants to
+   replay what they said); `autoplay` is true only for the latest attempt
+   when voice-critique is enabled. #}
+{% macro attempt_block(session, eval, a, show_answer_audio, autoplay) -%}
+<div class="border-t border-[color:var(--color-border)] pt-3 mt-3">
+  <div class="muted-soft text-xs uppercase tracking-wider font-medium">Attempt {{ a.attempt_n }} — your answer</div>
+  <div class="whitespace-pre-wrap mt-1">{{ a.answer_transcript }}</div>
+  {% if show_answer_audio %}
+    {% if let Some(p) = a.answer_audio_path.as_ref() %}
+      <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" class="mt-2"></audio>
+    {% endif %}
+  {% endif %}
+  {% if let Some(c) = a.critique.as_ref() %}
+    <div class="muted-soft text-xs uppercase tracking-wider font-medium mt-3">Critique</div>
+    <div class="flex gap-2 flex-wrap mt-1">
+      <span class="tag">specificity {{ c.scores.specificity }}/5</span>
+      <span class="tag">role clarity {{ c.scores.role_clarity }}/5</span>
+      <span class="tag">STAR+ {{ c.scores.star_plus_structure }}/5</span>
+      <span class="tag">pitfalls {{ c.scores.pitfalls_avoided }}/5</span>
+      {% if let Some(fit) = c.scores.company_fit %}
+        <span class="tag">company fit {{ fit }}/5</span>
+      {% endif %}
+    </div>
+    <div class="prose-chat mt-2">{{ c.narrative|safe_markdown|safe }}</div>
+    {% if let Some(p) = a.critique_audio_path.as_ref() %}
+      <div class="critique-audio">
+        <i data-lucide="volume-2" class="h-4 w-4"></i>
+        <span class="critique-audio__label">Listen</span>
+        <audio controls preload="{% if autoplay %}auto{% else %}none{% endif %}" src="{{ crate::recordings::to_url(p) }}"
+               {% if autoplay %}autoplay{% endif %}></audio>
+      </div>
+    {% else %}
+      <form method="post"
+            action="/sessions/{{ session.id }}/attempts/{{ eval.id }}/{{ a.attempt_n }}/regenerate-audio"
+            class="mt-2"
+            data-loading-title="Generating audio…"
+            data-loading-detail="Synthesising the critique with <code>{{ session.model_snapshot.tts }}</code>. Usually a few seconds.">
+        <button type="submit" class="btn btn-sm">
+          <i data-lucide="volume-2" class="h-3.5 w-3.5"></i>
+          Generate audio
+        </button>
+      </form>
+    {% endif %}
+    {% if !c.improved_vs_prior.is_empty() %}
+      <div class="mt-2 p-2 px-3 border-l-2 border-[color:var(--color-accent)] bg-[color:var(--color-bg-tertiary)] rounded-r-md">
+        <div class="muted-soft text-xs uppercase tracking-wider font-medium">Vs. prior attempt</div>
+        <div class="prose-chat">{{ c.improved_vs_prior|safe_markdown|safe }}</div>
+      </div>
+    {% endif %}
+    {% if !c.citations.is_empty() %}
+      <div class="muted-soft text-xs uppercase tracking-wider font-medium mt-3">Citations</div>
+      <ul class="list-disc pl-5 m-0 mt-1 text-sm grid gap-0.5">
+        {% for cit in c.citations %}
+          <li><strong>{{ cit.chapter }}</strong>{% if !cit.section.is_empty() %} — {{ cit.section }}{% endif %}: {{ cit.quote }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{# One STAR+ section — label + bulleted list. Used by the version page. #}
+{% macro star_section(label, items) -%}
+{% if !items.is_empty() %}
+<div>
+  <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">{{ label }}</div>
+  <ul class="grid gap-1 m-0 pl-5 list-disc">
+    {% for b in items %}<li class="text-sm">{{ b }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+{%- endmacro %}
+
 {# Button-styled link. variant ∈ {primary, secondary, danger, ghost} #}
 {% macro link_btn(href, text, icon, variant) -%}
 {% if variant == "primary" -%}
