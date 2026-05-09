@@ -65,14 +65,12 @@
                 {% if row.has_summary %}<span class="ml-2">• has summary</span>{% endif %}
               </div>
             </div>
-            <a class="btn btn-sm" href="/sessions/{{ row.session.id }}/review">
+            <a class="btn btn-sm" href="/sessions/{{ row.session.id }}/review" title="Review session" aria-label="Review session">
               <i data-lucide="clipboard-list" class="h-3.5 w-3.5"></i>
-              Review
             </a>
             {% if row.session.status == crate::models::SessionStatus::Active %}
-              <a class="btn btn-primary btn-sm" href="/sessions/{{ row.session.id }}">
+              <a class="btn btn-primary btn-sm" href="/sessions/{{ row.session.id }}" title="Resume session" aria-label="Resume session">
                 <i data-lucide="play" class="h-3.5 w-3.5"></i>
-                Resume
               </a>
             {% endif %}
           </div>

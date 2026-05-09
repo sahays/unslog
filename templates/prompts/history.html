@@ -1,66 +1,68 @@
 {% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
-{% block title %}{{ name }} history — prompts{% endblock %}
+{% block title %}{{ name }} versions — prompts{% endblock %}
 
 {% block breadcrumbs %}
   <a href="/prompts">Prompts</a>
   <a href="/prompts/{{ name }}">{{ name }}</a>
-  <span>History</span>
+  <span>Versions</span>
 {% endblock %}
 
 {% block content %}
 <div class="grid gap-5">
   <div class="flex items-start justify-between gap-4">
     <div>
-      <h1 class="font-heading text-2xl font-semibold">{{ name }} <span class="muted text-base font-normal">— version history</span></h1>
+      <h1 class="font-heading text-2xl font-semibold">{{ name }} <span class="muted text-base font-normal">— versions</span></h1>
       <p class="muted text-sm mt-1">{{ description }}</p>
+      <p class="muted-soft text-xs mt-2 max-w-2xl">
+        Activating an older version copies its body forward as a new active version — the audit trail stays intact, and any session that ran against an older version keeps its pin.
+      </p>
     </div>
     <div class="flex gap-2 flex-shrink-0">
-      <a class="btn" href="/prompts">
+      <a class="btn" href="/prompts" title="Back to prompts" aria-label="Back to prompts">
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
-        Back
       </a>
-      <a class="btn" href="/prompts/{{ name }}">
+      <a class="btn" href="/prompts/{{ name }}" title="Edit active version" aria-label="Edit active version">
         <i data-lucide="pencil" class="h-4 w-4"></i>
-        Edit current
+      </a>
+      <a class="btn btn-primary" href="/prompts/{{ name }}/new" title="New version" aria-label="New version">
+        <i data-lucide="plus" class="h-4 w-4"></i>
       </a>
     </div>
   </div>
 
-  {% if versions.is_empty() %}
+  {% if rows.is_empty() %}
     <div class="card">
       <p class="muted m-0">No versions yet.</p>
     </div>
   {% else %}
     <div class="grid gap-2 stagger-children">
-      {% for v in versions %}
+      {% for v in rows %}
         <div class="card py-3">
           <div class="flex items-center justify-between gap-4">
             <div>
               <div class="flex items-center gap-2 flex-wrap">
-                <code class="font-mono text-sm">{{ v.id }}</code>
-                {% if v.id == current_version_id %}
-                  {% call ui::badge("current", "accent") %}
+                <span class="font-heading font-semibold">v{{ v.n }}</span>
+                {% if v.is_active %}
+                  {% call ui::badge("active", "accent") %}
                 {% endif %}
-                {% if let Some(parent) = v.restored_from.as_ref() %}
-                  <span class="tag">restored from <code class="font-mono ml-1">{{ parent }}</code></span>
+                {% if let Some(parent_n) = v.restored_from_n %}
+                  <span class="tag">copied from v{{ parent_n }}</span>
                 {% endif %}
               </div>
-              <div class="muted-soft text-sm mt-1">
-                created {{ v.created_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+              <div class="muted-soft text-xs mt-1">
+                <code class="font-mono">{{ v.id }}</code> · created {{ v.created_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
               </div>
             </div>
             <div class="flex gap-1.5 flex-shrink-0">
-              <a class="btn btn-sm" href="/prompts/{{ name }}/versions/{{ v.id }}">
+              <a class="btn btn-sm" href="/prompts/{{ name }}/versions/{{ v.id }}" title="View this version" aria-label="View this version">
                 <i data-lucide="eye" class="h-3.5 w-3.5"></i>
-                View
               </a>
-              {% if v.id != current_version_id %}
+              {% if !v.is_active %}
                 <form method="post" action="/prompts/{{ name }}/restore/{{ v.id }}">
-                  <button type="submit" class="btn btn-sm">
-                    <i data-lucide="rotate-ccw" class="h-3.5 w-3.5"></i>
-                    Restore
+                  <button type="submit" class="btn btn-sm btn-primary" title="Activate this version" aria-label="Activate this version">
+                    <i data-lucide="check-circle" class="h-3.5 w-3.5"></i>
                   </button>
                 </form>
               {% endif %}

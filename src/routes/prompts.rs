@@ -14,6 +14,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/prompts", get(list))
         .route("/prompts/:name", get(edit).post(save))
+        .route("/prompts/:name/new", get(new_version))
         .route("/prompts/:name/history", get(history))
         .route("/prompts/:name/versions/:version_id", get(view_version))
         .route("/prompts/:name/restore/:version_id", post(restore))
@@ -29,6 +30,11 @@ struct PromptCard {
     name: &'static str,
     description: &'static str,
     body_excerpt: String,
+    /// Display number of the active version (1-based, in chronological order).
+    /// Zero only on never-seeded prompts that shouldn't appear in PROMPT_NAMES.
+    active_n: u32,
+    /// Total number of versions ever saved for this prompt.
+    total_n: u32,
 }
 
 fn describe(name: &str) -> &'static str {
@@ -38,6 +44,13 @@ fn describe(name: &str) -> &'static str {
         "summary" => {
             "End-of-session debrief with strengths, recurring weaknesses, and blind spots."
         }
+        "story_chat" => {
+            "Story Builder coach — probes and critiques until a STAR+ story is impactful."
+        }
+        "story_summarize" => "Compresses a Story-Builder chat into a STAR+ bullet version.",
+        "story_refine_open" => {
+            "Reopens a locked story with one fresh probe to drive a refined version."
+        }
         _ => "",
     }
 }
@@ -45,18 +58,24 @@ fn describe(name: &str) -> &'static str {
 async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let mut items = Vec::new();
     for name in PROMPT_NAMES {
-        let body_excerpt = match store::get_prompt(&state.db, name).await? {
+        let prompt = store::get_prompt(&state.db, name).await?;
+        let (body_excerpt, active_n, total_n) = match prompt {
             Some(p) => {
+                let versions = store::list_versions(&state.db, name).await?; // newest-first
+                let total_n = versions.len() as u32;
+                let active_n = active_version_number(&versions, &p.current_version_id);
                 let v = store::get_version(&state.db, &p.current_version_id).await?;
                 let body = v.map(|v| v.body).unwrap_or_default();
-                excerpt(&body, 280)
+                (excerpt(&body, 280), active_n, total_n)
             }
-            None => String::new(),
+            None => (String::new(), 0, 0),
         };
         items.push(PromptCard {
             name,
             description: describe(name),
             body_excerpt,
+            active_n,
+            total_n,
         });
     }
     let body = ListTemplate { items }
@@ -65,37 +84,80 @@ async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     Ok(Html(body))
 }
 
+/// Compute the chronological display number (1-based, oldest = 1) of the
+/// version with `version_id` in the `list_versions`-ordered (newest-first)
+/// `versions` slice. Returns 0 if not found.
+fn active_version_number(versions: &[PromptVersion], version_id: &str) -> u32 {
+    let total = versions.len();
+    versions
+        .iter()
+        .position(|v| v.id == version_id)
+        .map(|idx| (total - idx) as u32)
+        .unwrap_or(0)
+}
+
 #[derive(Template)]
 #[template(path = "prompts/edit.html")]
 struct EditTemplate {
     name: String,
     description: &'static str,
     body: String,
-    current_version_id: String,
+    active_n: u32,
+    total_n: u32,
     updated_at: String,
+    /// `true` when the textarea starts blank because the user clicked "New
+    /// version" — the page copy nudges them toward pasting a fresh body
+    /// instead of editing the current one.
+    is_blank: bool,
 }
 
 async fn edit(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<Html<String>, AppError> {
-    if !is_valid_prompt_name(&name) {
+    render_edit(&state, &name, false).await
+}
+
+/// Same edit form as `edit`, but the textarea starts empty. The POST target
+/// is identical (`save`), so submitting still appends a new active version.
+async fn new_version(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Html<String>, AppError> {
+    render_edit(&state, &name, true).await
+}
+
+async fn render_edit(
+    state: &AppState,
+    name: &str,
+    is_blank: bool,
+) -> Result<Html<String>, AppError> {
+    if !is_valid_prompt_name(name) {
         return Err(AppError::NotFound(format!("prompt {name}")));
     }
-    let prompt = store::get_prompt(&state.db, &name)
+    let prompt = store::get_prompt(&state.db, name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("prompt {name}")))?;
-    let body = store::get_current_body(&state.db, &name).await?;
-    let body = EditTemplate {
-        name: name.clone(),
-        description: describe(&name),
+    let versions = store::list_versions(&state.db, name).await?;
+    let total_n = versions.len() as u32;
+    let active_n = active_version_number(&versions, &prompt.current_version_id);
+    let body = if is_blank {
+        String::new()
+    } else {
+        store::get_current_body(&state.db, name).await?
+    };
+    let rendered = EditTemplate {
+        name: name.to_string(),
+        description: describe(name),
         body,
-        current_version_id: prompt.current_version_id.clone(),
+        active_n,
+        total_n,
         updated_at: prompt.updated_at.format("%Y-%m-%d %H:%M UTC").to_string(),
+        is_blank,
     }
     .render()
     .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    Ok(Html(rendered))
 }
 
 #[derive(Deserialize)]
@@ -131,8 +193,19 @@ async fn save(
 struct HistoryTemplate {
     name: String,
     description: &'static str,
-    current_version_id: String,
-    versions: Vec<PromptVersion>,
+    rows: Vec<VersionRow>,
+}
+
+/// Display-friendly view of a `PromptVersion` for the history list. Carries
+/// the chronological number (`v_n`) so templates can show "v3" instead of a
+/// raw UUID, and a pre-resolved `restored_from_n` so the "restored from v2"
+/// label is human-readable too.
+pub struct VersionRow {
+    pub id: String,
+    pub n: u32,
+    pub is_active: bool,
+    pub restored_from_n: Option<u32>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 async fn history(
@@ -146,15 +219,41 @@ async fn history(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("prompt {name}")))?;
     let versions = store::list_versions(&state.db, &name).await?;
+    let rows = build_version_rows(&versions, &prompt.current_version_id);
     let body = HistoryTemplate {
         name: name.clone(),
         description: describe(&name),
-        current_version_id: prompt.current_version_id,
-        versions,
+        rows,
     }
     .render()
     .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
     Ok(Html(body))
+}
+
+/// Build a chronologically-numbered display list from a newest-first
+/// `list_versions` result. `v.n` runs 1 (oldest) to total (newest).
+fn build_version_rows(versions: &[PromptVersion], active_id: &str) -> Vec<VersionRow> {
+    let total = versions.len();
+    // First, an id → n lookup so `restored_from` can resolve to a number.
+    let id_to_n: std::collections::HashMap<&str, u32> = versions
+        .iter()
+        .enumerate()
+        .map(|(idx, v)| (v.id.as_str(), (total - idx) as u32))
+        .collect();
+    versions
+        .iter()
+        .enumerate()
+        .map(|(idx, v)| VersionRow {
+            n: (total - idx) as u32,
+            is_active: v.id == active_id,
+            restored_from_n: v
+                .restored_from
+                .as_deref()
+                .and_then(|rid| id_to_n.get(rid).copied()),
+            id: v.id.clone(),
+            created_at: v.created_at,
+        })
+        .collect()
 }
 
 #[derive(Template)]
@@ -162,7 +261,9 @@ async fn history(
 struct VersionTemplate {
     name: String,
     version: PromptVersion,
-    is_current: bool,
+    is_active: bool,
+    n: u32,
+    total_n: u32,
 }
 
 async fn view_version(
@@ -183,11 +284,16 @@ async fn view_version(
     let prompt = store::get_prompt(&state.db, &name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("prompt {name}")))?;
-    let is_current = prompt.current_version_id == version.id;
+    let versions = store::list_versions(&state.db, &name).await?;
+    let total_n = versions.len() as u32;
+    let n = active_version_number(&versions, &version.id);
+    let is_active = prompt.current_version_id == version.id;
     let body = VersionTemplate {
         name,
         version,
-        is_current,
+        is_active,
+        n,
+        total_n,
     }
     .render()
     .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;

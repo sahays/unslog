@@ -10,7 +10,7 @@
   <div>
     <h1 class="font-heading text-2xl font-semibold">Prompts</h1>
     <p class="muted text-sm mt-1 max-w-2xl">
-      System prompts that drive the AI. Edits never overwrite — every save creates a new version, and old sessions stay pinned to whatever version was current when they ran.
+      System prompts that drive the AI. Each prompt has versions; one is active at a time. Saving creates a new version; activating an older version copies it forward as a new active version. Old sessions stay pinned to whatever was active when they ran.
     </p>
   </div>
 
@@ -23,18 +23,24 @@
               <i data-lucide="file-text" class="h-4 w-4 text-[color:var(--color-accent)]"></i>
             </div>
             <div>
-              <div class="font-heading font-semibold">{{ item.name }}</div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <div class="font-heading font-semibold">{{ item.name }}</div>
+                {% if item.total_n > 0 %}
+                  <span class="tag">v{{ item.active_n }} active · {{ item.total_n }} total</span>
+                {% endif %}
+              </div>
               <div class="muted text-sm">{{ item.description }}</div>
             </div>
           </div>
           <div class="flex gap-1.5">
-            <a class="btn btn-sm" href="/prompts/{{ item.name }}">
+            <a class="btn btn-sm" href="/prompts/{{ item.name }}" title="Edit active version" aria-label="Edit active version">
               <i data-lucide="pencil" class="h-3.5 w-3.5"></i>
-              Edit
             </a>
-            <a class="btn btn-sm" href="/prompts/{{ item.name }}/history">
+            <a class="btn btn-sm" href="/prompts/{{ item.name }}/new" title="New version" aria-label="New version">
+              <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+            </a>
+            <a class="btn btn-sm" href="/prompts/{{ item.name }}/history" title="View all versions" aria-label="View all versions">
               <i data-lucide="history" class="h-3.5 w-3.5"></i>
-              History
             </a>
           </div>
         </div>

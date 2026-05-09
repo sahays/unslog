@@ -41,9 +41,8 @@
             </div>
             <form method="post" action="/categories/{{ c.id }}/delete"
                   onsubmit="return confirm('Delete this category? Questions tagged with it will lose the tag.')">
-              <button type="submit" class="btn btn-sm btn-danger">
+              <button type="submit" class="btn btn-sm btn-danger" title="Delete category" aria-label="Delete category">
                 <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
-                Delete
               </button>
             </form>
           </li>

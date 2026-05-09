@@ -27,9 +27,9 @@
          a version chip and wants to return); fall back to the story page
          when the tab has no prior history (new-tab opens, direct URLs). #}
       <a class="btn" href="/stories/{{ story.id }}"
-         onclick="if (history.length > 1) { event.preventDefault(); history.back(); }">
+         onclick="if (history.length > 1) { event.preventDefault(); history.back(); }"
+         title="Back to story" aria-label="Back to story">
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
-        Back
       </a>
     </div>
   </div>

@@ -24,15 +24,13 @@
       {% endif %}
     </div>
     <div class="flex gap-2 flex-shrink-0">
-      <a class="btn" href="/stories">
+      <a class="btn" href="/stories" title="Back to stories" aria-label="Back to stories">
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
-        Back
       </a>
       <form method="post" action="/stories/{{ story.id }}/delete" class="m-0"
             onsubmit="return confirm('Delete this story and all its versions? This can’t be undone.');">
-        <button type="submit" class="btn btn-ghost text-[color:var(--color-error)]">
+        <button type="submit" class="btn btn-ghost text-[color:var(--color-error)]" title="Discard story" aria-label="Discard story">
           <i data-lucide="trash-2" class="h-4 w-4"></i>
-          Discard
         </button>
       </form>
     </div>
@@ -132,9 +130,8 @@
           <form method="post" action="/stories/{{ story.id }}/continue" class="m-0"
                 data-loading-title="Reopening…"
                 data-loading-detail="The coach is picking the thinnest section to probe next.">
-            <button type="submit" class="btn btn-sm btn-icon-spring w-full">
-              <span class="btn-icon"><i data-lucide="message-circle-plus" class="h-3.5 w-3.5"></i></span>
-              <span>Continue chatting</span>
+            <button type="submit" class="btn btn-sm w-full" title="Continue chatting (refine into a new version)" aria-label="Continue chatting">
+              <i data-lucide="message-circle-plus" class="h-3.5 w-3.5"></i>
             </button>
           </form>
         {% endif %}
@@ -147,9 +144,8 @@
         <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Stories</h2>
         <form method="post" action="/stories" class="m-0">
           <input type="hidden" name="competency_id" value="{{ competency.id }}" />
-          <button type="submit" class="btn btn-primary btn-sm btn-icon-spring">
-            <span class="btn-icon"><i data-lucide="plus" class="h-3.5 w-3.5"></i></span>
-            <span>New</span>
+          <button type="submit" class="btn btn-primary btn-sm" title="Start a new story for this competency" aria-label="New story">
+            <i data-lucide="plus" class="h-3.5 w-3.5"></i>
           </button>
         </form>
       </div>

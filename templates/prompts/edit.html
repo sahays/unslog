@@ -1,39 +1,62 @@
 {% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
-{% block title %}{{ name }} — prompts{% endblock %}
+{% block title %}{{ name }}{% if is_blank %} — new version{% endif %} — prompts{% endblock %}
 
 {% block breadcrumbs %}
   <a href="/prompts">Prompts</a>
-  <span>{{ name }}</span>
+  <a href="/prompts/{{ name }}">{{ name }}</a>
+  {% if is_blank %}<span>New version</span>{% endif %}
 {% endblock %}
 
 {% block content %}
 <div class="grid gap-5">
   <div class="flex items-start justify-between gap-4">
     <div>
-      <h1 class="font-heading text-2xl font-semibold">{{ name }}</h1>
-      <p class="muted text-sm mt-1">{{ description }}</p>
-      <div class="muted-soft text-xs mt-2">
-        Current version: <code class="font-mono">{{ current_version_id }}</code> • updated {{ updated_at }}
+      <div class="flex items-center gap-2 flex-wrap">
+        <h1 class="font-heading text-2xl font-semibold">
+          {{ name }}{% if is_blank %} <span class="muted font-normal">— new version</span>{% endif %}
+        </h1>
+        {% if total_n > 0 %}
+          <span class="tag">v{{ active_n }} active · {{ total_n }} total</span>
+        {% endif %}
       </div>
+      <p class="muted text-sm mt-1">{{ description }}</p>
+      <div class="muted-soft text-xs mt-2">updated {{ updated_at }}</div>
     </div>
     <div class="flex gap-2 flex-shrink-0">
-      <a class="btn" href="/prompts">
+      <a class="btn" href="/prompts" title="Back to prompts" aria-label="Back to prompts">
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
-        Back
       </a>
-      <a class="btn" href="/prompts/{{ name }}/history">
+      {% if is_blank %}
+        <a class="btn" href="/prompts/{{ name }}" title="Edit active version" aria-label="Edit active version">
+          <i data-lucide="pencil" class="h-4 w-4"></i>
+        </a>
+      {% else %}
+        <a class="btn" href="/prompts/{{ name }}/new" title="New version" aria-label="New version">
+          <i data-lucide="plus" class="h-4 w-4"></i>
+        </a>
+      {% endif %}
+      <a class="btn" href="/prompts/{{ name }}/history" title="View all versions" aria-label="View all versions">
         <i data-lucide="history" class="h-4 w-4"></i>
-        History
       </a>
     </div>
   </div>
 
   <form method="post" action="/prompts/{{ name }}" class="grid gap-3">
-    <textarea name="body" spellcheck="false" class="min-h-[60vh]">{{ body }}</textarea>
+    <textarea
+      name="body"
+      spellcheck="false"
+      class="min-h-[60vh]"
+      {% if is_blank %}placeholder="Paste the new prompt body here…"{% endif %}>{{ body }}</textarea>
     <div class="flex gap-3 items-center justify-between">
-      <span class="muted-soft text-xs">Saving creates a new version — your earlier text stays in history.</span>
+      <span class="muted-soft text-xs">
+        {% if is_blank %}
+          Submitting creates a brand-new version and makes it active. Old versions stay accessible under Versions.
+        {% else %}
+          Saving creates a new version and makes it active — your earlier text stays in versions.
+        {% endif %}
+      </span>
       <button type="submit" class="btn btn-primary btn-icon-spring">
         <span class="btn-icon"><i data-lucide="save" class="h-4 w-4"></i></span>
         <span>Save as new version</span>

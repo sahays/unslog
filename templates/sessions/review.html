@@ -27,14 +27,12 @@
       </div>
     </div>
     <div class="flex gap-2 flex-shrink-0">
-      <a class="btn" href="/companies/{{ company.id }}">
+      <a class="btn" href="/companies/{{ company.id }}" title="Back to company" aria-label="Back to company">
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
-        Back
       </a>
       {% if session.status == crate::models::SessionStatus::Active %}
-        <a class="btn btn-primary btn-icon-spring" href="/sessions/{{ session.id }}">
-          <span class="btn-icon"><i data-lucide="play" class="h-4 w-4"></i></span>
-          <span>Continue session</span>
+        <a class="btn btn-primary" href="/sessions/{{ session.id }}" title="Continue session" aria-label="Continue session">
+          <i data-lucide="play" class="h-4 w-4"></i>
         </a>
       {% endif %}
     </div>

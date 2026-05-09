@@ -80,44 +80,41 @@
            @click="navOpen = false"
            x-transition.opacity></div>
 
-      <!-- ── Main column: top bar + page content ─────────────────────── -->
-      <div class="app-main">
-        <header class="app-topbar">
-          <button type="button"
-                  class="app-hamburger"
-                  @click="navOpen = !navOpen"
-                  :aria-expanded="navOpen"
-                  aria-label="Toggle navigation">
-            <i data-lucide="menu" class="h-4 w-4"></i>
-          </button>
+      <!-- ── Top bar: own grid row so it spans main + rail at xl+. ───── -->
+      <header class="app-topbar">
+        <button type="button"
+                class="app-hamburger"
+                @click="navOpen = !navOpen"
+                :aria-expanded="navOpen"
+                aria-label="Toggle navigation">
+          <i data-lucide="menu" class="h-4 w-4"></i>
+        </button>
 
-          <nav class="app-breadcrumbs" aria-label="Breadcrumb">
-            {% block breadcrumbs %}{% endblock %}
-          </nav>
+        <nav class="app-breadcrumbs" aria-label="Breadcrumb">
+          {% block breadcrumbs %}{% endblock %}
+        </nav>
 
-          <button type="button"
-                  class="theme-toggle"
-                  @click="darkMode = !darkMode"
-                  :aria-label="darkMode ? 'Switch to light mode' : 'Switch to dark mode'"
-                  title="Toggle theme">
-            <i x-show="!darkMode" x-cloak data-lucide="moon" class="h-4 w-4"></i>
-            <i x-show="darkMode" x-cloak data-lucide="sun" class="h-4 w-4"></i>
-          </button>
-        </header>
+        <button type="button"
+                class="theme-toggle"
+                @click="darkMode = !darkMode"
+                :aria-label="darkMode ? 'Switch to light mode' : 'Switch to dark mode'"
+                title="Toggle theme">
+          <i x-show="!darkMode" x-cloak data-lucide="moon" class="h-4 w-4"></i>
+          <i x-show="darkMode" x-cloak data-lucide="sun" class="h-4 w-4"></i>
+        </button>
+      </header>
 
-        <main class="app-content">
-          {% block content %}{% endblock %}
-        </main>
-      </div>
+      <!-- ── Main column: page content only. ───────────────────────── -->
+      <main class="app-content">
+        {% block content %}{% endblock %}
+      </main>
 
-      <!-- ── Right rail (xl+ only) ───────────────────────────────────── -->
-      <aside class="app-rail" aria-label="Page context">
-        {% block rail %}
-          <div class="rail-empty">
-            <p class="muted-soft text-xs m-0">Context for this view will appear here as you use the app.</p>
-          </div>
-        {% endblock %}
-      </aside>
+      <!-- ── Right rail (xl+ only, hidden when no page content). The
+           default `rail` block is empty by design — pages that want
+           context content override the block with at least one element.
+           CSS hides the <aside> and collapses the grid column when no
+           element children are present. ── -->
+      <aside class="app-rail" aria-label="Page context">{% block rail %}{% endblock %}</aside>
 
     </div>
 

@@ -895,19 +895,33 @@ button.btn-loading > i:first-child {
 .app-shell {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-areas: "main";
+  grid-template-rows: 3rem 1fr;
+  grid-template-areas:
+    "topbar"
+    "main";
   min-height: 100vh;
 }
 @media (min-width: 1024px) {
   .app-shell {
     grid-template-columns: 14rem 1fr;
-    grid-template-areas: "sidebar main";
+    grid-template-rows: 3rem 1fr;
+    /* Sidebar spans both rows; topbar fills the right column row 1; main
+       fills the right column row 2. The sidebar's own __brand bar lives
+       inside `sidebar`, so it sits visually next to `topbar`. */
+    grid-template-areas:
+      "sidebar topbar"
+      "sidebar main";
   }
 }
 @media (min-width: 1280px) {
   .app-shell {
     grid-template-columns: 14rem minmax(0, 1fr) 18rem;
-    grid-template-areas: "sidebar main rail";
+    grid-template-rows: 3rem 1fr;
+    /* Topbar spans main + rail so the navbar runs the full width to the
+       right edge of the viewport. Content in main and rail sit below. */
+    grid-template-areas:
+      "sidebar topbar topbar"
+      "sidebar main rail";
   }
 }
 
@@ -941,7 +955,12 @@ button.btn-loading > i:first-child {
 }
 
 .app-sidebar__brand {
-  padding: 1rem 1.25rem;
+  /* Match .app-topbar height exactly so the two top bars align across
+     columns at lg+. Vertical padding goes to flex-center the link. */
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  padding: 0 1.25rem;
   border-bottom: 1px solid var(--color-border);
 }
 .app-sidebar__brand .brand-link {
@@ -1006,16 +1025,10 @@ button.btn-loading > i:first-child {
   .app-drawer-backdrop { display: none !important; }
 }
 
-/* ── Main column — wraps the top bar and the page content. ── */
-.app-main {
-  grid-area: main;
-  min-width: 0;          /* let chat code blocks etc. shrink instead of pushing layout wider */
-  display: flex;
-  flex-direction: column;
-}
-
-/* ── Top bar — sticky, sits above page content. ── */
+/* ── Top bar — own grid row, sticky to viewport top. Spans main + rail
+   at xl+ so the bar runs the full width to the right edge. ── */
 .app-topbar {
+  grid-area: topbar;
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
@@ -1092,8 +1105,12 @@ button.btn-loading > i:first-child {
   font-weight: 400;
 }
 
-/* ── Page content — centered max-w-4xl, padded. ── */
+/* ── Page content — direct grid child sitting in `main`. Centered
+   max-w-4xl with side padding so it stays readable even when its grid
+   column is wide. ── */
 .app-content {
+  grid-area: main;
+  min-width: 0;                /* allow long inline content (code, urls) to wrap rather than push the column wider */
   width: 100%;
   max-width: 56rem;            /* 4xl */
   margin: 0 auto;
@@ -1106,8 +1123,11 @@ button.btn-loading > i:first-child {
   .app-content { padding: 1.75rem 2rem 2.5rem; }
 }
 
-/* ── Right rail — xl+ only. Sticky so its content stays in view as
-   the main column scrolls; gets its own scroll if it overflows. ── */
+/* ── Right rail — xl+ only, and only when the page actually fills the
+   `rail` block. Pages that don't override `{% block rail %}` leave the
+   <aside> with no element children; the `:not(:has(*))` rule below hides
+   it, and the matching :has() on .app-shell collapses the grid back to
+   the two-column layout so the main column gets the reclaimed width. */
 .app-rail {
   grid-area: rail;
   display: none;
@@ -1123,11 +1143,15 @@ button.btn-loading > i:first-child {
     padding: 1.25rem 1.25rem 2rem;
     border-left: 1px solid var(--color-border);
   }
-}
-.rail-empty {
-  padding: 0.75rem;
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius);
+  /* Rail with no element children — collapse it visually. */
+  .app-rail:not(:has(*)) {
+    display: none;
+  }
+  /* …and reclaim the column width for `main` when the rail is empty. */
+  .app-shell:not(:has(> .app-rail:has(*))) {
+    grid-template-columns: 14rem minmax(0, 1fr);
+    grid-template-areas: "sidebar main";
+  }
 }
 
 

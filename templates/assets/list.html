@@ -76,26 +76,22 @@
             <div class="flex gap-1.5 items-start flex-shrink-0">
               {% if !a.primary %}
                 <form method="post" action="/assets/{{ a.id }}/primary">
-                  <button type="submit" class="btn btn-sm">
+                  <button type="submit" class="btn btn-sm" title="Set as primary" aria-label="Set as primary">
                     <i data-lucide="star" class="h-3.5 w-3.5"></i>
-                    Set primary
                   </button>
                 </form>
               {% endif %}
-              <a class="btn btn-sm" href="/assets/{{ a.id }}/preview">
+              <a class="btn btn-sm" href="/assets/{{ a.id }}/preview" title="Preview" aria-label="Preview">
                 <i data-lucide="eye" class="h-3.5 w-3.5"></i>
-                Preview
               </a>
               <form method="post" action="/assets/{{ a.id }}/reextract">
-                <button type="submit" class="btn btn-sm">
+                <button type="submit" class="btn btn-sm" title="Re-extract text from PDF" aria-label="Re-extract">
                   <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
-                  Re-extract
                 </button>
               </form>
               <form method="post" action="/assets/{{ a.id }}/delete" onsubmit="return confirm('Delete asset?')">
-                <button type="submit" class="btn btn-sm btn-danger">
+                <button type="submit" class="btn btn-sm btn-danger" title="Delete asset" aria-label="Delete asset">
                   <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
-                  Delete
                 </button>
               </form>
             </div>

@@ -19,23 +19,20 @@
       </div>
     </div>
     <div class="flex gap-2 flex-shrink-0">
-      <a class="btn" href="/companies">
+      <a class="btn" href="/companies" title="Back to companies" aria-label="Back to companies">
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
-        Back
       </a>
       <form method="post" action="/companies/{{ company.id }}/refresh-packet"
             data-loading-title="Refreshing the research packet…"
             data-loading-detail="Re-running the research agent for {{ company.name }}. This usually takes 30–60s.">
-        <button type="submit" class="btn">
+        <button type="submit" class="btn" title="Refresh research packet" aria-label="Refresh research packet">
           <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-          Refresh packet
         </button>
       </form>
       <form method="post" action="/companies/{{ company.id }}/delete"
             onsubmit="return confirm('Delete company? Sessions and evaluations are kept but orphaned.')">
-        <button type="submit" class="btn btn-danger">
+        <button type="submit" class="btn btn-danger" title="Delete company" aria-label="Delete company">
           <i data-lucide="trash-2" class="h-4 w-4"></i>
-          Delete
         </button>
       </form>
     </div>
@@ -47,9 +44,8 @@
       <form method="post" action="/companies/{{ company.id }}/sessions"
             data-loading-title="Starting session…"
             data-loading-detail="Snapshotting model + prompt versions and creating your session.">
-        <button type="submit" class="btn btn-primary btn-icon-spring">
-          <span class="btn-icon"><i data-lucide="play" class="h-4 w-4"></i></span>
-          <span>Start session</span>
+        <button type="submit" class="btn btn-primary" title="Start session" aria-label="Start session">
+          <i data-lucide="play" class="h-4 w-4"></i>
         </button>
       </form>
     </div>
@@ -97,9 +93,8 @@
                   </div>
                 </div>
                 <div class="flex gap-2 justify-end">
-                  <a class="btn btn-sm" href="/companies/{{ company.id }}">
+                  <a class="btn btn-sm" href="/companies/{{ company.id }}" title="Cancel" aria-label="Cancel">
                     <i data-lucide="x" class="h-3.5 w-3.5"></i>
-                    Cancel
                   </a>
                   <button type="submit" class="btn btn-primary btn-sm">
                     <i data-lucide="save" class="h-3.5 w-3.5"></i>
