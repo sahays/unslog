@@ -116,7 +116,7 @@
         <ul class="grid gap-1.5 list-none p-0 m-0">
           {% for ve in versions %}
             <li>
-              <a href="/stories/{{ story.id }}/versions/{{ ve.id }}" target="_blank" rel="noopener"
+              <a href="/stories/{{ story.id }}/versions/{{ ve.id }}"
                  class="flex items-center gap-2 p-2 px-2.5 rounded-md border no-underline
                         {% if ve.is_current %}border-[color:var(--color-accent)] bg-[color:var(--color-accent-light)]{% else %}border-[color:var(--color-border)] hover:border-[color:var(--color-accent)]{% endif %}">
                 <i data-lucide="file-text" class="h-3.5 w-3.5 {% if ve.is_current %}text-[color:var(--color-accent)]{% endif %}"></i>
@@ -124,7 +124,6 @@
                 {% if ve.is_current %}
                   <span class="muted-soft text-xs">current</span>
                 {% endif %}
-                <i data-lucide="external-link" class="h-3 w-3 text-[color:var(--color-text-tertiary)]"></i>
               </a>
             </li>
           {% endfor %}

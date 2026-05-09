@@ -36,6 +36,7 @@ pub fn routes() -> Router<AppState> {
 #[template(path = "stories/index.html")]
 struct IndexTemplate {
     tiles: Vec<CompetencyTile>,
+    completed_cards: Vec<CompletedCard>,
 }
 
 pub struct CompetencyTile {
@@ -47,6 +48,17 @@ pub struct CompetencyTile {
     /// Most-recently-updated story id, if any. Drives whether the tile is a
     /// link (existing story) or a form-button (create first story).
     pub latest_story_id: Option<String>,
+}
+
+/// Compact card for a completed story's current version, rendered below
+/// the tile grid. Links out to the version page (new tab) where the full
+/// STAR+ bullets are shown — the card itself stays small.
+pub struct CompletedCard {
+    pub story_id: String,
+    pub version_id: String,
+    pub competency_name: String,
+    pub version_label: String,
+    pub updated_label: String,
 }
 
 async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
@@ -61,6 +73,10 @@ async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> 
         id: String,
         competency_id: String,
         status: StoryStatus,
+        #[serde(default)]
+        current_version_id: Option<String>,
+        #[serde(with = "crate::models::datetime_compat::required")]
+        updated_at: chrono::DateTime<chrono::Utc>,
     }
 
     let opts = FindOptions::builder()
@@ -69,6 +85,8 @@ async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> 
             "_id": 1,
             "competency_id": 1,
             "status": 1,
+            "current_version_id": 1,
+            "updated_at": 1,
         })
         .build();
     let cursor = state
@@ -83,14 +101,75 @@ async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> 
     let mut counts: HashMap<String, (usize, usize)> = HashMap::new();
     // The find query above sorts by updated_at desc — first row per
     // competency is the latest one, so we keep only the first id seen.
-    for s in stories {
+    for s in &stories {
         let entry = counts.entry(s.competency_id.clone()).or_default();
         match s.status {
             StoryStatus::InProgress => entry.0 += 1,
             StoryStatus::Complete => entry.1 += 1,
         }
-        latest_by_comp.entry(s.competency_id.clone()).or_insert(s.id);
+        latest_by_comp
+            .entry(s.competency_id.clone())
+            .or_insert_with(|| s.id.clone());
     }
+
+    // Bulk-load current StoryVersion docs for completed stories so we can
+    // render bullet cards below the tile grid.
+    let completed_version_ids: Vec<String> = stories
+        .iter()
+        .filter(|s| s.status == StoryStatus::Complete)
+        .filter_map(|s| s.current_version_id.clone())
+        .collect();
+
+    // Project to just the fields needed for the card label — skip the
+    // (potentially large) body, since we only render version_n + id and
+    // link out to the version page on click.
+    #[derive(serde::Deserialize)]
+    struct VersionLabelRow {
+        #[serde(rename = "_id")]
+        id: String,
+        version_n: u32,
+    }
+
+    let versions_by_id: HashMap<String, u32> = if completed_version_ids.is_empty() {
+        HashMap::new()
+    } else {
+        let opts = FindOptions::builder()
+            .projection(bson::doc! { "_id": 1, "version_n": 1 })
+            .build();
+        let cursor = state
+            .db
+            .collection::<VersionLabelRow>(StoryVersion::COLLECTION)
+            .find(bson::doc! { "_id": { "$in": &completed_version_ids } })
+            .with_options(opts)
+            .await?;
+        let rows: Vec<VersionLabelRow> = cursor.try_collect().await?;
+        rows.into_iter().map(|v| (v.id, v.version_n)).collect()
+    };
+
+    let category_name_by_id: HashMap<String, String> = categories
+        .iter()
+        .map(|c| (c.id.clone(), c.name.clone()))
+        .collect();
+
+    // Sorted by updated_at desc (inherited from the stories cursor sort).
+    let completed_cards: Vec<CompletedCard> = stories
+        .iter()
+        .filter(|s| s.status == StoryStatus::Complete)
+        .filter_map(|s| {
+            let vid = s.current_version_id.as_ref()?;
+            let version_n = versions_by_id.get(vid)?;
+            Some(CompletedCard {
+                story_id: s.id.clone(),
+                version_id: vid.clone(),
+                competency_name: category_name_by_id
+                    .get(&s.competency_id)
+                    .cloned()
+                    .unwrap_or_else(|| "Unknown competency".to_string()),
+                version_label: format!("v{version_n}"),
+                updated_label: s.updated_at.format("%b %d, %H:%M").to_string(),
+            })
+        })
+        .collect();
 
     let tiles: Vec<CompetencyTile> = categories
         .into_iter()
@@ -108,9 +187,12 @@ async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> 
         })
         .collect();
 
-    let body = IndexTemplate { tiles }
-        .render()
-        .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
+    let body = IndexTemplate {
+        tiles,
+        completed_cards,
+    }
+    .render()
+    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
     Ok(Html(body))
 }
 

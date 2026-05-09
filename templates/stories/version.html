@@ -23,9 +23,13 @@
       </p>
     </div>
     <div class="flex gap-2 flex-shrink-0">
-      <a class="btn" href="/stories/{{ story.id }}">
+      {# Prefer browser history when available (most common: user clicked
+         a version chip and wants to return); fall back to the story page
+         when the tab has no prior history (new-tab opens, direct URLs). #}
+      <a class="btn" href="/stories/{{ story.id }}"
+         onclick="if (history.length > 1) { event.preventDefault(); history.back(); }">
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
-        Back to story
+        Back
       </a>
     </div>
   </div>
