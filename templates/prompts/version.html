@@ -1,12 +1,12 @@
 {% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
-{% block title %}{{ name }} v{{ n }} — prompts{% endblock %}
+{% block title %}{{ name }} v{{ n }} — agents{% endblock %}
 
 {% block breadcrumbs %}
-  <a href="/prompts">Prompts</a>
-  <a href="/prompts/{{ name }}">{{ name }}</a>
-  <a href="/prompts/{{ name }}/history">Versions</a>
+  <a href="/agents">Agents</a>
+  <a href="/agents/{{ name }}">{{ name }}</a>
+  <a href="/agents/{{ name }}/history">Versions</a>
   <span>v{{ n }}</span>
 {% endblock %}
 
@@ -24,11 +24,11 @@
       </div>
     </div>
     <div class="flex gap-2 flex-shrink-0">
-      <a class="btn" href="/prompts/{{ name }}/history" title="View all versions" aria-label="View all versions">
+      <a class="btn" href="/agents/{{ name }}/history" title="View all versions" aria-label="View all versions">
         <i data-lucide="history" class="h-4 w-4"></i>
       </a>
       {% if !is_active %}
-        <form method="post" action="/prompts/{{ name }}/restore/{{ version.id }}">
+        <form method="post" action="/agents/{{ name }}/restore/{{ version.id }}">
           <button type="submit" class="btn btn-primary" title="Activate this version" aria-label="Activate this version">
             <i data-lucide="check-circle" class="h-4 w-4"></i>
           </button>

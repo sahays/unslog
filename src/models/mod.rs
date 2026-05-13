@@ -20,5 +20,5 @@ pub use question::{Question, QuestionSource};
 pub use role::Role;
 pub use session::{ModelSnapshot, PromptSnapshot, Session, SessionStatus};
 pub use settings::Settings;
-pub use story::{ChatRole, ChatTurn, Story, StoryBody, StoryStatus, StoryVersion};
+pub use story::{ChatRole, ChatTurn, Difficulty, Story, StoryBody, StoryStatus, StoryVersion};
 pub use summary::{Summary, SummaryPayload};

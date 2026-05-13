@@ -205,6 +205,7 @@ pub(super) async fn create(
         id: uuid::Uuid::now_v7().to_string(),
         competency_id: cat.id.clone(),
         status: StoryStatus::InProgress,
+        mode: crate::models::Difficulty::default(),
         current_version_id: None,
         chat: Vec::new(),
         created_at: now,

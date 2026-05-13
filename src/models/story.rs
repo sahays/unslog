@@ -1,9 +1,11 @@
 //! Story Builder — competency-tagged STAR+ stories driven by AI-led probing.
 //!
-//! A `Story` is the persistent shell: chosen competency, embedded chat history,
-//! and a pointer to the current `StoryVersion`. `StoryVersion` is an immutable
-//! snapshot of the bullet-form story at one point in time. Chat is the source
-//! of truth; bullets are the index.
+//! A `Story` is the persistent shell: chosen competency, difficulty mode for
+//! the coach, embedded chat history, and a pointer to the current
+//! `StoryVersion`. `StoryVersion` is an immutable snapshot of the bullet-form
+//! story at one point in time. Chat is the source of truth; bullets are the
+//! index. The difficulty mode picks which `story_chat*` prompt drives the
+//! coach for this story.
 
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +14,42 @@ use serde::{Deserialize, Serialize};
 pub enum StoryStatus {
     InProgress,
     Complete,
+}
+
+/// Coach behavior for this story's chat. `Strict` is the default — pure
+/// probing, never volunteers wording. `Collaborative` is the same probing
+/// rigor with one relaxation: when the candidate explicitly asks for help,
+/// ideas, or examples, the coach may offer 2–3 grounded options to pick
+/// from or modify. The candidate's story still remains theirs.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Difficulty {
+    #[default]
+    Strict,
+    Collaborative,
+}
+
+impl Difficulty {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Difficulty::Strict => "strict",
+            Difficulty::Collaborative => "collaborative",
+        }
+    }
+
+    pub fn from_form(s: &str) -> Self {
+        match s {
+            "collaborative" => Difficulty::Collaborative,
+            _ => Difficulty::Strict,
+        }
+    }
+
+    pub fn prompt_name(self) -> &'static str {
+        match self {
+            Difficulty::Strict => "story_chat",
+            Difficulty::Collaborative => "story_chat_collaborative",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -45,6 +83,11 @@ pub struct Story {
     /// FK → `categories._id`. The competency this story is being built against.
     pub competency_id: String,
     pub status: StoryStatus,
+    /// Picks the coach prompt for this story (`story_chat` or
+    /// `story_chat_easy`). Defaults to `Strict` for legacy rows that pre-date
+    /// the toggle, preserving previous behavior.
+    #[serde(default)]
+    pub mode: Difficulty,
     /// FK → `story_versions._id` of the latest locked-in version. `None` until
     /// the user clicks Generate the first time.
     #[serde(default)]
@@ -95,4 +138,54 @@ pub struct StoryVersion {
 
 impl StoryVersion {
     pub const COLLECTION: &'static str = "story_versions";
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn case_difficulty_default_is_strict() {
+        assert_eq!(Difficulty::default(), Difficulty::Strict);
+    }
+
+    #[test]
+    fn case_difficulty_from_form_collaborative() {
+        assert_eq!(
+            Difficulty::from_form("collaborative"),
+            Difficulty::Collaborative
+        );
+    }
+
+    #[test]
+    fn case_difficulty_from_form_strict() {
+        assert_eq!(Difficulty::from_form("strict"), Difficulty::Strict);
+    }
+
+    #[test]
+    fn case_difficulty_from_form_unknown_falls_back_to_strict() {
+        assert_eq!(Difficulty::from_form("medium"), Difficulty::Strict);
+        assert_eq!(Difficulty::from_form(""), Difficulty::Strict);
+    }
+
+    #[test]
+    fn case_difficulty_prompt_name_routes_by_mode() {
+        assert_eq!(Difficulty::Strict.prompt_name(), "story_chat");
+        assert_eq!(
+            Difficulty::Collaborative.prompt_name(),
+            "story_chat_collaborative"
+        );
+    }
+
+    #[test]
+    fn case_difficulty_as_str_round_trips_through_from_form() {
+        assert_eq!(
+            Difficulty::from_form(Difficulty::Strict.as_str()),
+            Difficulty::Strict
+        );
+        assert_eq!(
+            Difficulty::from_form(Difficulty::Collaborative.as_str()),
+            Difficulty::Collaborative
+        );
+    }
 }

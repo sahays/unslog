@@ -16,8 +16,10 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
 
+use axum_extra::extract::Form;
+
 use crate::error::AppError;
-use crate::models::{Category, ChatTurn, Story, StoryVersion};
+use crate::models::{Category, ChatTurn, Difficulty, Story, StoryVersion};
 use crate::services::openrouter::ChatMessage;
 use crate::services::{prompt_store, settings_store};
 use crate::startup::AppState;
@@ -33,6 +35,7 @@ pub fn routes() -> Router<AppState> {
         .route("/stories/:id/turns", post(chat::post_turn))
         .route("/stories/:id/generate", post(chat::generate))
         .route("/stories/:id/continue", post(chat::continue_chat))
+        .route("/stories/:id/mode", post(set_mode))
         .route("/stories/:id/delete", post(delete_story))
         .route("/stories/:id/versions/:vid", get(show::show_version))
 }
@@ -68,15 +71,16 @@ async fn push_turn(state: &AppState, story: &mut Story, turn: ChatTurn) -> Resul
     Ok(())
 }
 
-/// Build [system, ...history] and call the chat model. Returns the model's
-/// next assistant message content.
+/// Build [system, ...history] and call the chat model. Picks the system prompt
+/// by the story's difficulty mode. Returns the model's next assistant message
+/// content.
 async fn run_chat_model(
     state: &AppState,
     story: &Story,
     competency: &Category,
 ) -> Result<String, AppError> {
     let settings = settings_store::load(&state.db).await?;
-    let system_body = prompt_store::get_current_body(&state.db, "story_chat").await?;
+    let system_body = prompt_store::get_current_body(&state.db, story.mode.prompt_name()).await?;
     let competency_block = format!(
         "<competency>\nname: {}\nid: {}\ndescription: {}\n</competency>",
         competency.name, competency.id, competency.description
@@ -107,7 +111,41 @@ async fn run_chat_model(
     Ok(reply.trim().to_string())
 }
 
-// ── Small handler ────────────────────────────────────────────────────────
+// ── Small handlers ───────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct ModeForm {
+    mode: String,
+}
+
+/// Update the coach mode for this story. The new mode takes effect on the
+/// next chat turn (which loads `story.mode` and picks the matching prompt).
+/// Same story, same chat history — only the coach's behavior changes.
+async fn set_mode(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Form(form): Form<ModeForm>,
+) -> Result<Response, AppError> {
+    let mode = Difficulty::from_form(&form.mode);
+    state
+        .db
+        .collection::<Story>(Story::COLLECTION)
+        .update_one(
+            bson::doc! { "_id": &id },
+            bson::doc! { "$set": {
+                "mode": mode.as_str(),
+                "updated_at": chrono::Utc::now().to_rfc3339(),
+            } },
+        )
+        .await?;
+    tracing::info!(
+        event = "story.set_mode",
+        story_id = %id,
+        mode = %mode.as_str(),
+        "coach mode updated",
+    );
+    Ok(Redirect::to(&format!("/stories/{id}")).into_response())
+}
 
 async fn delete_story(
     State(state): State<AppState>,

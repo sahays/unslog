@@ -1,11 +1,11 @@
 {% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
-{% block title %}{{ name }}{% if is_blank %} — new version{% endif %} — prompts{% endblock %}
+{% block title %}{{ name }}{% if is_blank %} — new version{% endif %} — agents{% endblock %}
 
 {% block breadcrumbs %}
-  <a href="/prompts">Prompts</a>
-  <a href="/prompts/{{ name }}">{{ name }}</a>
+  <a href="/agents">Agents</a>
+  <a href="/agents/{{ name }}">{{ name }}</a>
   {% if is_blank %}<span>New version</span>{% endif %}
 {% endblock %}
 
@@ -25,25 +25,25 @@
       <div class="muted-soft text-xs mt-2">updated {{ updated_at }}</div>
     </div>
     <div class="flex gap-2 flex-shrink-0">
-      <a class="btn" href="/prompts" title="Back to prompts" aria-label="Back to prompts">
+      <a class="btn" href="/agents" title="Back to agents" aria-label="Back to agents">
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
       </a>
       {% if is_blank %}
-        <a class="btn" href="/prompts/{{ name }}" title="Edit active version" aria-label="Edit active version">
+        <a class="btn" href="/agents/{{ name }}" title="Edit active version" aria-label="Edit active version">
           <i data-lucide="pencil" class="h-4 w-4"></i>
         </a>
       {% else %}
-        <a class="btn" href="/prompts/{{ name }}/new" title="New version" aria-label="New version">
+        <a class="btn" href="/agents/{{ name }}/new" title="New version" aria-label="New version">
           <i data-lucide="plus" class="h-4 w-4"></i>
         </a>
       {% endif %}
-      <a class="btn" href="/prompts/{{ name }}/history" title="View all versions" aria-label="View all versions">
+      <a class="btn" href="/agents/{{ name }}/history" title="View all versions" aria-label="View all versions">
         <i data-lucide="history" class="h-4 w-4"></i>
       </a>
     </div>
   </div>
 
-  <form method="post" action="/prompts/{{ name }}" class="grid gap-3">
+  <form method="post" action="/agents/{{ name }}" class="grid gap-3">
     <textarea
       name="body"
       spellcheck="false"

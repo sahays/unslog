@@ -18,6 +18,7 @@ const SEED_CRITIQUE: &str = include_str!("../../prompts/critique.md");
 const SEED_RESEARCH: &str = include_str!("../../prompts/research.md");
 const SEED_SUMMARY: &str = include_str!("../../prompts/summary.md");
 const SEED_STORY_CHAT: &str = include_str!("../../prompts/story_chat.md");
+const SEED_STORY_CHAT_COLLAB: &str = include_str!("../../prompts/story_chat_collaborative.md");
 const SEED_STORY_SUMMARIZE: &str = include_str!("../../prompts/story_summarize.md");
 const SEED_STORY_REFINE_OPEN: &str = include_str!("../../prompts/story_refine_open.md");
 
@@ -27,6 +28,7 @@ fn seed_for(name: &str) -> Option<&'static str> {
         "research" => Some(SEED_RESEARCH),
         "summary" => Some(SEED_SUMMARY),
         "story_chat" => Some(SEED_STORY_CHAT),
+        "story_chat_collaborative" => Some(SEED_STORY_CHAT_COLLAB),
         "story_summarize" => Some(SEED_STORY_SUMMARIZE),
         "story_refine_open" => Some(SEED_STORY_REFINE_OPEN),
         _ => None,

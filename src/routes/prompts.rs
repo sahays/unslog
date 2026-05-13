@@ -12,12 +12,12 @@ use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/prompts", get(list))
-        .route("/prompts/:name", get(edit).post(save))
-        .route("/prompts/:name/new", get(new_version))
-        .route("/prompts/:name/history", get(history))
-        .route("/prompts/:name/versions/:version_id", get(view_version))
-        .route("/prompts/:name/restore/:version_id", post(restore))
+        .route("/agents", get(list))
+        .route("/agents/:name", get(edit).post(save))
+        .route("/agents/:name/new", get(new_version))
+        .route("/agents/:name/history", get(history))
+        .route("/agents/:name/versions/:version_id", get(view_version))
+        .route("/agents/:name/restore/:version_id", post(restore))
 }
 
 #[derive(Template)]
@@ -185,7 +185,7 @@ async fn save(
         body_chars,
         "prompt new version saved",
     );
-    Ok(Redirect::to(&format!("/prompts/{name}")).into_response())
+    Ok(Redirect::to(&format!("/agents/{name}")).into_response())
 }
 
 #[derive(Template)]
@@ -324,7 +324,7 @@ async fn restore(
         restored_from = %target.id,
         "prompt restored from older version",
     );
-    Ok(Redirect::to(&format!("/prompts/{name}/history")).into_response())
+    Ok(Redirect::to(&format!("/agents/{name}/history")).into_response())
 }
 
 fn excerpt(text: &str, max_chars: usize) -> String {

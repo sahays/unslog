@@ -1,11 +1,11 @@
 {% import "macros/ui.html" as ui %}
 {% extends "base.html" %}
 
-{% block title %}{{ name }} versions — prompts{% endblock %}
+{% block title %}{{ name }} versions — agents{% endblock %}
 
 {% block breadcrumbs %}
-  <a href="/prompts">Prompts</a>
-  <a href="/prompts/{{ name }}">{{ name }}</a>
+  <a href="/agents">Agents</a>
+  <a href="/agents/{{ name }}">{{ name }}</a>
   <span>Versions</span>
 {% endblock %}
 
@@ -20,13 +20,13 @@
       </p>
     </div>
     <div class="flex gap-2 flex-shrink-0">
-      <a class="btn" href="/prompts" title="Back to prompts" aria-label="Back to prompts">
+      <a class="btn" href="/agents" title="Back to agents" aria-label="Back to agents">
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
       </a>
-      <a class="btn" href="/prompts/{{ name }}" title="Edit active version" aria-label="Edit active version">
+      <a class="btn" href="/agents/{{ name }}" title="Edit active version" aria-label="Edit active version">
         <i data-lucide="pencil" class="h-4 w-4"></i>
       </a>
-      <a class="btn btn-primary" href="/prompts/{{ name }}/new" title="New version" aria-label="New version">
+      <a class="btn btn-primary" href="/agents/{{ name }}/new" title="New version" aria-label="New version">
         <i data-lucide="plus" class="h-4 w-4"></i>
       </a>
     </div>
@@ -56,11 +56,11 @@
               </div>
             </div>
             <div class="flex gap-1.5 flex-shrink-0">
-              <a class="btn btn-sm" href="/prompts/{{ name }}/versions/{{ v.id }}" title="View this version" aria-label="View this version">
+              <a class="btn btn-sm" href="/agents/{{ name }}/versions/{{ v.id }}" title="View this version" aria-label="View this version">
                 <i data-lucide="eye" class="h-3.5 w-3.5"></i>
               </a>
               {% if !v.is_active %}
-                <form method="post" action="/prompts/{{ name }}/restore/{{ v.id }}">
+                <form method="post" action="/agents/{{ name }}/restore/{{ v.id }}">
                   <button type="submit" class="btn btn-sm btn-primary" title="Activate this version" aria-label="Activate this version">
                     <i data-lucide="check-circle" class="h-3.5 w-3.5"></i>
                   </button>

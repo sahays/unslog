@@ -5,6 +5,7 @@ pub const PROMPT_NAMES: &[&str] = &[
     "research",
     "summary",
     "story_chat",
+    "story_chat_collaborative",
     "story_summarize",
     "story_refine_open",
 ];

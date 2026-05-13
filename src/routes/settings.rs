@@ -36,6 +36,8 @@ const PREFERRED_PREFIXES: &[&str] = &[
     "openai/",       // gpt-*, o1-*, o3-*, chatgpt-*
     "anthropic/",    // claude-*
     "deepseek/",     // deepseek-*
+    "x-ai/",         // grok-*
+    "qwen/",         // qwen-*, qwen3-*
 ];
 
 fn is_preferred(id: &str) -> bool {
