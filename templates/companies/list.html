@@ -84,7 +84,7 @@
               </div>
               <div class="muted text-sm">{{ c.role }}</div>
               <div class="muted-soft text-xs mt-1">
-                added {{ c.created_at.format("%Y-%m-%d %H:%M").to_string() }}
+                added {% call ui::time_ago(c.created_at) %}
               </div>
             </div>
             <div class="flex items-start">

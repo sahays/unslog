@@ -30,7 +30,7 @@
               {% if !e.excerpt().is_empty() %}
                 <p class="muted text-sm mt-1 mb-0 whitespace-pre-wrap">{{ e.excerpt() }}</p>
               {% endif %}
-              <time class="muted-soft text-xs font-mono mt-2 block" datetime="{{ e.created_at.to_rfc3339() }}">{{ e.created_at.format("%Y-%m-%d %H:%M") }}</time>
+              <span class="muted-soft text-xs font-mono mt-2 block">{% call ui::time_ago(e.created_at) %}</span>
             </div>
             <div class="flex items-center gap-1 flex-shrink-0">
               <a href="/journal/{{ e.id }}" class="btn btn-sm" title="View" aria-label="View entry">

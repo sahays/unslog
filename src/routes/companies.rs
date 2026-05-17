@@ -10,6 +10,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::error::AppError;
+use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::{Company, Question, QuestionSource, Session, Summary};
 use crate::services::{category_store, evaluations, questions, research};
 use crate::startup::AppState;

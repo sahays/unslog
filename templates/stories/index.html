@@ -63,7 +63,7 @@
               <span class="text-sm font-medium truncate text-[color:var(--color-text-primary)]">{{ c.competency_name }}</span>
               <span class="tag tag-accent flex-shrink-0">{{ c.version_label }}</span>
             </div>
-            <div class="muted-soft text-xs">{{ c.updated_label }}</div>
+            <div class="muted-soft text-xs">{% call ui::time_ago(c.updated_at) %}</div>
           </a>
         {% endfor %}
       </div>

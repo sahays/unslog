@@ -32,7 +32,7 @@ pub struct VersionPickerEntry {
 pub struct SiblingStory {
     pub id: String,
     pub status: StoryStatus,
-    pub updated_label: String,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 pub(super) async fn show(
@@ -104,7 +104,7 @@ async fn list_sibling_stories(
         .map(|r| SiblingStory {
             id: r.id,
             status: r.status,
-            updated_label: r.updated_at.format("%b %d, %H:%M").to_string(),
+            updated_at: r.updated_at,
         })
         .collect())
 }

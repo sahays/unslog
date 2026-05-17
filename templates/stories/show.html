@@ -196,7 +196,7 @@
                   {% when crate::models::StoryStatus::Complete %}Complete
                 {% endmatch %}
               </span>
-              <span class="muted-soft text-xs">{{ s.updated_label }}</span>
+              <span class="muted-soft text-xs">{% call ui::time_ago(s.updated_at) %}</span>
             </a>
           </li>
         {% endfor %}

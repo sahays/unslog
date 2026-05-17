@@ -14,9 +14,9 @@
     <div class="min-w-0">
       <h1 class="font-heading text-2xl font-semibold break-words">{{ entry.title }}</h1>
       <div class="muted-soft text-xs font-mono mt-1">
-        <span>created {{ entry.created_at.format("%Y-%m-%d %H:%M") }}</span>
+        <span>created {% call ui::time_ago(entry.created_at) %}</span>
         {% if entry.updated_at != entry.created_at %}
-          <span class="ml-2">· updated {{ entry.updated_at.format("%Y-%m-%d %H:%M") }}</span>
+          <span class="ml-2">· updated {% call ui::time_ago(entry.updated_at) %}</span>
         {% endif %}
       </div>
     </div>

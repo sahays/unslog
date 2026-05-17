@@ -52,7 +52,7 @@
                 {% endif %}
               </div>
               <div class="muted-soft text-xs mt-1">
-                <code class="font-mono">{{ v.id }}</code> · created {{ v.created_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+                <code class="font-mono">{{ v.id }}</code> · created {% call ui::time_ago(v.created_at) %}
               </div>
             </div>
             <div class="flex gap-1.5 flex-shrink-0">

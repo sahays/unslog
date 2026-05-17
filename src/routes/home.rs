@@ -6,6 +6,7 @@ use futures::TryStreamExt;
 use mongodb::options::FindOptions;
 
 use crate::error::AppError;
+use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::{Company, Session, Summary};
 use crate::startup::AppState;
 

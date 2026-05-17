@@ -6,7 +6,7 @@
 {% block breadcrumbs %}
   <a href="/practice">Practice</a>
   <a href="/companies/{{ company.id }}">{{ company.name }}</a>
-  <span>Session {{ session.started_at.format("%b %d, %H:%M").to_string() }}</span>
+  <span>Session {% call ui::time_ago(session.started_at) %}</span>
 {% endblock %}
 
 {% block content %}
@@ -39,7 +39,7 @@
           {% when crate::models::SessionStatus::Active %}{% call ui::badge("active", "accent") %}
           {% when crate::models::SessionStatus::Ended %}{% call ui::badge("ended", "default") %}
         {% endmatch %}
-        <span>started {{ session.started_at.format("%Y-%m-%d %H:%M").to_string() }}</span>
+        <span>started {% call ui::time_ago(session.started_at) %}</span>
         <span>• model <code class="font-mono">{{ session.model_snapshot.critique }}</code></span>
         {% if !session.curated_question_ids.is_empty() %}
           <span>• {{ session.curated_question_ids.len() }} curated question{% if session.curated_question_ids.len() != 1 %}s{% endif %}</span>

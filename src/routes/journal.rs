@@ -9,6 +9,7 @@ use axum::Router;
 use serde::Deserialize;
 
 use crate::error::AppError;
+use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::JournalEntry;
 use crate::services::journal_store;
 use crate::startup::AppState;

@@ -229,6 +229,14 @@
 </div>
 {%- endmacro %}
 
+{# Relative timestamp — server-rendered "5m ago" / "3d ago" using the
+   crate::filters::time_ago filter. Tooltip carries the absolute UTC time
+   for hover. Time zone doesn't matter for the displayed text because the
+   relative form is the same everywhere. #}
+{% macro time_ago(dt) -%}
+<time datetime="{{ dt.to_rfc3339() }}" title="{{ dt.format("%Y-%m-%d %H:%M UTC").to_string() }}">{{ dt|time_ago }}</time>
+{%- endmacro %}
+
 {# Button-styled link. variant ∈ {primary, secondary, danger, ghost} #}
 {% macro link_btn(href, text, icon, variant) -%}
 {% if variant == "primary" -%}

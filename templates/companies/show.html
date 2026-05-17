@@ -137,7 +137,7 @@
       <div class="flex items-center justify-between mb-4">
         {% call ui::card_header("search", "Research packet") %}
         <div class="muted-soft text-xs">
-          refreshed {{ p.last_refreshed_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+          refreshed {% call ui::time_ago(p.last_refreshed_at) %}
         </div>
       </div>
 
@@ -241,7 +241,7 @@
                 {% when crate::models::SessionStatus::Ended %}{% call ui::badge("ended", "default") %}
               {% endmatch %}
               <span class="muted-soft text-xs truncate">
-                {{ row.session.started_at.format("%b %d, %H:%M").to_string() }}
+                {% call ui::time_ago(row.session.started_at) %}
               </span>
             </div>
             <div class="muted-soft text-xs truncate">

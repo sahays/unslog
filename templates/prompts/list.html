@@ -28,6 +28,9 @@
                 {% if item.total_n > 0 %}
                   <span class="tag">v{{ item.active_n }} active · {{ item.total_n }} total</span>
                 {% endif %}
+                {% if let Some(u) = item.updated_at.as_ref() %}
+                  <span class="muted-soft text-xs">updated {% call ui::time_ago(u) %}</span>
+                {% endif %}
               </div>
               <div class="muted text-sm">{{ item.description }}</div>
             </div>

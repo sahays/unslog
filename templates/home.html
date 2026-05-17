@@ -61,7 +61,7 @@
             <div class="flex-1 min-w-0">
               <div class="font-medium">{{ row.company_name }}</div>
               <div class="muted text-sm">
-                started {{ row.session.started_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+                started {% call ui::time_ago(row.session.started_at) %}
                 {% if row.has_summary %}<span class="ml-2">• has summary</span>{% endif %}
               </div>
             </div>

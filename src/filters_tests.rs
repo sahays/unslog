@@ -58,3 +58,23 @@ fn case_strikethrough_renders() {
         "ENABLE_STRIKETHROUGH not wired: {out}"
     );
 }
+
+#[test]
+fn case_time_ago_buckets() {
+    use super::format_relative_secs as f;
+    assert_eq!(f(0), "just now");
+    assert_eq!(f(44), "just now");
+    assert_eq!(f(45), "1m ago");
+    assert_eq!(f(60), "1m ago");
+    assert_eq!(f(89), "1m ago");
+    assert_eq!(f(90), "2m ago");
+    assert_eq!(f(59 * 60), "59m ago");
+    assert_eq!(f(60 * 60), "1h ago");
+    assert_eq!(f(23 * 3600), "23h ago");
+    assert_eq!(f(24 * 3600), "1d ago");
+    assert_eq!(f(29 * 86_400), "29d ago");
+    assert_eq!(f(30 * 86_400), "1mo ago");
+    assert_eq!(f(11 * 2_592_000), "11mo ago");
+    assert_eq!(f(12 * 2_592_000), "1y ago");
+    assert_eq!(f(-60), "1m from now");
+}

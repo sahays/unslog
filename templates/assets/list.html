@@ -67,7 +67,7 @@
                 {% endmatch %}
               </div>
               <div class="muted text-sm mt-1">
-                {{ a.original_filename }} • uploaded {{ a.uploaded_at.format("%Y-%m-%d %H:%M").to_string() }}
+                {{ a.original_filename }} • uploaded {% call ui::time_ago(a.uploaded_at) %}
               </div>
               {% if let Some(err) = a.extraction_error.as_ref() %}
                 <div class="text-sm mt-1 text-[color:var(--color-error)]">{{ err }}</div>

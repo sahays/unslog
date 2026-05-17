@@ -20,7 +20,7 @@
         <span class="tag">{{ n }} of {{ total_n }}</span>
       </div>
       <div class="muted-soft text-xs mt-1">
-        <code class="font-mono">{{ version.id }}</code> · {{ version.created_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+        <code class="font-mono">{{ version.id }}</code> · {% call ui::time_ago(version.created_at) %}
       </div>
     </div>
     <div class="flex gap-2 flex-shrink-0">

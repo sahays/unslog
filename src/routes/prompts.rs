@@ -6,6 +6,7 @@ use axum::Router;
 use serde::Deserialize;
 
 use crate::error::AppError;
+use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::{is_valid_prompt_name, PromptVersion, PROMPT_NAMES};
 use crate::services::prompt_store as store;
 use crate::startup::AppState;
@@ -35,6 +36,9 @@ struct PromptCard {
     active_n: u32,
     /// Total number of versions ever saved for this prompt.
     total_n: u32,
+    /// When the prompt was last updated (a new version was activated).
+    /// `None` for never-seeded prompts.
+    updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 fn describe(name: &str) -> &'static str {
@@ -59,16 +63,16 @@ async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let mut items = Vec::new();
     for name in PROMPT_NAMES {
         let prompt = store::get_prompt(&state.db, name).await?;
-        let (body_excerpt, active_n, total_n) = match prompt {
+        let (body_excerpt, active_n, total_n, updated_at) = match prompt {
             Some(p) => {
                 let versions = store::list_versions(&state.db, name).await?; // newest-first
                 let total_n = versions.len() as u32;
                 let active_n = active_version_number(&versions, &p.current_version_id);
                 let v = store::get_version(&state.db, &p.current_version_id).await?;
                 let body = v.map(|v| v.body).unwrap_or_default();
-                (excerpt(&body, 280), active_n, total_n)
+                (excerpt(&body, 280), active_n, total_n, Some(p.updated_at))
             }
-            None => (String::new(), 0, 0),
+            None => (String::new(), 0, 0, None),
         };
         items.push(PromptCard {
             name,
@@ -76,6 +80,7 @@ async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
             body_excerpt,
             active_n,
             total_n,
+            updated_at,
         });
     }
     let body = ListTemplate { items }

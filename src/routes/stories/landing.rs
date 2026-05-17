@@ -11,6 +11,7 @@ use mongodb::options::FindOptions;
 use serde::Deserialize;
 
 use crate::error::AppError;
+use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::{Category, ChatRole, ChatTurn, Story, StoryStatus, StoryVersion};
 use crate::services::category_store;
 use crate::startup::AppState;
@@ -43,7 +44,7 @@ pub struct CompletedCard {
     pub version_id: String,
     pub competency_name: String,
     pub version_label: String,
-    pub updated_label: String,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
@@ -151,7 +152,7 @@ pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>,
                     .cloned()
                     .unwrap_or_else(|| "Unknown competency".to_string()),
                 version_label: format!("v{version_n}"),
-                updated_label: s.updated_at.format("%b %d, %H:%M").to_string(),
+                updated_at: s.updated_at,
             })
         })
         .collect();

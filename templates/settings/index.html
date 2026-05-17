@@ -138,7 +138,7 @@
 
     <div class="flex items-center justify-between gap-3 mt-2">
       <span class="muted-soft text-xs">
-        Last updated {{ settings.updated_at.format("%Y-%m-%d %H:%M UTC").to_string() }}
+        Last updated {% call ui::time_ago(settings.updated_at) %}
       </span>
       <button type="submit" class="btn btn-primary btn-icon-spring">
         <span class="btn-icon"><i data-lucide="save" class="h-4 w-4"></i></span>

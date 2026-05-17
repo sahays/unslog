@@ -19,7 +19,7 @@
         {% if is_current %}{% call ui::badge("current", "good") %}{% else %}{% call ui::badge("past version", "default") %}{% endif %}
       </div>
       <p class="muted-soft text-xs mt-1 m-0">
-        Generated {{ version.created_at.format("%Y-%m-%d %H:%M").to_string() }}. Read-only — past versions are immutable.
+        Generated {% call ui::time_ago(version.created_at) %}. Read-only — past versions are immutable.
       </p>
     </div>
     <div class="flex gap-2 flex-shrink-0">
