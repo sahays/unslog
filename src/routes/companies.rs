@@ -18,6 +18,7 @@ use crate::startup::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/companies", get(list).post(create))
+        .route("/companies/new", get(new_form))
         .route("/companies/:id", get(show))
         .route("/companies/:id/refresh-packet", post(refresh_packet))
         .route("/companies/:id/delete", post(delete))
@@ -33,6 +34,11 @@ pub fn routes() -> Router<AppState> {
 #[template(path = "companies/list.html")]
 struct ListTemplate {
     companies: Vec<Company>,
+}
+
+#[derive(Template)]
+#[template(path = "companies/new.html")]
+struct NewTemplate {
     openrouter_configured: bool,
     role_options: Vec<(&'static str, &'static str)>,
 }
@@ -51,8 +57,14 @@ async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
         .build();
     let cursor = coll.find(bson::doc! {}).with_options(opts).await?;
     let companies: Vec<Company> = cursor.try_collect().await?;
-    let body = ListTemplate {
-        companies,
+    let body = ListTemplate { companies }
+        .render()
+        .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
+    Ok(Html(body))
+}
+
+async fn new_form(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let body = NewTemplate {
         openrouter_configured: state.openrouter.configured(),
         role_options: role_options(),
     }

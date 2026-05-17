@@ -181,7 +181,7 @@
     {% if let Some(s) = summary.as_ref() %}
       <div class="card">
         {% call ui::card_header("clipboard-check", "Session debrief") %}
-        <div class="whitespace-pre-wrap">{{ s.narrative }}</div>
+        <div class="prose-chat">{{ s.narrative|safe_markdown|safe }}</div>
 
         {% if !s.strengths.is_empty() %}
           <div class="mt-5">
@@ -213,7 +213,7 @@
         {% if !s.company_fit_signal.is_empty() %}
           <div class="mt-5">
             <div class="muted-soft text-xs uppercase tracking-wider font-medium">Company fit signal</div>
-            <div class="whitespace-pre-wrap mt-1">{{ s.company_fit_signal }}</div>
+            <div class="prose-chat mt-1">{{ s.company_fit_signal|safe_markdown|safe }}</div>
           </div>
         {% endif %}
       </div>

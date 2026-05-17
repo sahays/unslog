@@ -108,7 +108,16 @@
                   {% when crate::models::QuestionSource::Agent %}{% call ui::badge("agent", "ai") %}
                   {% when crate::models::QuestionSource::Uploaded %}{% call ui::badge("uploaded", "default") %}
                 {% endmatch %}
-                <span class="flex-1">{{ q.text }}</span>
+                <div class="flex-1 min-w-0 grid gap-1.5">
+                  <span>{{ q.text }}</span>
+                  {% if !q.categories.is_empty() %}
+                    <div class="flex gap-1 flex-wrap">
+                      {% for c in canonical_categories %}{% if q.has_category(c.id.as_str()) %}
+                        <span class="tag tag-accent" title="{{ c.description }}">{{ c.name }}</span>
+                      {% endif %}{% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
                 <a class="btn btn-sm btn-ghost" href="/companies/{{ company.id }}?edit={{ q.id }}" title="Edit">
                   <i data-lucide="pencil" class="h-3.5 w-3.5"></i>
                 </a>
@@ -118,13 +127,6 @@
                   </button>
                 </form>
               </div>
-              {% if !q.categories.is_empty() %}
-                <div class="flex gap-1 flex-wrap pl-2">
-                  {% for c in canonical_categories %}{% if q.has_category(c.id.as_str()) %}
-                    <span class="tag tag-accent" title="{{ c.description }}">{{ c.name }}</span>
-                  {% endif %}{% endfor %}
-                </div>
-              {% endif %}
             {% endif %}
           </li>
         {% endfor %}
@@ -144,23 +146,23 @@
       <div class="grid gap-5">
         <section>
           <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Summary</h4>
-          <div class="whitespace-pre-wrap">{{ p.summary }}</div>
+          <div class="prose-chat">{{ p.summary|safe_markdown|safe }}</div>
         </section>
 
         <section>
           <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Role JD</h4>
-          <div class="whitespace-pre-wrap">{{ p.role_jd }}</div>
+          <div class="prose-chat">{{ p.role_jd|safe_markdown|safe }}</div>
         </section>
 
         <section>
           <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Values signal</h4>
-          <div class="whitespace-pre-wrap">{{ p.values_signal }}</div>
+          <div class="prose-chat">{{ p.values_signal|safe_markdown|safe }}</div>
         </section>
 
         {% if !p.interview_process.is_empty() %}
           <section>
             <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Interview process</h4>
-            <div class="whitespace-pre-wrap">{{ p.interview_process }}</div>
+            <div class="prose-chat">{{ p.interview_process|safe_markdown|safe }}</div>
           </section>
         {% endif %}
 

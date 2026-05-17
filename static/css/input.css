@@ -146,6 +146,14 @@ html, body {
   color: var(--color-text-primary);
   font-family: var(--font-body);
 }
+/* Default body text matches Tailwind's `text-sm` so unclassified <p>/<span>
+   content lines up with the explicit `text-sm` we use everywhere (the look
+   the `/stories` page sets). Headings are absolute (text-2xl, font-heading)
+   and unaffected. */
+body {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
 
 .font-heading { font-family: var(--font-heading); font-weight: 600; letter-spacing: -0.01em; }
 .font-body    { font-family: var(--font-body); font-weight: 400; }
@@ -388,12 +396,42 @@ textarea {
   line-height: 1.6;
 }
 
-label {
-  display: block;
+/* Browsers render the "Choose file" button with their own font and padding,
+   making file inputs look taller than text inputs. Style the button
+   pseudo-element to match the surrounding inputs. */
+input[type="file"] {
+  padding: 0.3125rem 0.75rem;
   font-size: 0.875rem;
-  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+input[type="file"]::file-selector-button {
+  margin-right: 0.625rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font: inherit;
   font-weight: 500;
-  margin-bottom: 0.375rem;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+input[type="file"]::file-selector-button:hover {
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-border-hover);
+}
+
+@layer base {
+  /* Default label is a stacked form-row header. Wrapped in @layer base so
+     utility classes (`flex`, `inline-flex`, `grid`, …) on a <label> beat
+     this rule by being in the higher utilities layer. */
+  label {
+    display: block;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+    margin-bottom: 0.375rem;
+  }
 }
 
 /* ── Links ─────────────────────────────────────────────────── */

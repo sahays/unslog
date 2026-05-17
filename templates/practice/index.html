@@ -45,8 +45,9 @@
         </p>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
           {% for c in companies %}
-            <label class="flex items-center gap-2 p-2 px-3 rounded-md border border-[color:var(--color-border)] cursor-pointer">
-              <input type="checkbox" name="companies" value="{{ c.id }}" class="m-0 w-auto" />
+            <label class="card-select flex items-center gap-2 p-2 px-3 rounded-md border border-[color:var(--color-border)] cursor-pointer transition-colors hover:border-[color:var(--color-border-hover)] has-[:checked]:border-[color:var(--color-accent)] has-[:checked]:bg-[color:var(--color-accent-light)] has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[color:var(--color-accent)]">
+              <input type="checkbox" name="companies" value="{{ c.id }}" class="peer sr-only" />
+              <i data-lucide="check" aria-hidden="true" class="h-4 w-4 text-[color:var(--color-accent)] opacity-0 peer-checked:opacity-100 flex-shrink-0"></i>
               <div class="flex-1 min-w-0">
                 <div class="font-medium text-sm truncate">{{ c.name }}</div>
                 <div class="muted-soft text-xs truncate">{{ c.role }}</div>
