@@ -17,6 +17,11 @@ pub struct ModelSnapshot {
     pub research: String,
     #[serde(default)]
     pub tts_voice: String,
+    /// Snapshot of the accent steering at session start (e.g. `en-GB`).
+    /// Empty = use the TTS model's default voice characteristics. See
+    /// `Settings::tts_language` for the source of truth.
+    #[serde(default)]
+    pub tts_language: String,
     #[serde(default)]
     pub tts_speed: Option<f32>,
     /// Snapshot of the cheap classifier/curator model. Defaults to

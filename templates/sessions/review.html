@@ -107,7 +107,7 @@
             <div class="muted text-sm">(skipped — no attempts)</div>
           {% else %}
             {% for a in eval.attempts %}
-              {% call ui::attempt_block(session, eval, a, true, false) %}
+              {% call ui::attempt_block(session, eval, a, true, false, false, false) %}
             {% endfor %}
           {% endif %}
         </div>

@@ -4,6 +4,7 @@ pub mod category_store;
 pub mod critique;
 pub mod curator;
 pub mod evaluations;
+pub mod journal_store;
 pub mod openrouter;
 pub mod openrouter_models;
 pub mod prompt_store;

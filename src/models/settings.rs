@@ -10,6 +10,12 @@ pub struct Settings {
     pub stt_model: String,
     pub tts_model: String,
     pub tts_voice: String,
+    /// Locale steering for TTS (e.g. `en-US`, `en-GB`, `en-IN`). Sent to
+    /// gpt-4o-mini-tts via the `instructions` field to bias accent. Empty
+    /// means "use the model's default accent". Defaulted so legacy rows still
+    /// deserialize.
+    #[serde(default)]
+    pub tts_language: String,
     /// 0.25–4.0; `None` means "let the TTS endpoint use its own default".
     #[serde(default)]
     pub tts_speed: Option<f32>,

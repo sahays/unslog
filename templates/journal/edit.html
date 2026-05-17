@@ -1,0 +1,42 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}Edit — {{ entry.title }} — Journal — unslog{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="/journal">Journal</a>
+  <a href="/journal/{{ entry.id }}">{{ entry.title }}</a>
+  <span>Edit</span>
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-5 max-w-3xl">
+  <h1 class="font-heading text-2xl font-semibold">Edit entry</h1>
+
+  <div class="card">
+    <form method="post" action="/journal/{{ entry.id }}/edit" class="grid gap-3">
+      <div class="grid gap-1.5">
+        <label for="entry_title">Title</label>
+        <input type="text" id="entry_title" name="title" value="{{ entry.title }}" required
+               maxlength="{{ max_title }}" />
+      </div>
+      <div class="grid gap-1.5">
+        <label for="entry_body">Body</label>
+        <textarea id="entry_body" name="body" required rows="14"
+                  maxlength="{{ max_body }}">{{ entry.body }}</textarea>
+        <div class="muted-soft text-xs">Up to {{ max_body }} characters.</div>
+      </div>
+      <div class="flex justify-between items-center">
+        <a href="/journal/{{ entry.id }}" class="btn btn-sm">
+          <i data-lucide="arrow-left" class="h-3.5 w-3.5"></i>
+          <span>Cancel</span>
+        </a>
+        <button type="submit" class="btn btn-primary btn-icon-spring">
+          <span class="btn-icon"><i data-lucide="save" class="h-4 w-4"></i></span>
+          <span>Save</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

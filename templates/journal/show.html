@@ -1,0 +1,47 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}{{ entry.title }} — Journal — unslog{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="/journal">Journal</a>
+  <span>{{ entry.title }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-5 max-w-3xl">
+  <div class="flex items-start justify-between gap-4 flex-wrap">
+    <div class="min-w-0">
+      <h1 class="font-heading text-2xl font-semibold break-words">{{ entry.title }}</h1>
+      <div class="muted-soft text-xs font-mono mt-1">
+        <span>created {{ entry.created_at.format("%Y-%m-%d %H:%M") }}</span>
+        {% if entry.updated_at != entry.created_at %}
+          <span class="ml-2">· updated {{ entry.updated_at.format("%Y-%m-%d %H:%M") }}</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <a href="/journal/{{ entry.id }}/edit" class="btn btn-sm">
+        <i data-lucide="square-pen" class="h-3.5 w-3.5"></i>
+        <span>Edit</span>
+      </a>
+      <form method="post" action="/journal/{{ entry.id }}/archive"
+            onsubmit="return confirm('Archive this entry? It will no longer appear in your list.')">
+        <button type="submit" class="btn btn-sm btn-danger">
+          <i data-lucide="archive" class="h-3.5 w-3.5"></i>
+          <span>Archive</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <article class="card whitespace-pre-wrap break-words">{{ entry.body }}</article>
+
+  <div>
+    <a href="/journal" class="btn btn-sm">
+      <i data-lucide="arrow-left" class="h-3.5 w-3.5"></i>
+      <span>Back to journal</span>
+    </a>
+  </div>
+</div>
+{% endblock %}

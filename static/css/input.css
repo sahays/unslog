@@ -222,6 +222,22 @@ button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:dis
 .btn-icon-spring:active .btn-icon { transform: scale(0.9); }
 
 /* ── Buttons ───────────────────────────────────────────────── */
+/* TTS controls row: 3 cells whose label/control/help children align row-by-row
+   across columns using subgrid. Without this, columns lay out independently
+   and labels/inputs/help-text drift vertically when help-text wraps. Mobile
+   (single column) falls back to each <section>'s own grid. */
+@media (min-width: 640px) {
+  .tts-row-grid {
+    grid-template-rows: auto auto auto;
+  }
+  .tts-row-grid > section {
+    display: grid;
+    grid-row: span 3;
+    grid-template-rows: subgrid;
+    row-gap: 0.375rem;
+  }
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -234,6 +250,10 @@ button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:dis
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
   transition: all 150ms ease;
+  /* Buttons should never wrap to a second line. Also raises the intrinsic
+     min-width so a tight flex parent (e.g. help-text + Save in a row)
+     doesn't compress the button — the help text wraps instead. */
+  white-space: nowrap;
 }
 .btn:hover {
   background: var(--color-bg-tertiary);

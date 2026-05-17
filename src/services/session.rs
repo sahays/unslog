@@ -60,6 +60,7 @@ pub async fn start(
             critique: settings.critique_model.clone(),
             research: settings.research_model.clone(),
             tts_voice: settings.tts_voice.clone(),
+            tts_language: settings.tts_language.clone(),
             tts_speed: settings.tts_speed,
             lite: settings.lite_model.clone(),
         },

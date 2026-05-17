@@ -85,12 +85,14 @@ async fn tts_to(
     } else {
         &session.model_snapshot.tts_voice
     };
+    let instructions = tts::build_accent_instructions(&session.model_snapshot.tts_language);
     let path = tts::synthesize(
         &*state.openrouter,
         &session.model_snapshot.tts,
         voice,
         text,
         session.model_snapshot.tts_speed,
+        &instructions,
         path,
     )
     .await?;

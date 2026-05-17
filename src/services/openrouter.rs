@@ -29,6 +29,17 @@ pub trait LlmClient: Send + Sync {
         force_json: bool,
     ) -> Result<String, AppError>;
 
+    /// Like [`chat`], but enables OpenRouter's `web` plugin and returns the URLs
+    /// the plugin actually fetched (parsed from `message.annotations`) so callers
+    /// can distinguish ground-truth citations from anything the model claims in
+    /// its body. Empty `fetched_urls` ⇒ search didn't run.
+    async fn chat_with_web_search(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        force_json: bool,
+    ) -> Result<ChatWithWebSearchOut, AppError>;
+
     async fn stt(&self, model: &str, audio_bytes: &[u8], format: &str) -> Result<String, AppError>;
 
     async fn tts(
@@ -37,6 +48,7 @@ pub trait LlmClient: Send + Sync {
         voice: &str,
         text: &str,
         speed: Option<f32>,
+        instructions: &str,
     ) -> Result<bytes::Bytes, AppError>;
 
     async fn list_models_raw(&self) -> Result<serde_json::Value, AppError>;
@@ -57,6 +69,15 @@ impl LlmClient for OpenRouter {
         OpenRouter::chat(self, model, messages, force_json).await
     }
 
+    async fn chat_with_web_search(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        force_json: bool,
+    ) -> Result<ChatWithWebSearchOut, AppError> {
+        OpenRouter::chat_with_web_search(self, model, messages, force_json).await
+    }
+
     async fn stt(&self, model: &str, audio_bytes: &[u8], format: &str) -> Result<String, AppError> {
         OpenRouter::stt(self, model, audio_bytes, format).await
     }
@@ -67,8 +88,9 @@ impl LlmClient for OpenRouter {
         voice: &str,
         text: &str,
         speed: Option<f32>,
+        instructions: &str,
     ) -> Result<bytes::Bytes, AppError> {
-        OpenRouter::tts(self, model, voice, text, speed).await
+        OpenRouter::tts(self, model, voice, text, speed, instructions).await
     }
 
     async fn list_models_raw(&self) -> Result<serde_json::Value, AppError> {
@@ -257,16 +279,113 @@ impl OpenRouter {
         Ok(choice.message.content)
     }
 
+    /// Like [`chat`], but enables OpenRouter's `web` plugin (and appends
+    /// `:online` to the model id is the caller's job — we add the plugin in
+    /// the body so search runs even if the suffix was omitted). Returns the
+    /// model's text plus the URLs the plugin actually fetched (from
+    /// `message.annotations`). Empty `fetched_urls` is the loud signal that
+    /// search did NOT run — callers should warn the user when that happens.
+    /// Retries once on transient errors, same pattern as [`chat`].
+    pub async fn chat_with_web_search(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        force_json: bool,
+    ) -> Result<ChatWithWebSearchOut, AppError> {
+        match self
+            .chat_with_web_search_once(model, messages.clone(), force_json)
+            .await
+        {
+            Ok(o) => Ok(o),
+            Err(first) => {
+                let retryable = matches!(&first, AppError::Http(_) | AppError::Upstream(_));
+                if !retryable {
+                    return Err(first);
+                }
+                tracing::warn!(
+                    op = "openrouter.chat_web",
+                    model,
+                    error = %first,
+                    "first chat_with_web_search attempt failed, retrying once",
+                );
+                self.chat_with_web_search_once(model, messages, force_json)
+                    .await
+            }
+        }
+    }
+
+    async fn chat_with_web_search_once(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        force_json: bool,
+    ) -> Result<ChatWithWebSearchOut, AppError> {
+        let prompt_chars: usize = messages.iter().map(|m| m.content.chars().count()).sum();
+        let mut body = serde_json::json!({
+            "model": model,
+            "messages": messages,
+            "plugins": [ { "id": "web" } ],
+        });
+        if force_json {
+            body["response_format"] = serde_json::json!({ "type": "json_object" });
+        }
+        let url = format!("{BASE_URL}/chat/completions");
+        let start = Instant::now();
+        let resp = self.auth_post(&url)?.json(&body).send().await?;
+        let duration_ms = start.elapsed().as_millis() as u64;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            tracing::warn!(
+                op = "openrouter.chat_web",
+                model,
+                http_status = status.as_u16(),
+                duration_ms,
+                prompt_chars,
+                "openrouter chat_with_web_search failed",
+            );
+            return Err(AppError::Upstream(format!(
+                "openrouter chat {status}: {text}"
+            )));
+        }
+        let parsed: ChatCompletion = resp.json().await?;
+        let choice = parsed
+            .choices
+            .into_iter()
+            .next()
+            .ok_or_else(|| AppError::Upstream("openrouter returned no choices".into()))?;
+        let response_chars = choice.message.content.chars().count();
+        let fetched_urls = extract_fetched_urls(&choice.message.annotations);
+        tracing::info!(
+            op = "openrouter.chat_web",
+            model,
+            duration_ms,
+            prompt_chars,
+            response_chars,
+            force_json,
+            fetched_urls_n = fetched_urls.len(),
+            "openrouter chat_with_web_search ok",
+        );
+        Ok(ChatWithWebSearchOut {
+            content: choice.message.content,
+            fetched_urls,
+        })
+    }
+
     /// Synthesize speech. Returns the raw audio bytes (mp3 by default).
-    /// Retries once on transient body-decode / network errors before failing.
+    /// `instructions` is the natural-language voice-steering field accepted by
+    /// gpt-4o-mini-tts (e.g. "Speak with a British English accent."); empty
+    /// string omits it. Other TTS models silently ignore it. Retries once on
+    /// transient errors.
     pub async fn tts(
         &self,
         model: &str,
         voice: &str,
         text: &str,
         speed: Option<f32>,
+        instructions: &str,
     ) -> Result<bytes::Bytes, AppError> {
-        match self.tts_once(model, voice, text, speed).await {
+        match self.tts_once(model, voice, text, speed, instructions).await {
             Ok(b) => Ok(b),
             Err(first) => {
                 let retryable = matches!(&first, AppError::Http(_) | AppError::Upstream(_));
@@ -278,7 +397,7 @@ impl OpenRouter {
                     error = %first,
                     "first TTS attempt failed, retrying once",
                 );
-                self.tts_once(model, voice, text, speed).await
+                self.tts_once(model, voice, text, speed, instructions).await
             }
         }
     }
@@ -289,6 +408,7 @@ impl OpenRouter {
         voice: &str,
         text: &str,
         speed: Option<f32>,
+        instructions: &str,
     ) -> Result<bytes::Bytes, AppError> {
         let url = format!("{BASE_URL}/audio/speech");
         let input_chars = text.chars().count();
@@ -301,6 +421,9 @@ impl OpenRouter {
         });
         if let Some(s) = speed {
             body["speed"] = serde_json::json!(s);
+        }
+        if !instructions.is_empty() {
+            body["instructions"] = serde_json::json!(instructions);
         }
 
         let start = Instant::now();
@@ -473,6 +596,48 @@ struct ChatChoice {
 #[derive(Debug, Deserialize)]
 struct ChatChoiceMessage {
     content: String,
+    /// Present when OpenRouter ran a plugin (e.g. web search). Each entry
+    /// records a URL the plugin fetched. Absent in plain chat responses.
+    #[serde(default)]
+    annotations: Vec<Annotation>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Annotation {
+    #[serde(default)]
+    url_citation: Option<UrlCitation>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UrlCitation {
+    #[serde(default)]
+    url: String,
+}
+
+/// Returned by [`chat_with_web_search`]. `fetched_urls` comes from OpenRouter's
+/// `message.annotations` — these are the URLs the web plugin actually
+/// retrieved, not anything the model produced in its body. Empty list ⇒ search
+/// didn't run for this request.
+#[derive(Debug, Clone)]
+pub struct ChatWithWebSearchOut {
+    pub content: String,
+    pub fetched_urls: Vec<String>,
+}
+
+/// Flatten `message.annotations[*].url_citation.url` into a deduped, order-
+/// preserving list. Skips annotations missing a citation and empty URLs.
+fn extract_fetched_urls(anns: &[Annotation]) -> Vec<String> {
+    use std::collections::HashSet;
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out: Vec<String> = Vec::with_capacity(anns.len());
+    for a in anns {
+        if let Some(uc) = &a.url_citation {
+            if !uc.url.is_empty() && seen.insert(uc.url.clone()) {
+                out.push(uc.url.clone());
+            }
+        }
+    }
+    out
 }
 
 /// Pull a fenced JSON block (``` ... ``` or ```json ... ```) out of model output,
@@ -510,118 +675,5 @@ pub fn preview(s: &str, n: usize) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // ── unwrap_fenced_json ───────────────────────────────────────────────
-
-    #[test]
-    fn case_plain_json_passthrough() {
-        assert_eq!(unwrap_fenced_json(r#"{"a":1}"#), r#"{"a":1}"#);
-    }
-
-    #[test]
-    fn case_json_fence_stripped() {
-        let input = "```json\n{\"a\":1}\n```";
-        assert_eq!(unwrap_fenced_json(input), r#"{"a":1}"#);
-    }
-
-    #[test]
-    fn case_bare_fence_stripped() {
-        let input = "```\n{\"a\":1}\n```";
-        assert_eq!(unwrap_fenced_json(input), r#"{"a":1}"#);
-    }
-
-    #[test]
-    fn case_unclosed_fence_falls_through() {
-        // No closing fence: the rfind("```") on `rest` finds the same prefix
-        // we just stripped (when ```json), or finds nothing for bare ```.
-        // Either way the function should not panic; if it falls through it
-        // returns the trimmed input.
-        let input = "```json\n{\"a\":1}";
-        let out = unwrap_fenced_json(input);
-        // Body still contains the JSON regardless of branch taken.
-        assert!(out.contains(r#"{"a":1}"#), "got: {out}");
-    }
-
-    #[test]
-    fn case_leading_whitespace_trimmed() {
-        let input = "   \n```json\n{\"a\":1}\n```\n   ";
-        assert_eq!(unwrap_fenced_json(input), r#"{"a":1}"#);
-    }
-
-    #[test]
-    fn case_empty_input() {
-        assert_eq!(unwrap_fenced_json(""), "");
-    }
-
-    #[test]
-    fn case_fence_with_inner_backticks() {
-        // rfind matches the LAST ``` so a JSON string containing single
-        // backticks is preserved.
-        let input = "```json\n{\"a\":\"`x`\"}\n```";
-        assert_eq!(unwrap_fenced_json(input), r#"{"a":"`x`"}"#);
-    }
-
-    // ── parse_json<T> ────────────────────────────────────────────────────
-
-    #[test]
-    fn case_parse_struct_from_fenced() {
-        #[derive(Deserialize, Debug, PartialEq)]
-        struct Toy {
-            a: u32,
-            b: String,
-        }
-        let raw = "```json\n{\"a\": 7, \"b\": \"hi\"}\n```";
-        let out: Toy = parse_json(raw).expect("parse should succeed");
-        assert_eq!(
-            out,
-            Toy {
-                a: 7,
-                b: "hi".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn case_parse_error_on_garbage() {
-        #[derive(Deserialize)]
-        struct Toy {
-            #[allow(dead_code)]
-            a: u32,
-        }
-        assert!(parse_json::<Toy>("not json").is_err());
-    }
-
-    // ── preview ──────────────────────────────────────────────────────────
-
-    #[test]
-    fn case_preview_short_passthrough() {
-        assert_eq!(preview("hello", 10), "hello");
-    }
-
-    #[test]
-    fn case_preview_exact_length() {
-        // length == n: no ellipsis
-        assert_eq!(preview("hello", 5), "hello");
-    }
-
-    #[test]
-    fn case_preview_truncates_with_ellipsis() {
-        assert_eq!(preview("hello world", 5), "hello…");
-    }
-
-    #[test]
-    fn case_preview_multibyte() {
-        // Each emoji is a single codepoint; count is 4. Truncating to 2
-        // must not slice mid-byte.
-        let input = "🎉🎊🎈🎂";
-        let out = preview(input, 2);
-        assert_eq!(out, "🎉🎊…");
-    }
-
-    #[test]
-    fn case_preview_n_zero_nonempty() {
-        assert_eq!(preview("hi", 0), "…");
-    }
-}
+#[path = "openrouter_tests.rs"]
+mod tests;

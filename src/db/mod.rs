@@ -1,8 +1,8 @@
 use mongodb::{Client, Collection, Database};
 
 use crate::models::{
-    Asset, Category, Company, Evaluation, PromptVersion, Question, Session, Story, StoryVersion,
-    Summary,
+    Asset, Category, Company, Evaluation, JournalEntry, PromptVersion, Question, Session, Story,
+    StoryVersion, Summary,
 };
 
 pub async fn connect(uri: &str, db_name: &str) -> anyhow::Result<Database> {
@@ -142,6 +142,17 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         )
         .build();
     stories.create_index(story_idx).await?;
+
+    let journal_entries: Collection<JournalEntry> = db.collection(JournalEntry::COLLECTION);
+    let je_idx = IndexModel::builder()
+        .keys(bson::doc! { "created_at": -1 })
+        .options(
+            IndexOptions::builder()
+                .name("created_at_desc".to_string())
+                .build(),
+        )
+        .build();
+    journal_entries.create_index(je_idx).await?;
 
     let story_versions: Collection<StoryVersion> = db.collection(StoryVersion::COLLECTION);
     let sv_idx = IndexModel::builder()

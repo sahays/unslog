@@ -2,26 +2,35 @@
 //
 // Markup contract:
 //   data-record-button   — button that toggles recording
+//   data-record-icon     — <i> inside the button (icon swaps mic ↔ square)
+//   data-record-label    — <span> inside the button whose textContent is updated
 //   data-record-status   — element whose textContent shows state
 //   data-record-target   — textarea filled with the transcript
 //   data-record-audio    — hidden input filled with the audio_path
 //   data-record-endpoint — POST URL for the multipart audio
 //
-// Keyboard shortcuts (active session page):
+// Flow: click Start → record → click Stop → upload → transcribe → auto-submit
+// the closest form. The textarea is hidden behind an accordion; in normal use
+// the user never edits it before submission. Cmd/Ctrl+Enter still submits the
+// form manually if expanded.
+//
+// Keyboard shortcuts:
 //   r          — toggle record/stop, when focus is not in a form field
 //   escape     — stop recording (any focus)
-//   cmd/ctrl-enter — submit the answer form, from anywhere on the page
+//   cmd/ctrl-enter — submit the form
 
 (function () {
   const root = document.querySelector("[data-recorder-root]");
   if (!root) return;
 
   const btn = root.querySelector("[data-record-button]");
+  const icon = root.querySelector("[data-record-icon]");
+  const label = root.querySelector("[data-record-label]");
   const status = root.querySelector("[data-record-status]");
   const transcript = document.querySelector("[data-record-target]");
   const audioInput = document.querySelector("[data-record-audio]");
   const endpoint = root.dataset.recordEndpoint;
-  if (!btn || !status || !transcript || !audioInput || !endpoint) return;
+  if (!btn || !label || !status || !transcript || !audioInput || !endpoint) return;
 
   let media = null;
   let recorder = null;
@@ -33,6 +42,17 @@
   function setState(s) {
     status.textContent = s;
     status.dataset.state = s;
+  }
+
+  function setLabel(text, lucideName) {
+    label.textContent = text;
+    if (icon && lucideName) {
+      icon.setAttribute("data-lucide", lucideName);
+      // Re-render lucide icons after attribute swap, if available.
+      if (window.lucide && typeof window.lucide.createIcons === "function") {
+        window.lucide.createIcons();
+      }
+    }
   }
 
   function broadcastRecording(active) {
@@ -48,7 +68,7 @@
       const sec = Math.floor((Date.now() - recordStartedAt) / 1000);
       const m = Math.floor(sec / 60);
       const s = String(sec % 60).padStart(2, "0");
-      setState(`recording… ${m}:${s} (press r or esc to stop)`);
+      setState(`recording… ${m}:${s}`);
     }, 250);
   }
 
@@ -78,9 +98,9 @@
     recorder.start();
     recording = true;
     broadcastRecording(true);
-    btn.textContent = "Stop";
+    setLabel("Stop recording", "square");
     startTimer();
-    setState("recording… 0:00 (press r or esc to stop)");
+    setState("recording… 0:00");
   }
 
   async function stop() {
@@ -90,8 +110,15 @@
     recording = false;
     broadcastRecording(false);
     stopTimer();
-    btn.textContent = "Record";
+    setLabel("Start recording", "mic");
     setState("uploading & transcribing…");
+  }
+
+  function submitForm() {
+    const form = transcript.closest("form");
+    if (!form) return;
+    if (typeof form.requestSubmit === "function") form.requestSubmit();
+    else form.submit();
   }
 
   async function onStop() {
@@ -123,8 +150,12 @@
 
     transcript.value = data.transcript || "";
     audioInput.value = data.audio_path || "";
-    transcript.focus();
-    setState("transcribed — review and submit (cmd+enter)");
+    if (!transcript.value.trim()) {
+      setState("nothing transcribed — try again");
+      return;
+    }
+    setState("submitting…");
+    submitForm();
   }
 
   btn.addEventListener("click", (ev) => {
@@ -141,14 +172,10 @@
   }
 
   document.addEventListener("keydown", (ev) => {
-    // Cmd/Ctrl + Enter — submit the nearest form to the transcript textarea.
+    // Cmd/Ctrl + Enter — manual submit (useful if user edits transcript in accordion).
     if ((ev.metaKey || ev.ctrlKey) && ev.key === "Enter") {
-      const form = transcript.closest("form");
-      if (form) {
-        ev.preventDefault();
-        if (typeof form.requestSubmit === "function") form.requestSubmit();
-        else form.submit();
-      }
+      ev.preventDefault();
+      submitForm();
       return;
     }
     // Escape — stop recording, regardless of focus.

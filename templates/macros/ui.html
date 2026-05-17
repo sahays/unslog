@@ -85,23 +85,64 @@
 </a>
 {%- endmacro %}
 
+{# Narrative + "vs prior" + citations block. Shared by attempt_block in both
+   the expanded (review) and the collapsed (active) variants. #}
+{% macro critique_body(c) -%}
+<div class="prose-chat mt-2">{{ c.narrative|safe_markdown|safe }}</div>
+{% if !c.improved_vs_prior.is_empty() %}
+  <div class="mt-2 p-2 px-3 border-l-2 border-[color:var(--color-accent)] bg-[color:var(--color-bg-tertiary)] rounded-r-md">
+    <div class="muted-soft text-xs uppercase tracking-wider font-medium">Vs. prior attempt</div>
+    <div class="prose-chat">{{ c.improved_vs_prior|safe_markdown|safe }}</div>
+  </div>
+{% endif %}
+{% if !c.citations.is_empty() %}
+  <div class="mt-3">
+    <div class="muted-soft text-xs uppercase tracking-wider font-medium">Citations</div>
+    <ul class="list-disc pl-5 m-0 mt-1 text-sm grid gap-0.5">
+      {% for cit in c.citations %}
+        <li><strong>{{ cit.chapter }}</strong>{% if !cit.section.is_empty() %} — {{ cit.section }}{% endif %}: {{ cit.quote }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+{%- endmacro %}
+
 {# Render one critique attempt — used by both the active session view and
-   the review view, which previously copied the same ~50 lines of markup.
-   `show_answer_audio` is true for the review page (where the user wants to
-   replay what they said); `autoplay` is true only for the latest attempt
-   when voice-critique is enabled. #}
-{% macro attempt_block(session, eval, a, show_answer_audio, autoplay) -%}
+   the review view.
+   `show_answer_audio` — true on review (lets the user replay what they said).
+   `autoplay` — true only on the latest attempt when voice-critique is on.
+   `collapse_transcript` — true on active (puts answer transcript in <details>).
+   `collapse_feedback` — true on active (puts narrative/vs-prior/citations in
+   <details>; scores chips and critique audio stay visible so the player is
+   reachable and the retry-after-feedback gating still works). #}
+{% macro attempt_block(session, eval, a, show_answer_audio, autoplay, collapse_transcript, collapse_feedback) -%}
 <div class="border-t border-[color:var(--color-border)] pt-3 mt-3">
-  <div class="muted-soft text-xs uppercase tracking-wider font-medium">Attempt {{ a.attempt_n }} — your answer</div>
-  <div class="whitespace-pre-wrap mt-1">{{ a.answer_transcript }}</div>
-  {% if show_answer_audio %}
-    {% if let Some(p) = a.answer_audio_path.as_ref() %}
-      <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" class="mt-2"></audio>
+  {% if collapse_transcript %}
+    <details>
+      <summary class="muted-soft text-xs uppercase tracking-wider font-medium cursor-pointer select-none">
+        Attempt {{ a.attempt_n }} — show transcript
+      </summary>
+      <div class="whitespace-pre-wrap mt-2">{{ a.answer_transcript }}</div>
+      {% if show_answer_audio %}
+        {% if let Some(p) = a.answer_audio_path.as_ref() %}
+          <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" class="mt-2"></audio>
+        {% endif %}
+      {% endif %}
+    </details>
+  {% else %}
+    <div class="muted-soft text-xs uppercase tracking-wider font-medium">Attempt {{ a.attempt_n }} — your answer</div>
+    <div class="whitespace-pre-wrap mt-1">{{ a.answer_transcript }}</div>
+    {% if show_answer_audio %}
+      {% if let Some(p) = a.answer_audio_path.as_ref() %}
+        <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" class="mt-2"></audio>
+      {% endif %}
     {% endif %}
   {% endif %}
   {% if let Some(c) = a.critique.as_ref() %}
-    <div class="muted-soft text-xs uppercase tracking-wider font-medium mt-3">Critique</div>
-    <div class="flex gap-2 flex-wrap mt-1">
+    {% if !collapse_feedback %}
+      <div class="muted-soft text-xs uppercase tracking-wider font-medium mt-3">Critique</div>
+    {% endif %}
+    <div class="flex gap-2 flex-wrap mt-3">
       <span class="tag">specificity {{ c.scores.specificity }}/5</span>
       <span class="tag">role clarity {{ c.scores.role_clarity }}/5</span>
       <span class="tag">STAR+ {{ c.scores.star_plus_structure }}/5</span>
@@ -110,9 +151,8 @@
         <span class="tag">company fit {{ fit }}/5</span>
       {% endif %}
     </div>
-    <div class="prose-chat mt-2">{{ c.narrative|safe_markdown|safe }}</div>
     {% if let Some(p) = a.critique_audio_path.as_ref() %}
-      <div class="critique-audio">
+      <div class="critique-audio mt-2">
         <i data-lucide="volume-2" class="h-4 w-4"></i>
         <span class="critique-audio__label">Listen</span>
         <audio controls preload="{% if autoplay %}auto{% else %}none{% endif %}" src="{{ crate::recordings::to_url(p) }}"
@@ -130,19 +170,13 @@
         </button>
       </form>
     {% endif %}
-    {% if !c.improved_vs_prior.is_empty() %}
-      <div class="mt-2 p-2 px-3 border-l-2 border-[color:var(--color-accent)] bg-[color:var(--color-bg-tertiary)] rounded-r-md">
-        <div class="muted-soft text-xs uppercase tracking-wider font-medium">Vs. prior attempt</div>
-        <div class="prose-chat">{{ c.improved_vs_prior|safe_markdown|safe }}</div>
-      </div>
-    {% endif %}
-    {% if !c.citations.is_empty() %}
-      <div class="muted-soft text-xs uppercase tracking-wider font-medium mt-3">Citations</div>
-      <ul class="list-disc pl-5 m-0 mt-1 text-sm grid gap-0.5">
-        {% for cit in c.citations %}
-          <li><strong>{{ cit.chapter }}</strong>{% if !cit.section.is_empty() %} — {{ cit.section }}{% endif %}: {{ cit.quote }}</li>
-        {% endfor %}
-      </ul>
+    {% if collapse_feedback %}
+      <details class="mt-2">
+        <summary class="muted-soft text-xs uppercase tracking-wider font-medium cursor-pointer select-none">Show feedback</summary>
+        {% call critique_body(c) %}
+      </details>
+    {% else %}
+      {% call critique_body(c) %}
     {% endif %}
   {% endif %}
 </div>

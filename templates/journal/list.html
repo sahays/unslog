@@ -1,0 +1,55 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}Journal — unslog{% endblock %}
+
+{% block breadcrumbs %}<span>Journal</span>{% endblock %}
+
+{% block content %}
+<div class="grid gap-5">
+  {% call ui::page_header_open("Journal", "Your raw record of past experiences. Write freely; no AI on this side.") %}
+    <a href="/journal/new" class="btn btn-primary btn-icon-spring">
+      <span class="btn-icon"><i data-lucide="plus" class="h-4 w-4"></i></span>
+      <span>New entry</span>
+    </a>
+  {% call ui::page_header_close() %}
+
+  {% if entries.is_empty() %}
+    <div class="card">
+      <p class="muted m-0">No entries yet. Click <strong>New entry</strong> to add your first.</p>
+    </div>
+  {% else %}
+    <ul class="grid gap-3 list-none p-0 m-0">
+      {% for e in entries %}
+        <li class="card">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <h3 class="font-heading text-base font-semibold m-0">
+                <a href="/journal/{{ e.id }}" class="link-primary">{{ e.title }}</a>
+              </h3>
+              {% if !e.excerpt().is_empty() %}
+                <p class="muted text-sm mt-1 mb-0 whitespace-pre-wrap">{{ e.excerpt() }}</p>
+              {% endif %}
+              <time class="muted-soft text-xs font-mono mt-2 block" datetime="{{ e.created_at.to_rfc3339() }}">{{ e.created_at.format("%Y-%m-%d %H:%M") }}</time>
+            </div>
+            <div class="flex items-center gap-1 flex-shrink-0">
+              <a href="/journal/{{ e.id }}" class="btn btn-sm" title="View" aria-label="View entry">
+                <i data-lucide="eye" class="h-3.5 w-3.5"></i>
+              </a>
+              <a href="/journal/{{ e.id }}/edit" class="btn btn-sm" title="Edit" aria-label="Edit entry">
+                <i data-lucide="square-pen" class="h-3.5 w-3.5"></i>
+              </a>
+              <form method="post" action="/journal/{{ e.id }}/archive"
+                    onsubmit="return confirm('Archive this entry? It will no longer appear in your list.')">
+                <button type="submit" class="btn btn-sm btn-danger" title="Archive" aria-label="Archive entry">
+                  <i data-lucide="archive" class="h-3.5 w-3.5"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+{% endblock %}

@@ -23,9 +23,43 @@ struct SettingsTemplate {
     chat_models: Vec<ModelInfo>,
     audio_in_models: Vec<ModelInfo>,
     audio_out_models: Vec<ModelInfo>,
+    /// Wrap String in a struct so Askama's field-access pattern (mirroring
+    /// `m.id == settings.critique_model` elsewhere) produces a working
+    /// comparison; bare `String` in a loop comes through as `&String` which
+    /// doesn't `PartialEq` against `String`.
+    tts_voices: Vec<VoiceOption>,
+    tts_languages: &'static [LanguageOption],
     models_error: Option<String>,
     openrouter_configured: bool,
 }
+
+struct VoiceOption {
+    pub id: String,
+}
+
+struct LanguageOption {
+    pub code: &'static str,
+    pub label: &'static str,
+}
+
+const LANGUAGE_OPTIONS: &[LanguageOption] = &[
+    LanguageOption {
+        code: "en-US",
+        label: "American (en-US)",
+    },
+    LanguageOption {
+        code: "en-GB",
+        label: "British (en-GB)",
+    },
+    LanguageOption {
+        code: "en-IN",
+        label: "Indian (en-IN)",
+    },
+    LanguageOption {
+        code: "en-AU",
+        label: "Australian (en-AU)",
+    },
+];
 
 /// Restrict the cached /models list to a curated set of providers. The user
 /// can still type any model ID via NSelect's `data-allow-custom` mode, so this
@@ -94,6 +128,13 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
         chat_models,
         audio_in_models,
         audio_out_models,
+        tts_voices: OPENAI_TTS_VOICES
+            .iter()
+            .map(|s| VoiceOption {
+                id: (*s).to_string(),
+            })
+            .collect(),
+        tts_languages: LANGUAGE_OPTIONS,
         models_error,
         openrouter_configured: state.openrouter.configured(),
     }
@@ -127,10 +168,24 @@ pub struct SettingsForm {
     pub tts_model: String,
     pub tts_voice: String,
     #[serde(default)]
+    pub tts_language: String,
+    #[serde(default)]
     pub tts_speed: String,
     #[serde(default)]
     pub lite_model: String,
 }
+
+/// Allowed accent codes for the language selector. Anything else is rejected
+/// at save time; the TTS layer treats empty as "use model default".
+const ALLOWED_LANGUAGES: &[&str] = &["", "en-US", "en-GB", "en-IN", "en-AU"];
+
+/// Voices we surface in the dropdown. `data-allow-custom` lets users type any
+/// model-specific voice not on this list. These are OpenAI gpt-4o-mini-tts
+/// voices as of 2025 — neutral steering, accent controlled separately via the
+/// language setting / `instructions` field.
+pub(crate) const OPENAI_TTS_VOICES: &[&str] = &[
+    "alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer", "verse",
+];
 
 async fn save(
     State(state): State<AppState>,
@@ -142,6 +197,12 @@ async fn save(
     let stt_model = trim(form.stt_model);
     let tts_model = trim(form.tts_model);
     let tts_voice = trim(form.tts_voice);
+    let tts_language = trim(form.tts_language);
+    if !ALLOWED_LANGUAGES.contains(&tts_language.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "unsupported tts_language `{tts_language}`"
+        )));
+    }
     let mut lite_model = trim(form.lite_model);
     if lite_model.is_empty() {
         lite_model = crate::services::openrouter::DEFAULT_LITE_MODEL.into();
@@ -180,6 +241,7 @@ async fn save(
         stt_model,
         tts_model,
         tts_voice,
+        tts_language,
         tts_speed,
         lite_model,
         updated_at: chrono::Utc::now(),
@@ -192,6 +254,7 @@ async fn save(
         stt_model = %next.stt_model,
         tts_model = %next.tts_model,
         tts_voice = %next.tts_voice,
+        tts_language = %next.tts_language,
         tts_speed = ?next.tts_speed,
         lite_model = %next.lite_model,
         "settings updated",

@@ -22,6 +22,7 @@ pub async fn load(db: &Database) -> Result<Settings, AppError> {
         stt_model: openrouter::DEFAULT_STT_MODEL.into(),
         tts_model: openrouter::DEFAULT_TTS_MODEL.into(),
         tts_voice: openrouter::DEFAULT_TTS_VOICE.into(),
+        tts_language: String::new(),
         tts_speed: None,
         lite_model: openrouter::DEFAULT_LITE_MODEL.into(),
         updated_at: chrono::Utc::now(),

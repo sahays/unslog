@@ -1,0 +1,43 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}New entry — Journal — unslog{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="/journal">Journal</a>
+  <span>New entry</span>
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-5 max-w-3xl">
+  <h1 class="font-heading text-2xl font-semibold">New entry</h1>
+
+  <div class="card">
+    <form method="post" action="/journal" class="grid gap-3">
+      <div class="grid gap-1.5">
+        <label for="entry_title">Title</label>
+        <input type="text" id="entry_title" name="title" required
+               maxlength="{{ max_title }}"
+               placeholder="e.g. Migrating the billing pipeline" />
+      </div>
+      <div class="grid gap-1.5">
+        <label for="entry_body">Body</label>
+        <textarea id="entry_body" name="body" required rows="10"
+                  maxlength="{{ max_body }}"
+                  placeholder="What happened. In your own words."></textarea>
+        <div class="muted-soft text-xs">Up to {{ max_body }} characters.</div>
+      </div>
+      <div class="flex justify-between items-center">
+        <a href="/journal" class="btn btn-sm">
+          <i data-lucide="arrow-left" class="h-3.5 w-3.5"></i>
+          <span>Cancel</span>
+        </a>
+        <button type="submit" class="btn btn-primary btn-icon-spring">
+          <span class="btn-icon"><i data-lucide="plus" class="h-4 w-4"></i></span>
+          <span>Add entry</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

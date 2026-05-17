@@ -106,11 +106,26 @@
       </select>
     </section>
 
-    <div class="grid gap-3 grid-cols-1 sm:grid-cols-2">
+    <div class="tts-row-grid grid gap-3 grid-cols-1 sm:grid-cols-3">
       <section class="grid gap-1.5">
         <label for="tts_voice">TTS voice</label>
-        <input id="tts_voice" name="tts_voice" type="text" value="{{ settings.tts_voice }}" required />
-        <div class="muted-soft text-xs">OpenAI voices: alloy, echo, fable, onyx, nova, shimmer.</div>
+        <select id="tts_voice" name="tts_voice" data-n-select data-allow-custom required>
+          <option value="">Pick a voice…</option>
+          {% for v in tts_voices %}
+            <option value="{{ v.id }}"{% if v.id == settings.tts_voice %} selected{% endif %}>{{ v.id }}</option>
+          {% endfor %}
+        </select>
+        <div class="muted-soft text-xs">Pick or type. Used for question + critique audio.</div>
+      </section>
+      <section class="grid gap-1.5">
+        <label for="tts_language">Accent (optional)</label>
+        <select id="tts_language" name="tts_language" data-n-select>
+          <option value=""{% if settings.tts_language.is_empty() %} selected{% endif %}>Default</option>
+          {% for l in tts_languages %}
+            <option value="{{ l.code }}"{% if settings.tts_language == l.code %} selected{% endif %}>{{ l.label }}</option>
+          {% endfor %}
+        </select>
+        <div class="muted-soft text-xs">Effective on <code class="font-mono">gpt-4o-mini-tts</code> via <code class="font-mono">instructions</code>.</div>
       </section>
       <section class="grid gap-1.5">
         <label for="tts_speed">TTS speed (optional)</label>

@@ -7,6 +7,7 @@ pub mod categories;
 pub mod companies;
 pub mod health;
 pub mod home;
+pub mod journal;
 pub mod practice;
 pub mod prompts;
 pub mod recordings;
@@ -18,6 +19,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(health::routes())
         .merge(home::routes())
+        .merge(journal::routes())
         .merge(assets::routes())
         .merge(categories::routes())
         .merge(companies::routes())

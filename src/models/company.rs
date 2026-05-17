@@ -15,10 +15,22 @@ pub struct ResearchPacket {
     pub summary: String,
     pub role_jd: String,
     pub values_signal: String,
+    /// Free-form rundown of the rounds (recruiter screen, behavioral, technical,
+    /// onsite, etc.) and what to expect in each. Defaulted so packets written
+    /// before this field existed still deserialize.
+    #[serde(default)]
+    pub interview_process: String,
     #[serde(default)]
     pub sample_questions: Vec<String>,
     #[serde(default)]
     pub sources: Vec<ResearchSource>,
+    /// URLs OpenRouter's web plugin actually fetched for this packet — pulled
+    /// from `message.annotations` on the response. Distinct from `sources`,
+    /// which is what the model *claims* it cited (and could fabricate). Empty
+    /// for packets written before this field existed; also empty if the web
+    /// plugin didn't run, which the UI surfaces as a "no search" warning.
+    #[serde(default)]
+    pub fetched_urls: Vec<String>,
     pub research_prompt_version_id: String,
     #[serde(with = "crate::models::datetime_compat::required")]
     pub last_refreshed_at: chrono::DateTime<chrono::Utc>,
