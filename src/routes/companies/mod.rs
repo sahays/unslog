@@ -1,0 +1,102 @@
+//! `/companies/*` — target-company resource: research packet, question bank,
+//! and per-company sessions.
+//!
+//! Split mirrors `routes/sessions/` and `routes/stories/`:
+//! * `landing` — list, new form, create.
+//! * `show` — company detail page (questions + sessions + research panel).
+//! * `questions` — bulk-add, delete, and edit questions on a company.
+//! * `actions` — refresh research packet, cascade-delete company.
+//!
+//! Helpers and shared types used by more than one submodule sit here.
+
+use axum::routing::{get, post};
+use axum::Router;
+
+use crate::error::AppError;
+use crate::models::{Company, QuestionSource, Session, Summary};
+use crate::startup::AppState;
+
+mod actions;
+mod landing;
+mod questions;
+mod show;
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/companies", get(landing::list).post(landing::create))
+        .route("/companies/new", get(landing::new_form))
+        .route("/companies/:id", get(show::show))
+        .route(
+            "/companies/:id/refresh-packet",
+            post(actions::refresh_packet),
+        )
+        .route("/companies/:id/delete", post(actions::delete))
+        .route("/companies/:id/questions", post(questions::add_questions))
+        .route(
+            "/companies/:id/questions/:qid/delete",
+            post(questions::delete_question),
+        )
+        .route(
+            "/companies/:id/questions/:qid/edit",
+            post(questions::edit_question),
+        )
+}
+
+// ── Shared types ─────────────────────────────────────────────────────────
+
+/// Per-session row rendered on the company show page.
+pub struct SessionRow {
+    pub session: Session,
+    pub eval_count: u64,
+    pub summary: Option<Summary>,
+}
+
+// ── Helpers shared by landing + show + actions ───────────────────────────
+
+fn role_options() -> Vec<(&'static str, &'static str)> {
+    crate::models::Role::ALL
+        .iter()
+        .map(|r| (r.as_str(), r.display_name()))
+        .collect()
+}
+
+async fn load_company(state: &AppState, id: &str) -> Result<Company, AppError> {
+    crate::db::companies(&state.db)
+        .find_one(bson::doc! { "_id": id })
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("company {id}")))
+}
+
+/// Categorize + persist agent-suggested questions for a company, skipping any
+/// whose text already exists (so user edits + tags survive re-runs). Returns
+/// the number of *new* questions actually appended. Shared between the
+/// initial-create path and the refresh-packet path.
+async fn append_agent_questions(
+    state: &AppState,
+    company: &Company,
+    candidate_questions: Vec<String>,
+) -> Result<usize, AppError> {
+    if candidate_questions.is_empty() {
+        return Ok(0);
+    }
+    let existing = crate::services::questions::list_for_company(&state.db, &company.id).await?;
+    let existing_texts: std::collections::HashSet<String> =
+        existing.iter().map(|q| q.text.clone()).collect();
+    let new_questions: Vec<String> = candidate_questions
+        .into_iter()
+        .filter(|q| !existing_texts.contains(q))
+        .collect();
+    let appended_n = new_questions.len();
+    if appended_n > 0 {
+        crate::services::questions::categorize_and_append(
+            &state.db,
+            &*state.openrouter,
+            new_questions,
+            QuestionSource::Agent,
+            company.canonical_role,
+            Some(company.id.clone()),
+        )
+        .await?;
+    }
+    Ok(appended_n)
+}

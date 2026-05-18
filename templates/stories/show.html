@@ -69,12 +69,16 @@
      form itself. ── #}
 <div class="chat-composer-wrapper">
   {# ── Mode-update form — sibling (not nested) so the mode-pill submit
-       buttons can reference it via `form="mode-form"` without triggering
-       validation on the turns form's required textarea. Flips this story's
-       mode in place; the next coach reply uses the new prompt. ── #}
-  <form method="post" action="/stories/{{ story.id }}/mode" id="mode-form" class="hidden"
-        data-loading-title="Switching mode…"
-        data-loading-detail="The coach will pick up the new mode from your next reply."></form>
+       buttons can reference it via `form="story-mode-form"` without triggering
+       validation on the turns form's required textarea. The id is owned by
+       the `mode_pill` macro — keep them in sync. Posts via htmx so only the
+       pill swaps — no full page reload (which flickered and skipped the
+       progress bar). Plain submit still works as a fallback if JS is off
+       (server then issues a Redirect). ── #}
+  <form method="post" action="/stories/{{ story.id }}/mode" id="story-mode-form" class="hidden"
+        hx-post="/stories/{{ story.id }}/mode"
+        hx-target="#mode-pill-wrap"
+        hx-swap="innerHTML"></form>
 
   <form method="post" action="/stories/{{ story.id }}/turns"
         class="card chat-composer-card max-w-3xl mx-auto grid gap-2 pointer-events-auto"
@@ -89,7 +93,7 @@
            submits the mode-form above to flip this story's coach mode in
            place. Same story, same chat — coach behavior changes on the next
            reply. The current mode is highlighted. ── #}
-      {% call ui::mode_pill(story.mode, "mode-form") %}
+      <span id="mode-pill-wrap">{% call ui::mode_pill(story.mode) %}</span>
       <button type="submit" class="btn btn-primary btn-icon-spring">
         <span class="btn-icon"><i data-lucide="send" class="h-4 w-4"></i></span>
         <span>Send</span>

@@ -1,0 +1,76 @@
+/* ── Cards ─────────────────────────────────────────────────── */
+.card {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Feature tour cards (home landing). Numbered grid of feature
+   summaries, used for both the Setup and Daily-workflow sections. */
+.feature-grid {
+  display: grid;
+  gap: 0.875rem;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+.feature-card {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+.feature-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+.feature-card__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.feature-card__title {
+  font-family: var(--font-heading);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  margin: 0;
+}
+.feature-card__what {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+.feature-card__how {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}
+
+.card-interactive {
+  position: relative;
+  transition: transform 250ms var(--ease-spring), box-shadow 250ms ease, border-color 250ms ease;
+}
+.card-interactive:hover {
+  transform: translate3d(0, -1px, 0);
+  box-shadow: var(--shadow);
+  border-color: color-mix(in srgb, var(--color-accent) 25%, var(--color-border));
+}
+.card-interactive:active {
+  transform: translate3d(0, 0, 0) scale(0.995);
+  transition: transform 100ms ease-out;
+}
+.dark .card-interactive:hover {
+  box-shadow: 0 4px 14px 0 rgba(74, 156, 140, 0.10), 0 2px 6px 0 rgba(74, 156, 140, 0.06);
+}
+

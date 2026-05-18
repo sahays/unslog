@@ -30,49 +30,24 @@
       <span class="muted-soft text-xs uppercase tracking-wider">do once</span>
     </div>
     <ol class="feature-grid list-none p-0 m-0">
-      <li class="card feature-card">
-        <header class="feature-card__head">
-          <span class="feature-card__num">1</span>
-          <i data-lucide="sliders" class="h-5 w-5"></i>
-          <h3 class="feature-card__title">Settings</h3>
-          {% if openrouter_configured %}
-            {% call ui::badge("key set", "good") %}
-          {% else %}
-            {% call ui::badge("no key", "bad") %}
-          {% endif %}
-        </header>
-        <p class="feature-card__what">Set your OpenRouter API key and pick the chat, STT, and TTS models.</p>
-        <p class="feature-card__how">Without a key, any LLM call returns 503; everything else still works.</p>
-        <a class="link-primary text-sm" href="/settings">Open Settings →</a>
-      </li>
-
-      <li class="card feature-card">
-        <header class="feature-card__head">
-          <span class="feature-card__num">2</span>
-          <i data-lucide="book-open" class="h-5 w-5"></i>
-          <h3 class="feature-card__title">Assets</h3>
-          {% if primary_asset_present %}
-            {% call ui::badge("configured", "good") %}
-          {% else %}
-            {% call ui::badge("missing", "bad") %}
-          {% endif %}
-        </header>
-        <p class="feature-card__what">Upload your interview-prep book as a PDF. Mark exactly one asset as primary.</p>
-        <p class="feature-card__how">The critique agent grounds every score in this text — keep it loaded before you start a session.</p>
-        <a class="link-primary text-sm" href="/assets">Open Assets →</a>
-      </li>
-
-      <li class="card feature-card">
-        <header class="feature-card__head">
-          <span class="feature-card__num">3</span>
-          <i data-lucide="file-text" class="h-5 w-5"></i>
-          <h3 class="feature-card__title">Agents</h3>
-          <span class="muted-soft text-xs">optional</span>
-        </header>
-        <p class="feature-card__what">Tune the system prompts that drive each agent: critique, summary, research, story coach.</p>
-        <p class="feature-card__how">Saves create a new version; the active version is snapshotted into each session at start time, so old sessions stay reproducible.</p>
-        <a class="link-primary text-sm" href="/agents">Open Agents →</a>
-      </li>
+      {% call ui::feature_card(
+          1, "sliders", "Settings",
+          "Set your OpenRouter API key and pick the chat, STT, and TTS models.",
+          "Without a key, any LLM call returns 503; everything else still works.",
+          "/settings", openrouter_badge_text, openrouter_badge_variant, ""
+      ) %}
+      {% call ui::feature_card(
+          2, "book-open", "Assets",
+          "Upload your interview-prep book as a PDF. Mark exactly one asset as primary.",
+          "The critique agent grounds every score in this text — keep it loaded before you start a session.",
+          "/assets", asset_badge_text, asset_badge_variant, ""
+      ) %}
+      {% call ui::feature_card(
+          3, "file-text", "Agents",
+          "Tune the system prompts that drive each agent: critique, summary, research, story coach.",
+          "Saves create a new version; the active version is snapshotted into each session at start time, so old sessions stay reproducible.",
+          "/agents", "", "", "optional"
+      ) %}
     </ol>
   </section>
 
@@ -83,49 +58,30 @@
       <span class="muted-soft text-xs uppercase tracking-wider">in order</span>
     </div>
     <ol class="feature-grid list-none p-0 m-0">
-      <li class="card feature-card">
-        <header class="feature-card__head">
-          <span class="feature-card__num">1</span>
-          <i data-lucide="briefcase" class="h-5 w-5"></i>
-          <h3 class="feature-card__title">Companies</h3>
-        </header>
-        <p class="feature-card__what">Each target company has a research packet, a question bank, and its own sessions.</p>
-        <p class="feature-card__how">Create a company, paste the JD + links into the research panel, then generate a tailored question bank.</p>
-        <a class="link-primary text-sm" href="/companies">Open Companies →</a>
-      </li>
-
-      <li class="card feature-card">
-        <header class="feature-card__head">
-          <span class="feature-card__num">2</span>
-          <i data-lucide="book-marked" class="h-5 w-5"></i>
-          <h3 class="feature-card__title">Stories</h3>
-        </header>
-        <p class="feature-card__what">Build STAR+ stories one competency at a time, prompted by the story coach.</p>
-        <p class="feature-card__how">Do this <em>before</em> practice — the bullet summaries become the answers you actually deliver under pressure.</p>
-        <a class="link-primary text-sm" href="/stories">Open Stories →</a>
-      </li>
-
-      <li class="card feature-card">
-        <header class="feature-card__head">
-          <span class="feature-card__num">3</span>
-          <i data-lucide="target" class="h-5 w-5"></i>
-          <h3 class="feature-card__title">Practice</h3>
-        </header>
-        <p class="feature-card__what">Cross-company mock interview. Pick a role and which question banks to draw from.</p>
-        <p class="feature-card__how">The curator picks 4–6 questions tailored to your recent recurring weaknesses. Answer by voice; get a critique per turn.</p>
-        <a class="link-primary text-sm" href="/practice">Open Practice →</a>
-      </li>
-
-      <li class="card feature-card">
-        <header class="feature-card__head">
-          <span class="feature-card__num">4</span>
-          <i data-lucide="notebook-pen" class="h-5 w-5"></i>
-          <h3 class="feature-card__title">Journal</h3>
-        </header>
-        <p class="feature-card__what">Free-form notes on past experiences. No AI on this side.</p>
-        <p class="feature-card__how">Capture raw material here whenever something happens at work — then mine it later when building stories.</p>
-        <a class="link-primary text-sm" href="/journal">Open Journal →</a>
-      </li>
+      {% call ui::feature_card(
+          1, "briefcase", "Companies",
+          "Each target company has a research packet, a question bank, and its own sessions.",
+          "Create a company, paste the JD + links into the research panel, then generate a tailored question bank.",
+          "/companies", "", "", ""
+      ) %}
+      {% call ui::feature_card(
+          2, "book-marked", "Stories",
+          "Build STAR+ stories one competency at a time, prompted by the story coach.",
+          "Do this <em>before</em> practice — the bullet summaries become the answers you actually deliver under pressure.",
+          "/stories", "", "", ""
+      ) %}
+      {% call ui::feature_card(
+          3, "target", "Practice",
+          "Cross-company mock interview. Pick a role and which question banks to draw from.",
+          "The curator picks 4–6 questions tailored to your recent recurring weaknesses. Answer by voice; get a critique per turn.",
+          "/practice", "", "", ""
+      ) %}
+      {% call ui::feature_card(
+          4, "notebook-pen", "Journal",
+          "Free-form notes on past experiences. No AI on this side.",
+          "Capture raw material here whenever something happens at work — then mine it later when building stories.",
+          "/journal", "", "", ""
+      ) %}
     </ol>
   </section>
 

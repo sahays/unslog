@@ -26,6 +26,13 @@ struct HomeTemplate {
     company_count: u64,
     primary_asset_present: bool,
     openrouter_configured: bool,
+    /// Pre-computed badge copy for the Setup cards. Pre-computing here keeps
+    /// the template logic-free since Askama 0.12 doesn't support
+    /// `if`-expressions inside `{% let %}`.
+    openrouter_badge_text: &'static str,
+    openrouter_badge_variant: &'static str,
+    asset_badge_text: &'static str,
+    asset_badge_variant: &'static str,
     active_count: u64,
     recent: Vec<RecentRow>,
 }
@@ -101,10 +108,23 @@ async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> 
         })
         .collect();
 
+    let openrouter_configured = state.openrouter.configured();
     let body = HomeTemplate {
         company_count,
         primary_asset_present,
-        openrouter_configured: state.openrouter.configured(),
+        openrouter_configured,
+        openrouter_badge_text: if openrouter_configured {
+            "key set"
+        } else {
+            "no key"
+        },
+        openrouter_badge_variant: if openrouter_configured { "good" } else { "bad" },
+        asset_badge_text: if primary_asset_present {
+            "configured"
+        } else {
+            "missing"
+        },
+        asset_badge_variant: if primary_asset_present { "good" } else { "bad" },
         active_count,
         recent,
     }

@@ -3,6 +3,7 @@ use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=static/css/input.css");
+    watch_dir("static/css/parts");
     watch_dir("templates");
 
     let status = Command::new("npx")

@@ -69,6 +69,27 @@
 </div>
 {%- endmacro %}
 
+{# Numbered feature-tour card — used by the home landing's Setup and Daily-
+   workflow ordered lists. Renders an <li> with a numbered chip, icon, title,
+   optional badge or plain note, what/how copy, and an "Open {{ title }} →"
+   link. Pass empty strings for `badge_text`, `badge_variant`, and `note`
+   when those slots aren't needed. `how` is rendered with `|safe` so static
+   `<em>` / `<strong>` in the source string survive — never pass user input. #}
+{% macro feature_card(num, icon, title, what, how, href, badge_text, badge_variant, note) -%}
+<li class="card feature-card">
+  <header class="feature-card__head">
+    <span class="feature-card__num">{{ num }}</span>
+    <i data-lucide="{{ icon }}" class="h-5 w-5"></i>
+    <h3 class="feature-card__title">{{ title }}</h3>
+    {% if badge_text|trim != "" %}{% call badge(badge_text, badge_variant) %}{% endif %}
+    {% if note|trim != "" %}<span class="muted-soft text-xs">{{ note }}</span>{% endif %}
+  </header>
+  <p class="feature-card__what">{{ what }}</p>
+  <p class="feature-card__how">{{ how|safe }}</p>
+  <a class="link-primary text-sm" href="{{ href }}">Open {{ title }} →</a>
+</li>
+{%- endmacro %}
+
 {# Stat card — small at-a-glance tile #}
 {% macro stat_card(label, value) -%}
 <div class="card card-interactive">
@@ -198,11 +219,16 @@
    Two segments (Strict | Collaborative); the one matching `current_mode` is
    the selected state. The active segment is a non-interactive label; the
    other is a submit button on an external mode-update form (referenced by
-   `form_id`) via the HTML `form="..."` attribute. Clicking flips
+   the form id below) via the HTML `form="..."` attribute. Clicking flips
    `story.mode` for the *same* story — same chat history, only the coach's
    behavior changes from the next reply onward.
+
+   The form id is hard-coded inside the macro so the macro is the single
+   source of truth. The story show.html template must render a sibling
+   <form id="story-mode-form"> with `hx-post`/`action="/stories/:id/mode"`.
+
    `current_mode` is a `crate::models::Difficulty`. #}
-{% macro mode_pill(current_mode, form_id) -%}
+{% macro mode_pill(current_mode) -%}
 <div class="inline-flex rounded-md border border-[color:var(--color-border)] overflow-hidden text-xs font-medium"
      role="radiogroup" aria-label="Coach mode">
   {% match current_mode %}
@@ -210,14 +236,14 @@
       <span role="radio" aria-checked="true"
             class="px-3 py-1.5 bg-[color:var(--color-text-primary)] text-[color:var(--color-bg-primary)]"
             title="Strict mode — coach probes; never volunteers wording.">Strict</span>
-      <button type="submit" form="{{ form_id }}" name="mode" value="collaborative"
+      <button type="submit" form="story-mode-form" name="mode" value="collaborative"
               role="radio" aria-checked="false" formnovalidate
               class="px-3 py-1.5 border-l border-[color:var(--color-border)]
                      bg-transparent text-[color:var(--color-text-primary)]
                      hover:bg-[color:var(--color-bg-tertiary)]"
               title="Switch this story to collaborative — same probing, but the coach can offer options when you ask.">Collaborative</button>
     {% when crate::models::Difficulty::Collaborative %}
-      <button type="submit" form="{{ form_id }}" name="mode" value="strict"
+      <button type="submit" form="story-mode-form" name="mode" value="strict"
               role="radio" aria-checked="false" formnovalidate
               class="px-3 py-1.5 bg-transparent text-[color:var(--color-text-primary)]
                      hover:bg-[color:var(--color-bg-tertiary)]"

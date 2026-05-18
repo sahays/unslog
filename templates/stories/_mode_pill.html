@@ -1,0 +1,5 @@
+{# Htmx fragment returned by POST /stories/:id/mode. Swaps the innerHTML of
+   `#mode-pill-wrap` so the segmented toggle reflects the new mode without
+   reloading the page. The wrapping span lives in `stories/show.html`. #}
+{% import "macros/ui.html" as ui %}
+{% call ui::mode_pill(mode) %}

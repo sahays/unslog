@@ -1,0 +1,106 @@
+/* ── Buttons ───────────────────────────────────────────────── */
+/* TTS controls row: 3 cells whose label/control/help children align row-by-row
+   across columns using subgrid. Without this, columns lay out independently
+   and labels/inputs/help-text drift vertically when help-text wraps. Mobile
+   (single column) falls back to each <section>'s own grid. */
+@media (min-width: 640px) {
+  .tts-row-grid {
+    grid-template-rows: auto auto auto;
+  }
+  .tts-row-grid > section {
+    display: grid;
+    grid-row: span 3;
+    grid-template-rows: subgrid;
+    row-gap: 0.375rem;
+  }
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  transition: all 150ms ease;
+  /* Buttons should never wrap to a second line. Also raises the intrinsic
+     min-width so a tight flex parent (e.g. help-text + Save in a row)
+     doesn't compress the button — the help text wraps instead. */
+  white-space: nowrap;
+}
+.btn:hover {
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-sm);
+  /* Re-assert color so a:hover (which has the same specificity as
+     .btn:hover) doesn't paint anchor-styled buttons in the link color. */
+  color: var(--color-text-primary);
+}
+.btn:active { box-shadow: inset 0 1px 2px rgba(0,0,0,0.08); }
+
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+  border: none;
+  color: white;
+  background: linear-gradient(135deg, var(--color-teal-600) 0%, var(--color-teal-700) 100%);
+}
+.dark .btn-primary {
+  background: linear-gradient(135deg, var(--color-brass-500) 0%, var(--color-brass-600) 100%);
+}
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 50%, transparent 100%);
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+.btn-primary:hover::before { animation: shimmer-sweep 600ms ease-out; }
+.btn-primary:hover {
+  color: white;
+  /* Re-assert the gradient: .btn:hover sets bg to cream and would otherwise
+     override the base .btn-primary gradient (same specificity, source order
+     gives .btn:hover the win on the `background` property). */
+  background: linear-gradient(135deg, var(--color-teal-600) 0%, var(--color-teal-700) 100%);
+  box-shadow: 0 4px 10px rgba(13,110,110,0.18), 0 1px 3px rgba(13,110,110,0.10);
+}
+.dark .btn-primary:hover {
+  background: linear-gradient(135deg, var(--color-brass-500) 0%, var(--color-brass-600) 100%);
+  box-shadow: 0 4px 12px rgba(98,179,163,0.18), 0 1px 3px rgba(98,179,163,0.12);
+}
+
+.btn-danger {
+  background: transparent;
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+  color: var(--color-error);  /* defend against a:hover */
+  box-shadow: 0 0 12px rgba(185, 74, 68, 0.20);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--color-text-primary);
+}
+.btn-ghost:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  box-shadow: 0 0 10px 1px rgba(13, 110, 110, 0.08);
+  background: transparent;
+  color: var(--color-text-primary);  /* defend against a:hover */
+}
+.dark .btn-ghost:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  box-shadow: 0 0 10px 1px rgba(74, 156, 140, 0.10);
+}
+
+.btn-sm  { padding: 0.3125rem 0.625rem; font-size: 0.75rem; gap: 0.375rem; border-radius: var(--radius-sm); }
+.btn-lg  { padding: 0.625rem 1.125rem; font-size: 0.9375rem; }
+

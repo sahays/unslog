@@ -1,0 +1,89 @@
+/* ── Body baseline ─────────────────────────────────────────── */
+html, body {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+}
+/* Default body text matches Tailwind's `text-sm` so unclassified <p>/<span>
+   content lines up with the explicit `text-sm` we use everywhere (the look
+   the `/stories` page sets). Headings are absolute (text-2xl, font-heading)
+   and unaffected. */
+body {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.font-heading { font-family: var(--font-heading); font-weight: 600; letter-spacing: -0.01em; }
+.font-body    { font-family: var(--font-body); font-weight: 400; }
+.font-mono    { font-family: var(--font-mono); }
+
+/* ── Page background — subtle warm gradient ────────────────── */
+.bg-accent-gradient {
+  background:
+    linear-gradient(135deg,
+      var(--color-bg-primary) 0%,
+      color-mix(in srgb, var(--color-accent) 3%, var(--color-bg-primary)) 50%,
+      var(--color-bg-primary) 100%);
+  background-size: 400% 400%;
+  animation: gradient-shift 18s ease infinite;
+  min-height: 100vh;
+}
+
+/* ── YouTube-style top progress bar ────────────────────────── */
+/* Animated by base.html JS on link click, form submit, htmx requests, and
+   completed on pageshow / load. Width and opacity are inline-styled by JS. */
+.progress-bar {
+  position: fixed;
+  top: 0; left: 0;
+  height: 2.5px;
+  width: 0%;
+  z-index: var(--z-progress);
+  background: linear-gradient(90deg,
+    var(--color-teal-600) 0%,
+    var(--color-brass-400) 50%,
+    var(--color-teal-600) 100%);
+  background-size: 200% 100%;
+  animation: gradient-shift 2.4s linear infinite;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 0 8px rgba(13, 110, 110, 0.45);
+}
+.dark .progress-bar {
+  box-shadow: 0 0 8px rgba(98, 179, 163, 0.55);
+}
+
+/* ── Generic interactive transitions ───────────────────────── */
+/* Component classes (.btn, .btn-primary, .card-interactive) own their own
+   hover shadows so they look right against unslog's warm-paper bg. The
+   global rule below only adds the lift + GPU-layer promotion (so subpixel
+   antialiasing on the lifted text stays crisp) — no shadow. */
+a, button, [role="button"], input[type="submit"] {
+  cursor: pointer;
+  transition: transform 250ms var(--ease-spring), box-shadow 250ms ease,
+              background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+button:hover:not(:disabled), [role="button"]:hover:not(:disabled), input[type="submit"]:hover:not(:disabled) {
+  transform: translate3d(0, -1px, 0);
+}
+
+button:active:not(:disabled), [role="button"]:active, input[type="submit"]:active:not(:disabled) {
+  transform: translate3d(0, 1px, 0) scale(0.98);
+  transition: transform 90ms ease-out, box-shadow 90ms ease-out;
+}
+
+button:disabled, [role="button"][aria-disabled="true"], input[type="submit"]:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Button icon spring */
+.btn-icon-spring .btn-icon {
+  transition: transform 350ms var(--ease-spring);
+  display: inline-flex; align-items: center; line-height: 0;
+}
+.btn-icon-spring:hover .btn-icon { transform: scale(1.15) rotate(-4deg); }
+.btn-icon-spring:active .btn-icon { transform: scale(0.9); }
+

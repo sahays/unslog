@@ -55,7 +55,7 @@
   {% if !completed_cards.is_empty() %}
     <div class="grid gap-3 mt-2">
       <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Completed stories</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 stagger-children">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 stagger-children">
         {% for c in completed_cards %}
           <a href="/stories/{{ c.story_id }}/versions/{{ c.version_id }}"
              class="card card-interactive grid gap-1 no-underline">

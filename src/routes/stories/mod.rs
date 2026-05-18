@@ -11,12 +11,14 @@
 //!
 //! Helpers shared between the three sit here.
 
+use askama::Template;
 use axum::extract::{Path, State};
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
 
 use axum_extra::extract::Form;
+use axum_htmx::HxRequest;
 
 use crate::error::AppError;
 use crate::models::{Category, ChatTurn, Difficulty, Story, StoryVersion};
@@ -121,8 +123,15 @@ struct ModeForm {
 /// Update the coach mode for this story. The new mode takes effect on the
 /// next chat turn (which loads `story.mode` and picks the matching prompt).
 /// Same story, same chat history — only the coach's behavior changes.
+#[derive(Template)]
+#[template(path = "stories/_mode_pill.html")]
+struct ModePillFragment {
+    mode: Difficulty,
+}
+
 async fn set_mode(
     State(state): State<AppState>,
+    HxRequest(is_htmx): HxRequest,
     Path(id): Path<String>,
     Form(form): Form<ModeForm>,
 ) -> Result<Response, AppError> {
@@ -144,7 +153,16 @@ async fn set_mode(
         mode = %mode.as_str(),
         "coach mode updated",
     );
-    Ok(Redirect::to(&format!("/stories/{id}")).into_response())
+    // Htmx callers swap the pill in place; plain form posts (JS off) fall
+    // back to a full redirect so the new mode is reflected after reload.
+    if is_htmx {
+        let html = ModePillFragment { mode }
+            .render()
+            .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
+        Ok(Html(html).into_response())
+    } else {
+        Ok(Redirect::to(&format!("/stories/{id}")).into_response())
+    }
 }
 
 async fn delete_story(
