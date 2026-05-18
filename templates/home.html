@@ -6,49 +6,163 @@
 {% block breadcrumbs %}<span>Home</span>{% endblock %}
 
 {% block content %}
-<div class="grid gap-6">
-  <div class="card">
-    <h1 class="font-heading text-3xl font-semibold mb-2">Behavioral interview coach</h1>
+<div class="grid gap-8">
+
+  <!-- ── Hero ─────────────────────────────────────────────────────── -->
+  <header class="card">
+    <h1 class="font-heading text-3xl font-semibold mb-2">unslog</h1>
     <p class="muted mb-5 max-w-2xl">
-      Pick a behavioral question, answer by voice, get a critique grounded in the book and the company's signal, retry, and watch the gap close.
+      A behavioral-interview coach. Build a story bank, drill against
+      company-specific questions by voice, and get critiques grounded in
+      the book and the company's research packet.
     </p>
     <div class="flex gap-3 flex-wrap">
       {% call ui::link_btn("/companies", "Open companies", "briefcase", "primary") %}
-      {% call ui::link_btn("/assets", "Upload the book", "book-open", "secondary") %}
-      {% call ui::link_btn("/agents", "Tune agents", "file-text", "secondary") %}
-      {% call ui::link_btn("/settings", "Settings", "sliders", "secondary") %}
+      {% call ui::link_btn("/stories", "Build stories", "book-marked", "secondary") %}
+      {% call ui::link_btn("/practice", "Start practice", "target", "secondary") %}
     </div>
-  </div>
+  </header>
 
-  <div class="grid gap-3 grid-cols-2 sm:grid-cols-4">
-    {% call ui::stat_card("Companies", company_count) %}
-    {% call ui::stat_card("Active sessions", active_count) %}
-    <div class="card">
-      <div class="muted-soft text-xs uppercase tracking-wider font-medium">Primary asset</div>
-      <div class="mt-2">
-        {% if primary_asset_present %}
-          {% call ui::badge("configured", "good") %}
-        {% else %}
-          {% call ui::badge("missing", "bad") %}
-          <a class="link-muted text-xs ml-2" href="/assets">Upload →</a>
-        {% endif %}
+  <!-- ── Setup (one-time) ────────────────────────────────────────── -->
+  <section aria-labelledby="setup-heading" class="grid gap-3">
+    <div class="flex items-baseline gap-3">
+      <h2 id="setup-heading" class="font-heading text-xl font-semibold m-0">Setup</h2>
+      <span class="muted-soft text-xs uppercase tracking-wider">do once</span>
+    </div>
+    <ol class="feature-grid list-none p-0 m-0">
+      <li class="card feature-card">
+        <header class="feature-card__head">
+          <span class="feature-card__num">1</span>
+          <i data-lucide="sliders" class="h-5 w-5"></i>
+          <h3 class="feature-card__title">Settings</h3>
+          {% if openrouter_configured %}
+            {% call ui::badge("key set", "good") %}
+          {% else %}
+            {% call ui::badge("no key", "bad") %}
+          {% endif %}
+        </header>
+        <p class="feature-card__what">Set your OpenRouter API key and pick the chat, STT, and TTS models.</p>
+        <p class="feature-card__how">Without a key, any LLM call returns 503; everything else still works.</p>
+        <a class="link-primary text-sm" href="/settings">Open Settings →</a>
+      </li>
+
+      <li class="card feature-card">
+        <header class="feature-card__head">
+          <span class="feature-card__num">2</span>
+          <i data-lucide="book-open" class="h-5 w-5"></i>
+          <h3 class="feature-card__title">Assets</h3>
+          {% if primary_asset_present %}
+            {% call ui::badge("configured", "good") %}
+          {% else %}
+            {% call ui::badge("missing", "bad") %}
+          {% endif %}
+        </header>
+        <p class="feature-card__what">Upload your interview-prep book as a PDF. Mark exactly one asset as primary.</p>
+        <p class="feature-card__how">The critique agent grounds every score in this text — keep it loaded before you start a session.</p>
+        <a class="link-primary text-sm" href="/assets">Open Assets →</a>
+      </li>
+
+      <li class="card feature-card">
+        <header class="feature-card__head">
+          <span class="feature-card__num">3</span>
+          <i data-lucide="file-text" class="h-5 w-5"></i>
+          <h3 class="feature-card__title">Agents</h3>
+          <span class="muted-soft text-xs">optional</span>
+        </header>
+        <p class="feature-card__what">Tune the system prompts that drive each agent: critique, summary, research, story coach.</p>
+        <p class="feature-card__how">Saves create a new version; the active version is snapshotted into each session at start time, so old sessions stay reproducible.</p>
+        <a class="link-primary text-sm" href="/agents">Open Agents →</a>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ── Daily workflow ──────────────────────────────────────────── -->
+  <section aria-labelledby="flow-heading" class="grid gap-3">
+    <div class="flex items-baseline gap-3">
+      <h2 id="flow-heading" class="font-heading text-xl font-semibold m-0">Daily workflow</h2>
+      <span class="muted-soft text-xs uppercase tracking-wider">in order</span>
+    </div>
+    <ol class="feature-grid list-none p-0 m-0">
+      <li class="card feature-card">
+        <header class="feature-card__head">
+          <span class="feature-card__num">1</span>
+          <i data-lucide="briefcase" class="h-5 w-5"></i>
+          <h3 class="feature-card__title">Companies</h3>
+        </header>
+        <p class="feature-card__what">Each target company has a research packet, a question bank, and its own sessions.</p>
+        <p class="feature-card__how">Create a company, paste the JD + links into the research panel, then generate a tailored question bank.</p>
+        <a class="link-primary text-sm" href="/companies">Open Companies →</a>
+      </li>
+
+      <li class="card feature-card">
+        <header class="feature-card__head">
+          <span class="feature-card__num">2</span>
+          <i data-lucide="book-marked" class="h-5 w-5"></i>
+          <h3 class="feature-card__title">Stories</h3>
+        </header>
+        <p class="feature-card__what">Build STAR+ stories one competency at a time, prompted by the story coach.</p>
+        <p class="feature-card__how">Do this <em>before</em> practice — the bullet summaries become the answers you actually deliver under pressure.</p>
+        <a class="link-primary text-sm" href="/stories">Open Stories →</a>
+      </li>
+
+      <li class="card feature-card">
+        <header class="feature-card__head">
+          <span class="feature-card__num">3</span>
+          <i data-lucide="target" class="h-5 w-5"></i>
+          <h3 class="feature-card__title">Practice</h3>
+        </header>
+        <p class="feature-card__what">Cross-company mock interview. Pick a role and which question banks to draw from.</p>
+        <p class="feature-card__how">The curator picks 4–6 questions tailored to your recent recurring weaknesses. Answer by voice; get a critique per turn.</p>
+        <a class="link-primary text-sm" href="/practice">Open Practice →</a>
+      </li>
+
+      <li class="card feature-card">
+        <header class="feature-card__head">
+          <span class="feature-card__num">4</span>
+          <i data-lucide="notebook-pen" class="h-5 w-5"></i>
+          <h3 class="feature-card__title">Journal</h3>
+        </header>
+        <p class="feature-card__what">Free-form notes on past experiences. No AI on this side.</p>
+        <p class="feature-card__how">Capture raw material here whenever something happens at work — then mine it later when building stories.</p>
+        <a class="link-primary text-sm" href="/journal">Open Journal →</a>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ── At a glance ─────────────────────────────────────────────── -->
+  <section aria-labelledby="status-heading" class="grid gap-3">
+    <h2 id="status-heading" class="font-heading text-xl font-semibold m-0">At a glance</h2>
+    <div class="grid gap-3 grid-cols-2 sm:grid-cols-4">
+      {% call ui::stat_card("Companies", company_count) %}
+      {% call ui::stat_card("Active sessions", active_count) %}
+      <div class="card">
+        <div class="muted-soft text-xs uppercase tracking-wider font-medium">Primary asset</div>
+        <div class="mt-2">
+          {% if primary_asset_present %}
+            {% call ui::badge("configured", "good") %}
+          {% else %}
+            {% call ui::badge("missing", "bad") %}
+            <a class="link-muted text-xs ml-2" href="/assets">Upload →</a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card">
+        <div class="muted-soft text-xs uppercase tracking-wider font-medium">OpenRouter</div>
+        <div class="mt-2">
+          {% if openrouter_configured %}
+            {% call ui::badge("key set", "good") %}
+          {% else %}
+            {% call ui::badge("no key", "bad") %}
+          {% endif %}
+        </div>
       </div>
     </div>
-    <div class="card">
-      <div class="muted-soft text-xs uppercase tracking-wider font-medium">OpenRouter</div>
-      <div class="mt-2">
-        {% if openrouter_configured %}
-          {% call ui::badge("key set", "good") %}
-        {% else %}
-          {% call ui::badge("no key", "bad") %}
-        {% endif %}
-      </div>
-    </div>
-  </div>
+  </section>
 
+  <!-- ── Recent sessions ─────────────────────────────────────────── -->
   {% if !recent.is_empty() %}
-    <div>
-      <h3 class="muted-soft text-xs uppercase tracking-wider font-medium mb-2">Recent sessions</h3>
+    <section aria-labelledby="recent-heading" class="grid gap-3">
+      <h2 id="recent-heading" class="font-heading text-xl font-semibold m-0">Recent sessions</h2>
       <div class="grid gap-2 stagger-children">
         {% for row in recent %}
           <div class="card flex gap-3 items-center">
@@ -76,7 +190,7 @@
           </div>
         {% endfor %}
       </div>
-    </div>
+    </section>
   {% endif %}
 </div>
 {% endblock %}

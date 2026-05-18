@@ -163,7 +163,11 @@ fn validate(form: &EntryForm) -> Result<(String, String), AppError> {
 /// non-whitespace control chars. The control-char check blocks terminal-style
 /// injection if anything later logs the raw text.
 fn sanitize(input: &str, max_chars: usize, field: &str) -> Result<String, AppError> {
-    let trimmed = input.trim();
+    // HTML form submission encodes textarea newlines as CRLF, but the
+    // browser's `maxlength` counts each newline as 1. Normalize first so the
+    // server sees the same character count the user typed.
+    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
+    let trimmed = normalized.trim();
     if trimmed.is_empty() {
         return Err(AppError::BadRequest(format!("{field} is required")));
     }
@@ -174,7 +178,7 @@ fn sanitize(input: &str, max_chars: usize, field: &str) -> Result<String, AppErr
     }
     if trimmed
         .chars()
-        .any(|c| c == '\0' || (c.is_control() && !matches!(c, '\n' | '\t' | '\r')))
+        .any(|c| c == '\0' || (c.is_control() && !matches!(c, '\n' | '\t')))
     {
         return Err(AppError::BadRequest(format!(
             "{field} contains an invalid character"

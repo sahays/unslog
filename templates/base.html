@@ -27,17 +27,21 @@
     {% block head %}{% endblock %}
   </head>
   <body class="bg-accent-gradient antialiased min-h-screen"
-        x-data="{ navOpen: false }"
+        x-data="{
+          navOpen: false,
+          sidebarCollapsed: localStorage.getItem('sidebar') === 'collapsed'
+        }"
+        x-init="$watch('sidebarCollapsed', v => localStorage.setItem('sidebar', v ? 'collapsed' : 'expanded'))"
         @keydown.escape.window="navOpen = false">
 
     <!-- Top progress bar (HTMX-driven) -->
     <div id="progress-bar" class="progress-bar"></div>
 
-    <div class="app-shell">
+    <div class="app-shell" :class="{ 'is-collapsed': sidebarCollapsed }">
 
       <!-- ── Sidebar (fixed-drawer on mobile, sticky on lg+) ─────────── -->
       <aside class="app-sidebar"
-             :class="navOpen && 'open'"
+             :class="{ 'open': navOpen, 'is-collapsed': sidebarCollapsed }"
              aria-label="Primary navigation">
         <div class="app-sidebar__brand">
           <a href="/" class="brand-link" @click="navOpen = false">
@@ -47,34 +51,65 @@
         </div>
         <nav class="app-sidebar__nav">
           <a href="/companies" class="nav-link-side" data-nav-key="companies" @click="navOpen = false">
-            <i data-lucide="briefcase" class="h-4 w-4"></i>
-            <span>Companies</span>
+            <i data-lucide="briefcase" class="h-7 w-7"></i>
+            <span class="nav-link-side__text">
+              <span class="nav-link-side__label">Companies</span>
+              <span class="nav-link-side__hint">Research, questions, sessions</span>
+            </span>
           </a>
           <a href="/practice" class="nav-link-side" data-nav-key="practice" @click="navOpen = false">
-            <i data-lucide="target" class="h-4 w-4"></i>
-            <span>Practice</span>
+            <i data-lucide="target" class="h-7 w-7"></i>
+            <span class="nav-link-side__text">
+              <span class="nav-link-side__label">Practice</span>
+              <span class="nav-link-side__hint">Cross-company mock interview</span>
+            </span>
           </a>
           <a href="/stories" class="nav-link-side" data-nav-key="stories" @click="navOpen = false">
-            <i data-lucide="book-marked" class="h-4 w-4"></i>
-            <span>Stories</span>
+            <i data-lucide="book-marked" class="h-7 w-7"></i>
+            <span class="nav-link-side__text">
+              <span class="nav-link-side__label">Stories</span>
+              <span class="nav-link-side__hint">STAR+ competency answer bank</span>
+            </span>
           </a>
           <a href="/journal" class="nav-link-side" data-nav-key="journal" @click="navOpen = false">
-            <i data-lucide="notebook-pen" class="h-4 w-4"></i>
-            <span>Journal</span>
+            <i data-lucide="notebook-pen" class="h-7 w-7"></i>
+            <span class="nav-link-side__text">
+              <span class="nav-link-side__label">Journal</span>
+              <span class="nav-link-side__hint">Raw notes, no AI</span>
+            </span>
           </a>
           <a href="/assets" class="nav-link-side" data-nav-key="assets" @click="navOpen = false">
-            <i data-lucide="book-open" class="h-4 w-4"></i>
-            <span>Assets</span>
+            <i data-lucide="book-open" class="h-7 w-7"></i>
+            <span class="nav-link-side__text">
+              <span class="nav-link-side__label">Assets</span>
+              <span class="nav-link-side__hint">Reference books and PDFs</span>
+            </span>
           </a>
           <a href="/agents" class="nav-link-side" data-nav-key="agents" @click="navOpen = false">
-            <i data-lucide="file-text" class="h-4 w-4"></i>
-            <span>Agents</span>
+            <i data-lucide="file-text" class="h-7 w-7"></i>
+            <span class="nav-link-side__text">
+              <span class="nav-link-side__label">Agents</span>
+              <span class="nav-link-side__hint">Edit agent system prompts</span>
+            </span>
           </a>
           <a href="/settings" class="nav-link-side" data-nav-key="settings" @click="navOpen = false">
-            <i data-lucide="sliders" class="h-4 w-4"></i>
-            <span>Settings</span>
+            <i data-lucide="sliders" class="h-7 w-7"></i>
+            <span class="nav-link-side__text">
+              <span class="nav-link-side__label">Settings</span>
+              <span class="nav-link-side__hint">Models, voices, API keys</span>
+            </span>
           </a>
         </nav>
+        <button type="button"
+                class="app-sidebar__toggle"
+                @click="sidebarCollapsed = !sidebarCollapsed"
+                :aria-expanded="!sidebarCollapsed"
+                :aria-label="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+                :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+          <i x-show="!sidebarCollapsed" x-cloak data-lucide="panel-left-close" class="h-4 w-4"></i>
+          <i x-show="sidebarCollapsed" x-cloak data-lucide="panel-left-open" class="h-4 w-4"></i>
+          <span x-show="!sidebarCollapsed" x-cloak>Collapse</span>
+        </button>
       </aside>
 
       <!-- Mobile drawer backdrop (only visible while drawer is open on small screens) -->

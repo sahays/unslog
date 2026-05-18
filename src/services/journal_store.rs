@@ -18,7 +18,7 @@ use crate::models::JournalEntry;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait JournalSource: Send + Sync {
-    /// Active (non-archived) entries, newest first.
+    /// Active (non-archived) entries, most-recently-updated first.
     async fn find_active(&self) -> Result<Vec<JournalEntry>, AppError>;
     async fn find_one(&self, id: &str) -> Result<Option<JournalEntry>, AppError>;
     async fn insert(&self, entry: &JournalEntry) -> Result<(), AppError>;
@@ -29,7 +29,7 @@ pub trait JournalSource: Send + Sync {
 impl JournalSource for Database {
     async fn find_active(&self) -> Result<Vec<JournalEntry>, AppError> {
         let opts = FindOptions::builder()
-            .sort(bson::doc! { "created_at": -1 })
+            .sort(bson::doc! { "updated_at": -1 })
             .build();
         // Mongo equality `null` matches both explicit null AND missing field,
         // so this works for entries written before `archived_at` existed.

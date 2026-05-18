@@ -87,9 +87,31 @@ fn case_validate_rejects_escape_control_char_in_title() {
 
 #[test]
 fn case_validate_accepts_newlines_and_tabs_in_body() {
+    // CR / CRLF get normalized to LF so the server's character count matches
+    // what the browser's textarea maxlength enforced on input.
     let body = "line one\nline two\n\tindented\rcr";
     let (_, b) = validate(&form("title", body)).expect("ok");
-    assert_eq!(b, body);
+    assert_eq!(b, "line one\nline two\n\tindented\ncr");
+}
+
+#[test]
+fn case_validate_normalizes_crlf_so_browser_maxlength_matches_server() {
+    // A textarea's maxlength counts LF as 1 char, but form submission sends
+    // CRLF. Without normalization a 1024-char body with newlines would be
+    // rejected as oversized. Build a body that's exactly MAX_BODY_LEN chars
+    // as the user typed it, with enough LFs that CRLF expansion would push
+    // it over the limit.
+    let newlines = 20;
+    let body = format!(
+        "a{}{}a",
+        "\n".repeat(newlines),
+        "a".repeat(MAX_BODY_LEN - newlines - 2)
+    );
+    assert_eq!(body.chars().count(), MAX_BODY_LEN);
+    let crlf_body = body.replace('\n', "\r\n");
+    assert!(crlf_body.chars().count() > MAX_BODY_LEN);
+    let (_, b) = validate(&form("title", &crlf_body)).expect("ok");
+    assert_eq!(b.chars().count(), MAX_BODY_LEN);
 }
 
 #[test]
