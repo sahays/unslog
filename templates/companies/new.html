@@ -35,7 +35,7 @@
       <div class="grid gap-3 grid-cols-1 sm:grid-cols-2">
         <div class="grid gap-1.5">
           <label for="company_name">Company</label>
-          <input type="text" id="company_name" name="name" placeholder="e.g. Anthropic" required />
+          <input type="text" id="company_name" name="name" placeholder="e.g. Anthropic" required maxlength="200" />
         </div>
         <div class="grid gap-1.5">
           <label for="company_canonical_role">Canonical role</label>
@@ -50,7 +50,7 @@
 
       <div class="grid gap-1.5">
         <label for="company_role">Role title (specific)</label>
-        <input type="text" id="company_role" name="role" placeholder="e.g. Applied AI Solutions Architect" required />
+        <input type="text" id="company_role" name="role" placeholder="e.g. Applied AI Solutions Architect" required maxlength="200" />
         <div class="muted-soft text-xs">Used verbatim in research and critique prompts. The canonical role above is what cross-company sessions filter by.</div>
       </div>
 

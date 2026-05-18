@@ -48,8 +48,11 @@ pub async fn run(
         .ok_or_else(|| AppError::NotFound("research prompt".into()))?;
     let body = prompt_store::get_current_body(db, "research").await?;
 
+    // Wrap user-typed fields in named tags so the model treats them as data,
+    // not as instructions. The system prompt is updated to reinforce this.
     let user = format!(
-        "Company: {company_name}\nRole: {role}\n\nProduce the research packet now. Return only the JSON object specified, no other text."
+        "<user_input>\n<company_name>{company_name}</company_name>\n<role>{role}</role>\n</user_input>\n\n\
+         Produce the research packet now. Return only the JSON object specified, no other text."
     );
 
     let result = or
@@ -59,8 +62,9 @@ pub async fn run(
             true,
         )
         .await?;
+    let cleaned_content = crate::services::llm_safety::check_output("research", &result.content)?;
 
-    let out: AgentOutput = parse_json(&result.content).map_err(|e| {
+    let out: AgentOutput = parse_json(&cleaned_content).map_err(|e| {
         tracing::warn!(error = %e, raw_preview = %openrouter::preview(&result.content, 240), "research JSON parse failed");
         AppError::Upstream(format!(
             "research agent returned invalid JSON: {e} — raw: {}",

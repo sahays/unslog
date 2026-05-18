@@ -179,6 +179,7 @@ pub async fn run(
     let raw = or
         .chat(&session.model_snapshot.critique, messages, true)
         .await?;
+    let raw = crate::services::llm_safety::check_output("critique", &raw)?;
 
     let critique: Critique = crate::services::openrouter::parse_json(&raw).map_err(|e| {
         tracing::warn!(error = %e, raw_preview = %openrouter::preview(&raw, 240), "critique JSON parse failed");

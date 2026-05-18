@@ -9,8 +9,17 @@ use serde_json::json;
 
 use crate::error::AppError;
 use crate::models::{Attempt, Evaluation, SessionStatus};
-use crate::services::{critique, evaluations, stt, summary};
+use crate::services::{critique, evaluations, stt, summary, text_validation};
 use crate::startup::AppState;
+
+/// Hard cap on a single answer transcript. Generous so long thinking-out-loud
+/// answers fit, but rejects pasted-essay-as-answer cases (which would also
+/// blow critique tokens).
+const MAX_ANSWER_CHARS: usize = 10_000;
+/// Per-file cap on uploaded answer audio. The global body-limit is 50 MB to
+/// accommodate large PDF assets; audio gets a tighter cap (~5 min @ 64 kbps
+/// audio/webm leaves plenty of headroom inside 25 MB).
+const MAX_AUDIO_BYTES: usize = 25 * 1024 * 1024;
 
 #[derive(Deserialize)]
 pub(super) struct AnswerForm {
@@ -24,10 +33,7 @@ pub(super) async fn submit_answer(
     Path(id): Path<String>,
     Form(form): Form<AnswerForm>,
 ) -> Result<Response, AppError> {
-    let answer = form.transcript.trim().to_string();
-    if answer.is_empty() {
-        return Err(AppError::BadRequest("answer is empty".into()));
-    }
+    let answer = text_validation::sanitize_long(&form.transcript, MAX_ANSWER_CHARS, "answer")?;
     let audio_path = form.audio_path.filter(|s| !s.is_empty());
 
     let session = super::load_session(&state, &id).await?;
@@ -143,6 +149,12 @@ pub(super) async fn transcribe(
 
     if bytes.is_empty() {
         return Err(AppError::BadRequest("no audio uploaded".into()));
+    }
+    if bytes.len() > MAX_AUDIO_BYTES {
+        return Err(AppError::BadRequest(format!(
+            "audio is {} bytes — max {MAX_AUDIO_BYTES}",
+            bytes.len()
+        )));
     }
 
     let (audio_path, transcript) = stt::save_and_transcribe(

@@ -8,8 +8,13 @@ use serde::Deserialize;
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::Settings;
-use crate::services::{openrouter_models::ModelInfo, settings_store};
+use crate::services::{openrouter_models::ModelInfo, settings_store, text_validation};
 use crate::startup::AppState;
+
+/// Sanity cap on OpenRouter model identifiers (e.g. `anthropic/claude-sonnet-4-5`).
+/// Real ids are <50 chars; cap generously without letting an attacker stuff
+/// a 1 MB string into the prompt-routing field.
+const MAX_MODEL_ID: usize = 200;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -192,33 +197,28 @@ async fn save(
     State(state): State<AppState>,
     Form(form): Form<SettingsForm>,
 ) -> Result<Response, AppError> {
-    let trim = |s: String| s.trim().to_string();
-    let critique_model = trim(form.critique_model);
-    let research_model = trim(form.research_model);
-    let stt_model = trim(form.stt_model);
-    let tts_model = trim(form.tts_model);
-    let tts_voice = trim(form.tts_voice);
-    let tts_language = trim(form.tts_language);
+    let critique_model =
+        text_validation::sanitize_short(&form.critique_model, MAX_MODEL_ID, "critique_model")?;
+    let research_model =
+        text_validation::sanitize_short(&form.research_model, MAX_MODEL_ID, "research_model")?;
+    let stt_model = text_validation::sanitize_short(&form.stt_model, MAX_MODEL_ID, "stt_model")?;
+    let tts_model = text_validation::sanitize_short(&form.tts_model, MAX_MODEL_ID, "tts_model")?;
+    let tts_voice = text_validation::sanitize_short(&form.tts_voice, MAX_MODEL_ID, "tts_voice")?;
+    let tts_language = form.tts_language.trim().to_string();
     if !ALLOWED_LANGUAGES.contains(&tts_language.as_str()) {
         return Err(AppError::BadRequest(format!(
             "unsupported tts_language `{tts_language}`"
         )));
     }
-    let mut lite_model = trim(form.lite_model);
-    if lite_model.is_empty() {
-        lite_model = crate::services::openrouter::DEFAULT_LITE_MODEL.into();
-    }
+    let lite_raw = form.lite_model.trim();
+    let lite_model = if lite_raw.is_empty() {
+        crate::services::openrouter::DEFAULT_LITE_MODEL.to_string()
+    } else {
+        text_validation::sanitize_short(lite_raw, MAX_MODEL_ID, "lite_model")?
+    };
 
-    if critique_model.is_empty()
-        || research_model.is_empty()
-        || stt_model.is_empty()
-        || tts_model.is_empty()
-        || tts_voice.is_empty()
-    {
-        return Err(AppError::BadRequest(
-            "all model and voice fields are required".into(),
-        ));
-    }
+    // `sanitize_short` above enforces non-empty per field — the old
+    // "all model and voice fields are required" fallback is no longer needed.
 
     let speed_raw = form.tts_speed.trim();
     let tts_speed = if speed_raw.is_empty() {

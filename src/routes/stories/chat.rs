@@ -15,8 +15,13 @@ use serde::Deserialize;
 use crate::error::AppError;
 use crate::models::{ChatRole, ChatTurn, Story, StoryBody, StoryVersion};
 use crate::services::openrouter::{self, ChatMessage};
-use crate::services::{category_store, prompt_store, settings_store};
+use crate::services::{category_store, llm_safety, prompt_store, settings_store, text_validation};
 use crate::startup::AppState;
+
+/// Max chars a candidate may type into one chat turn. Story answers are
+/// typically a few sentences to a paragraph; 5000 covers long narratives
+/// while still rejecting accidental pastes of unrelated bulk text.
+const MAX_CHAT_TURN_CHARS: usize = 5000;
 
 // ── Post turn ────────────────────────────────────────────────────────────
 
@@ -30,10 +35,7 @@ pub(super) async fn post_turn(
     Path(id): Path<String>,
     Form(form): Form<TurnForm>,
 ) -> Result<Response, AppError> {
-    let content = form.content.trim().to_string();
-    if content.is_empty() {
-        return Err(AppError::BadRequest("empty message".into()));
-    }
+    let content = text_validation::sanitize_long(&form.content, MAX_CHAT_TURN_CHARS, "message")?;
     let mut story = super::load_story(&state, &id).await?;
     let competency = category_store::get(&state.db, &story.competency_id)
         .await?
@@ -117,6 +119,7 @@ async fn run_generate(state: &AppState, story: &Story) -> Result<StoryVersion, A
             true,
         )
         .await?;
+    let raw = llm_safety::check_output("story_summarize", &raw)?;
     let body: StoryBody = openrouter::parse_json(&raw)?;
 
     let next_version_n = next_version_n(state, story).await?;
@@ -246,6 +249,7 @@ pub(super) async fn continue_chat(
             false,
         )
         .await?;
+    let probe = llm_safety::check_output("story_refine_open", &probe)?;
     let probe = probe.trim().to_string();
 
     let turn = ChatTurn {

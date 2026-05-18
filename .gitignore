@@ -1,6 +1,25 @@
 /target
 /node_modules
 /data
+# Re-include only the eval scaffolding that's safe to publish:
+# the gold README, the docs, and the hand-written adversarial cases.
+# The extracted `stories/` and `companies/` JSON contain real user
+# content (employer names, dollar amounts, etc.) and stay LOCAL ONLY.
+!/data/
+!/data/evals/
+!/data/evals/gold/
+!/data/evals/gold/README.md
+!/data/evals/gold/adversarial/
+!/data/evals/gold/adversarial/**
+# Extracted gold contains real user content — local-only.
+/data/evals/gold/stories/
+/data/evals/gold/companies/
+# Local-only runtime output — keep out.
+/data/evals/reports/
+# And everything else under data/ (audio, logs, assets) stays ignored.
+/data/recordings/
+/data/logs/
+/data/assets/
 .env
 .env.local
 .env.*.local

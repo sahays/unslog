@@ -110,6 +110,7 @@ async fn run_chat_model(
         .openrouter
         .chat(&settings.critique_model, messages, false)
         .await?;
+    let reply = crate::services::llm_safety::check_output("story_chat", &reply)?;
     Ok(reply.trim().to_string())
 }
 

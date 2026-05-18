@@ -66,6 +66,23 @@ pub fn safe_markdown<S: AsRef<str>>(s: S) -> askama::Result<String> {
     Ok(ammonia::clean(&rendered))
 }
 
+/// Protocol allowlist for URLs that come from LLM output (research packet
+/// sources, fetched_urls). Returns the input unchanged if it parses as
+/// `http://` or `https://`; otherwise returns an empty string so the link
+/// disappears in the rendered HTML.
+///
+/// Ammonia already strips `javascript:` etc. on `safe_markdown` output, but
+/// these URLs are interpolated directly into `<a href="...">` outside of
+/// that pipeline. This filter is the upstream defense.
+pub fn safe_url<S: AsRef<str>>(s: S) -> askama::Result<String> {
+    let trimmed = s.as_ref().trim();
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        Ok(trimmed.to_string())
+    } else {
+        Ok(String::new())
+    }
+}
+
 #[cfg(test)]
 #[path = "filters_tests.rs"]
 mod tests;

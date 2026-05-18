@@ -85,7 +85,7 @@
         data-loading-title="Thinking…"
         data-loading-detail="The coach is reading your reply and choosing the next probe."
         x-data="{ submitOnEnter(e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.target.form.requestSubmit(); } } }">
-    <textarea name="content" rows="3" required
+    <textarea name="content" rows="3" required maxlength="5000"
               @keydown="submitOnEnter"
               placeholder="Answer the coach — concrete details: who, when, what was at stake, what you decided. (⌘/Ctrl + Enter to send)"></textarea>
     <div class="flex items-center justify-between gap-2">

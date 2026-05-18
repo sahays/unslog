@@ -11,7 +11,17 @@ use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::{Asset, AssetKind, ExtractionStatus};
 use crate::services::assets as svc;
+use crate::services::{redact, text_validation};
 use crate::startup::AppState;
+
+/// Cap on the display name (the label shown in the library list).
+const MAX_ASSET_NAME: usize = 200;
+/// Per-file cap on uploaded asset PDFs. The global body-limit is 50 MB to
+/// accommodate large audio uploads; assets get a tighter cap so a single
+/// huge PDF can't fill disk quietly.
+const MAX_ASSET_BYTES: usize = 30 * 1024 * 1024;
+/// PDF magic bytes — the first 4 bytes of any PDF are `%PDF`.
+const PDF_MAGIC: &[u8] = b"%PDF";
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -83,12 +93,30 @@ async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Re
 
     let original_filename =
         filename.ok_or_else(|| AppError::BadRequest("no file uploaded".into()))?;
-    let display_name = name
+    // Display name falls back to the original filename, but either way we
+    // sanitize so the rendered label can't smuggle controls/null/oversize.
+    let display_name_raw = name
         .filter(|n| !n.trim().is_empty())
         .unwrap_or_else(|| original_filename.clone());
+    let display_name =
+        text_validation::sanitize_short(&display_name_raw, MAX_ASSET_NAME, "asset name")?;
 
     if bytes.is_empty() {
         return Err(AppError::BadRequest("uploaded file is empty".into()));
+    }
+    if bytes.len() > MAX_ASSET_BYTES {
+        return Err(AppError::BadRequest(format!(
+            "asset is {} bytes — max {MAX_ASSET_BYTES}",
+            bytes.len()
+        )));
+    }
+    // Magic-byte check — server-side defense against a file with .pdf
+    // extension but non-PDF contents (which would also break extraction
+    // downstream with a confusing error).
+    if !bytes.starts_with(PDF_MAGIC) {
+        return Err(AppError::BadRequest(
+            "uploaded file is not a PDF (missing %PDF header)".into(),
+        ));
     }
 
     let mut asset = svc::save_upload(
@@ -119,8 +147,8 @@ async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Re
     tracing::info!(
         event = "asset.upload",
         asset_id = %asset.id,
-        name = %asset.name,
-        original_filename = %asset.original_filename,
+        name = %redact::preview(&asset.name, 80),
+        original_filename = %redact::preview(&asset.original_filename, 80),
         bytes = bytes.len(),
         primary = asset.primary,
         extraction_status = ?asset.extraction_status,

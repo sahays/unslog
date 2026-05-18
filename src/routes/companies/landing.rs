@@ -10,8 +10,13 @@ use serde::Deserialize;
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::Company;
-use crate::services::research;
+use crate::services::{redact, research, text_validation};
 use crate::startup::AppState;
+
+/// Server-side input limits for the new-company form. Mirrored client-side
+/// via `maxlength` in `templates/companies/new.html`.
+const MAX_COMPANY_NAME: usize = 200;
+const MAX_COMPANY_ROLE: usize = 200;
 
 #[derive(Template)]
 #[template(path = "companies/list.html")]
@@ -64,11 +69,8 @@ pub async fn create(
     State(state): State<AppState>,
     Form(form): Form<NewCompanyForm>,
 ) -> Result<Response, AppError> {
-    let name = form.name.trim().to_string();
-    let role = form.role.trim().to_string();
-    if name.is_empty() || role.is_empty() {
-        return Err(AppError::BadRequest("name and role are required".into()));
-    }
+    let name = text_validation::sanitize_short(&form.name, MAX_COMPANY_NAME, "name")?;
+    let role = text_validation::sanitize_short(&form.role, MAX_COMPANY_ROLE, "role")?;
     let canonical_role = crate::models::Role::parse(form.canonical_role.trim())
         .unwrap_or(crate::models::Role::SolutionsArchitect);
 
@@ -84,7 +86,12 @@ pub async fn create(
             qs
         }
         Err(e) => {
-            tracing::warn!(error = %e, name, role, "research agent failed; saving company without packet");
+            tracing::warn!(
+                error = %e,
+                name = %redact::preview(&name, 80),
+                role = %redact::preview(&role, 80),
+                "research agent failed; saving company without packet",
+            );
             Vec::new()
         }
     };
@@ -95,8 +102,8 @@ pub async fn create(
     tracing::info!(
         event = "company.create",
         company_id = %company.id,
-        company_name = %company.name,
-        role = %company.role,
+        company_name = %redact::preview(&company.name, 80),
+        role = %redact::preview(&company.role, 80),
         canonical_role = canonical_role.as_str(),
         has_packet = company.research_packet.is_some(),
         agent_questions_n,

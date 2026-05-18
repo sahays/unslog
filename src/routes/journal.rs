@@ -11,7 +11,7 @@ use serde::Deserialize;
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::JournalEntry;
-use crate::services::journal_store;
+use crate::services::{journal_store, text_validation};
 use crate::startup::AppState;
 
 /// Server-side input limits. The form mirrors these via `maxlength`, but the
@@ -151,40 +151,9 @@ async fn require_entry(state: &AppState, id: &str) -> Result<JournalEntry, AppEr
 }
 
 fn validate(form: &EntryForm) -> Result<(String, String), AppError> {
-    let title = sanitize(&form.title, MAX_TITLE_LEN, "title")?;
-    let body = sanitize(&form.body, MAX_BODY_LEN, "body")?;
+    let title = text_validation::sanitize_short(&form.title, MAX_TITLE_LEN, "title")?;
+    let body = text_validation::sanitize_long(&form.body, MAX_BODY_LEN, "body")?;
     Ok((title, body))
-}
-
-/// Server-side input check for free-form user text. Defense-in-depth, not the
-/// only XSS guard — Askama auto-escapes on output.
-///
-/// Rules: trim outer whitespace; reject empty / oversized / null bytes /
-/// non-whitespace control chars. The control-char check blocks terminal-style
-/// injection if anything later logs the raw text.
-fn sanitize(input: &str, max_chars: usize, field: &str) -> Result<String, AppError> {
-    // HTML form submission encodes textarea newlines as CRLF, but the
-    // browser's `maxlength` counts each newline as 1. Normalize first so the
-    // server sees the same character count the user typed.
-    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
-    let trimmed = normalized.trim();
-    if trimmed.is_empty() {
-        return Err(AppError::BadRequest(format!("{field} is required")));
-    }
-    if trimmed.chars().count() > max_chars {
-        return Err(AppError::BadRequest(format!(
-            "{field} must be {max_chars} characters or fewer"
-        )));
-    }
-    if trimmed
-        .chars()
-        .any(|c| c == '\0' || (c.is_control() && !matches!(c, '\n' | '\t')))
-    {
-        return Err(AppError::BadRequest(format!(
-            "{field} contains an invalid character"
-        )));
-    }
-    Ok(trimmed.to_string())
 }
 
 #[cfg(test)]

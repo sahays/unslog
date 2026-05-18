@@ -2,6 +2,9 @@
 name = "unslog"
 version = "0.1.0"
 edition = "2021"
+# Adding `src/bin/eval.rs` made `cargo run` ambiguous; pin the default so
+# `cargo watch -x run` keeps starting the web server.
+default-run = "unslog"
 
 [dependencies]
 # Web framework
@@ -55,6 +58,9 @@ base64 = "0.22"
 
 # Random shuffle
 rand = "0.8"
+
+# CLI argument parsing — used by src/bin/eval.rs.
+clap = { version = "4", features = ["derive"] }
 
 # Markdown rendering + HTML sanitization (LLM output is rendered as markdown
 # but treated as untrusted — strip raw HTML, then ammonia-clean the result).

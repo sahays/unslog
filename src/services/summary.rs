@@ -159,6 +159,7 @@ pub async fn generate_and_save(
             true,
         )
         .await?;
+    let raw = crate::services::llm_safety::check_output("summary", &raw)?;
 
     let payload: SummaryPayload = crate::services::openrouter::parse_json(&raw).map_err(|e| {
         tracing::warn!(error = %e, raw_preview = %openrouter::preview(&raw, 240), "summary JSON parse failed");

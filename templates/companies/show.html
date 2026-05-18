@@ -53,7 +53,7 @@
 
     <form method="post" action="/companies/{{ company.id }}/questions" class="grid gap-2 mb-5">
       <label for="paste-questions">Paste questions — one per line</label>
-      <textarea id="paste-questions" name="text" rows="4" placeholder="Tell me about a time you missed a deadline.&#10;Walk me through a project you led end-to-end."></textarea>
+      <textarea id="paste-questions" name="text" rows="4" maxlength="50000" placeholder="Tell me about a time you missed a deadline.&#10;Walk me through a project you led end-to-end."></textarea>
       <div class="flex justify-end">
         <button type="submit" class="btn btn-icon-spring">
           <span class="btn-icon"><i data-lucide="plus" class="h-4 w-4"></i></span>
@@ -71,7 +71,7 @@
           <li class="grid gap-2 p-2 px-3 rounded-md border border-[color:var(--color-border)]">
             {% if is_editing %}
               <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/edit" class="grid gap-2">
-                <textarea name="text" rows="2" required>{{ q.text }}</textarea>
+                <textarea name="text" rows="2" required maxlength="500">{{ q.text }}</textarea>
                 <div class="grid gap-2 grid-cols-1 sm:grid-cols-[max-content_1fr]">
                   <label for="edit_role_{{ q.id }}">Role</label>
                   <select id="edit_role_{{ q.id }}" name="role" data-n-select required>
@@ -193,7 +193,7 @@
           {% else %}
             <ul class="list-disc pl-5 m-0 grid gap-1 text-sm">
               {% for url in p.fetched_urls %}
-                <li><a href="{{ url }}" target="_blank" rel="noopener" class="link-primary font-mono text-xs break-all">{{ url }}</a></li>
+                <li><a href="{{ url|safe_url }}" target="_blank" rel="noopener" class="link-primary font-mono text-xs break-all">{{ url }}</a></li>
               {% endfor %}
             </ul>
           {% endif %}
@@ -205,7 +205,7 @@
             <ul class="list-disc pl-5 m-0 grid gap-1">
               {% for s in p.sources %}
                 <li>
-                  <a href="{{ s.url }}" target="_blank" rel="noopener" class="link-primary">{{ s.title }}</a>
+                  <a href="{{ s.url|safe_url }}" target="_blank" rel="noopener" class="link-primary">{{ s.title }}</a>
                   <span class="muted text-sm"> — {{ s.snippet }}</span>
                 </li>
               {% endfor %}

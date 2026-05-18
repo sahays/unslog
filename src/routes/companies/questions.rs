@@ -6,8 +6,15 @@ use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::models::{Company, QuestionSource};
-use crate::services::{category_store, questions};
+use crate::services::{category_store, questions, text_validation};
 use crate::startup::AppState;
+
+/// Per-question text cap. Behavioral questions are typically one or two
+/// sentences; 500 chars is plenty and rejects pasted essays / DoS attempts.
+const MAX_QUESTION_TEXT: usize = 500;
+/// Hard cap on how many questions a single paste-bulk can submit. Stops a
+/// 5 MB paste from fanning out into 50_000 LLM categorize calls.
+const MAX_BULK_QUESTIONS: usize = 100;
 
 #[derive(Deserialize)]
 pub struct AddQuestionsForm {
@@ -19,12 +26,20 @@ pub async fn add_questions(
     Path(id): Path<String>,
     Form(form): Form<AddQuestionsForm>,
 ) -> Result<Response, AppError> {
-    let lines: Vec<String> = form
-        .text
-        .lines()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
+    let mut lines: Vec<String> = Vec::new();
+    for raw in form.text.lines() {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let line = text_validation::sanitize_short(trimmed, MAX_QUESTION_TEXT, "question")?;
+        lines.push(line);
+        if lines.len() > MAX_BULK_QUESTIONS {
+            return Err(AppError::BadRequest(format!(
+                "too many questions in one paste — cap is {MAX_BULK_QUESTIONS}"
+            )));
+        }
+    }
     if lines.is_empty() {
         return Err(AppError::BadRequest(
             "paste one or more questions, one per line".into(),
@@ -84,10 +99,7 @@ pub async fn edit_question(
     Path((id, qid)): Path<(String, String)>,
     Form(form): Form<EditQuestionForm>,
 ) -> Result<Response, AppError> {
-    let text = form.text.trim().to_string();
-    if text.is_empty() {
-        return Err(AppError::BadRequest("question text is required".into()));
-    }
+    let text = text_validation::sanitize_short(&form.text, MAX_QUESTION_TEXT, "question text")?;
     let role = crate::models::Role::parse(form.role.trim())
         .ok_or_else(|| AppError::BadRequest(format!("unknown role {}", form.role)))?;
 

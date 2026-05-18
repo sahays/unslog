@@ -47,6 +47,7 @@
     <textarea
       name="body"
       spellcheck="false"
+      maxlength="50000"
       class="min-h-[60vh]"
       {% if is_blank %}placeholder="Paste the new prompt body here…"{% endif %}>{{ body }}</textarea>
     <div class="flex gap-3 items-center justify-between">

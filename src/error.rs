@@ -84,13 +84,16 @@ impl IntoResponse for AppError {
 
         // Severity tracks status: user-input errors (4xx) shouldn't pollute
         // the error stream, but server faults (5xx) and the OpenRouter-not-
-        // configured case (503) deserve attention.
+        // configured case (503) deserve attention. Error messages can carry
+        // interpolated user input (e.g. "unknown role {form.role}"), so we
+        // truncate the rendered display before it lands on disk.
+        let error_preview = crate::services::redact::preview(&message, 200);
         if status.is_server_error() {
-            tracing::error!(error = %self, status = status.as_u16(), "request failed");
+            tracing::error!(error = %error_preview, status = status.as_u16(), "request failed");
         } else if status == StatusCode::SERVICE_UNAVAILABLE {
-            tracing::warn!(error = %self, status = status.as_u16(), "request unavailable");
+            tracing::warn!(error = %error_preview, status = status.as_u16(), "request unavailable");
         } else {
-            tracing::info!(error = %self, status = status.as_u16(), "request rejected");
+            tracing::info!(error = %error_preview, status = status.as_u16(), "request rejected");
         }
 
         let html = ErrorTemplate {

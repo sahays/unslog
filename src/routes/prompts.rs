@@ -9,6 +9,12 @@ use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::{is_valid_prompt_name, PromptVersion, PROMPT_NAMES};
 use crate::services::prompt_store as store;
+use crate::services::text_validation;
+
+/// Hard cap on a single prompt-body version. The bundled prompts under
+/// `prompts/*.md` are all well under 10 KB; 50 000 chars leaves room for
+/// experimentation while rejecting accidental binary pastes.
+const MAX_PROMPT_BODY: usize = 50_000;
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -178,11 +184,9 @@ async fn save(
     if !is_valid_prompt_name(&name) {
         return Err(AppError::NotFound(format!("prompt {name}")));
     }
-    if form.body.trim().is_empty() {
-        return Err(AppError::BadRequest("prompt body cannot be empty".into()));
-    }
-    let body_chars = form.body.chars().count();
-    let version = store::save_version(&state.db, &name, form.body, None).await?;
+    let body = text_validation::sanitize_long(&form.body, MAX_PROMPT_BODY, "prompt body")?;
+    let body_chars = body.chars().count();
+    let version = store::save_version(&state.db, &name, body, None).await?;
     tracing::info!(
         event = "prompt.save",
         prompt = %name,
