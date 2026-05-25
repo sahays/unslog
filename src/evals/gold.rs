@@ -127,8 +127,8 @@ fn load_dir<T: for<'de> Deserialize<'de>>(dir: &Path) -> Result<Vec<T>> {
             continue;
         }
         let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
-        let parsed: T = serde_json::from_slice(&bytes)
-            .with_context(|| format!("parse {}", path.display()))?;
+        let parsed: T =
+            serde_json::from_slice(&bytes).with_context(|| format!("parse {}", path.display()))?;
         out.push(parsed);
     }
     Ok(out)

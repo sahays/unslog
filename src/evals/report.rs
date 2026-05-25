@@ -18,8 +18,7 @@ pub struct ReportDir {
 pub fn open_report_dir(data_dir: &str) -> Result<ReportDir> {
     let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let path = PathBuf::from(data_dir).join("evals/reports").join(ts);
-    std::fs::create_dir_all(&path)
-        .with_context(|| format!("mkdir -p {}", path.display()))?;
+    std::fs::create_dir_all(&path).with_context(|| format!("mkdir -p {}", path.display()))?;
     Ok(ReportDir { path })
 }
 
@@ -87,17 +86,26 @@ fn judge_avg(tr: &TargetReport) -> Option<f32> {
 
 fn render_target(report: &TargetReport) -> String {
     let mut s = String::new();
-    let _ = writeln!(s, "# {} — {} entries", report.target.as_str(), report.entries.len());
+    let _ = writeln!(
+        s,
+        "# {} — {} entries",
+        report.target.as_str(),
+        report.entries.len()
+    );
     let _ = writeln!(s);
     let total = report.entries.len();
     let passed = report.entries.iter().filter(|e| e.rubric.passed()).count();
     let _ = writeln!(s, "**Rubric:** {passed}/{total} passed.");
     if let Some(avg) = judge_avg(report) {
-        let _ = writeln!(s, "**Judge (grok-4.3):** average {avg:.2}/5 across {} entries.", report
-            .entries
-            .iter()
-            .filter(|e| e.judge.as_ref().and_then(|j| j.aggregate).is_some())
-            .count());
+        let _ = writeln!(
+            s,
+            "**Judge (grok-4.3):** average {avg:.2}/5 across {} entries.",
+            report
+                .entries
+                .iter()
+                .filter(|e| e.judge.as_ref().and_then(|j| j.aggregate).is_some())
+                .count()
+        );
     }
     let _ = writeln!(s);
     for entry in &report.entries {
@@ -107,11 +115,19 @@ fn render_target(report: &TargetReport) -> String {
 }
 
 fn render_entry(out: &mut String, entry: &EntryReport) {
-    let _ = writeln!(out, "## {} — `{}`", entry.rubric.target_label, entry.rubric.target_id);
+    let _ = writeln!(
+        out,
+        "## {} — `{}`",
+        entry.rubric.target_label, entry.rubric.target_id
+    );
     if entry.rubric.passed() {
         let _ = writeln!(out, "- **Rubric:** ✅ all checks passed");
     } else {
-        let _ = writeln!(out, "- **Rubric:** ❌ {} failure(s)", entry.rubric.failures.len());
+        let _ = writeln!(
+            out,
+            "- **Rubric:** ❌ {} failure(s)",
+            entry.rubric.failures.len()
+        );
         for f in &entry.rubric.failures {
             let _ = writeln!(out, "    - {f}");
         }
@@ -121,7 +137,11 @@ fn render_entry(out: &mut String, entry: &EntryReport) {
             let _ = writeln!(out, "- **Judge:** aggregate {agg:.2}/5");
         }
         for s in &j.dimensions {
-            let _ = writeln!(out, "    - **{}**: {}/5 — {}", s.dimension, s.score, s.justification);
+            let _ = writeln!(
+                out,
+                "    - **{}**: {}/5 — {}",
+                s.dimension, s.score, s.justification
+            );
         }
         if let Some(err) = &j.error {
             let _ = writeln!(out, "    - ⚠️ judge error: {err}");

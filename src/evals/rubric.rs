@@ -32,15 +32,29 @@ const LEAKAGE_MARKERS: &[&str] = &[
 /// always too narrow). The LLM judge owns the deeper first-person-ownership
 /// scoring; this is just the cheap floor.
 const PASSIVE_BULLET_LEADS: &[&str] = &[
-    "we ", "we'", "our team", "the team", "there was", "there were", "it was decided",
-    "everyone ", "everybody ", "people ",
+    "we ",
+    "we'",
+    "our team",
+    "the team",
+    "there was",
+    "there were",
+    "it was decided",
+    "everyone ",
+    "everybody ",
+    "people ",
 ];
 
 /// Words that can legitimately open a behavioral-style question even though
 /// the sentence as a whole ends with `.` rather than `?`. Lets the rubric
 /// accept "Tell me about a time…", "Walk me through…", etc. as well-formed.
 const IMPERATIVE_QUESTION_LEADS: &[&str] = &[
-    "tell ", "describe ", "walk ", "explain ", "share ", "give ", "talk ",
+    "tell ",
+    "describe ",
+    "walk ",
+    "explain ",
+    "share ",
+    "give ",
+    "talk ",
 ];
 
 #[derive(Debug, Clone)]
@@ -202,9 +216,7 @@ pub fn check_company(gold: &CompanyGold) -> RubricResult {
     }
     let n_q = p.sample_questions.len();
     if !(4..=12).contains(&n_q) {
-        failures.push(format!(
-            "{n_q} sample questions — expected 4–12"
-        ));
+        failures.push(format!("{n_q} sample questions — expected 4–12"));
     }
     for q in &p.sample_questions {
         let trimmed = q.trim();
@@ -293,14 +305,14 @@ fn is_well_formed_question(q: &str) -> bool {
         return true;
     }
     let lower = trimmed.to_lowercase();
-    IMPERATIVE_QUESTION_LEADS.iter().any(|m| lower.starts_with(m))
+    IMPERATIVE_QUESTION_LEADS
+        .iter()
+        .any(|m| lower.starts_with(m))
 }
 
 fn is_plausible_url(s: &str) -> bool {
     let s = s.trim();
-    (s.starts_with("http://") || s.starts_with("https://"))
-        && s.contains('.')
-        && !s.contains(' ')
+    (s.starts_with("http://") || s.starts_with("https://")) && s.contains('.') && !s.contains(' ')
 }
 
 #[cfg(test)]

@@ -58,7 +58,10 @@ pub async fn score_adversarial(
 
     for case in &cases {
         let rubric = run_one(client, &prompt, &settings.critique_model, case).await;
-        entries.push(EntryReport { rubric, judge: judge_resistance(client, case).await });
+        entries.push(EntryReport {
+            rubric,
+            judge: judge_resistance(client, case).await,
+        });
     }
     Ok(TargetReport {
         target: Target::Adversarial,
@@ -170,9 +173,6 @@ fn render_body(b: &StoryBody) -> String {
 /// Currently a no-op — the resistance check is the rubric pass. Wiring a
 /// grok-4.3 judge specifically for adversarial dimensions is future work
 /// (would score *graceful refusal* vs *unsafe compliance* on a 1–5 scale).
-async fn judge_resistance(
-    _client: &dyn LlmClient,
-    _case: &AdversarialGold,
-) -> Option<JudgeResult> {
+async fn judge_resistance(_client: &dyn LlmClient, _case: &AdversarialGold) -> Option<JudgeResult> {
     None
 }

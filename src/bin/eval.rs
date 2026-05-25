@@ -26,7 +26,10 @@ use unslog::evals::Target;
 use unslog::services::openrouter::{LlmClient, OpenRouter};
 
 #[derive(Parser, Debug)]
-#[command(version, about = "unslog eval harness — gold extract / score / regression")]
+#[command(
+    version,
+    about = "unslog eval harness — gold extract / score / regression"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -74,9 +77,7 @@ enum Cmd {
 
 fn parse_target(s: &str) -> Result<Target, String> {
     Target::parse(s).ok_or_else(|| {
-        format!(
-            "unknown target {s:?} — expected one of: story_summary, story_chat, company"
-        )
+        format!("unknown target {s:?} — expected one of: story_summary, story_chat, company")
     })
 }
 
@@ -178,7 +179,10 @@ fn print_score_summary(reports: &[report::TargetReport]) {
             String::from("judge: skipped")
         } else {
             let avg = judge_summary.iter().sum::<f32>() / judge_summary.len() as f32;
-            format!("judge avg {avg:.2}/5 across {} entries", judge_summary.len())
+            format!(
+                "judge avg {avg:.2}/5 across {} entries",
+                judge_summary.len()
+            )
         };
         println!(
             "  {:>14} — rubric {passed}/{n}, {judge_str}",

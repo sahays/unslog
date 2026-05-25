@@ -28,7 +28,10 @@ pub fn redact_emails(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut last_word_start = 0usize;
     for (i, &b) in bytes.iter().enumerate() {
-        let is_boundary = matches!(b, b' ' | b'\t' | b'\n' | b'\r' | b',' | b';' | b'(' | b')' | b'<' | b'>' | b'"');
+        let is_boundary = matches!(
+            b,
+            b' ' | b'\t' | b'\n' | b'\r' | b',' | b';' | b'(' | b')' | b'<' | b'>' | b'"'
+        );
         if is_boundary {
             push_redacted(&mut out, &s[last_word_start..i]);
             out.push(b as char);

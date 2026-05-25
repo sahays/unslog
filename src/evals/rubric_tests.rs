@@ -3,9 +3,7 @@
 
 use super::*;
 
-use crate::models::{
-    ChatRole, Difficulty, ResearchPacket, ResearchSource, StoryBody,
-};
+use crate::models::{ChatRole, Difficulty, ResearchPacket, ResearchSource, StoryBody};
 
 fn make_story(body: StoryBody, chat: Vec<ChatTurnGold>) -> StoryGold {
     StoryGold {

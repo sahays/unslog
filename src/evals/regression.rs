@@ -177,13 +177,11 @@ pub fn write_report(
     dir: &crate::evals::report::ReportDir,
     report: &RegressionReport,
 ) -> Result<PathBuf> {
-    let path = dir.path.join(format!("regression_{}.md", report.prompt_name));
+    let path = dir
+        .path
+        .join(format!("regression_{}.md", report.prompt_name));
     let mut s = String::new();
-    let _ = writeln!(
-        s,
-        "# Regression — prompt `{}`",
-        report.prompt_name
-    );
+    let _ = writeln!(s, "# Regression — prompt `{}`", report.prompt_name);
     let _ = writeln!(s, "* baseline version: `{}`", report.baseline_version_id);
     let _ = writeln!(s, "* candidate version: `{}`", report.candidate_version_id);
     let _ = writeln!(s, "* generation model: `{}`", report.model);
@@ -206,7 +204,10 @@ pub fn write_report(
                 let _ = writeln!(s, "```");
             }
             _ => {
-                let _ = writeln!(s, "_(skipping diff — one or both bodies failed to generate)_");
+                let _ = writeln!(
+                    s,
+                    "_(skipping diff — one or both bodies failed to generate)_"
+                );
             }
         }
         if let Some(j) = &entry.judge {

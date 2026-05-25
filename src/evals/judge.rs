@@ -232,7 +232,9 @@ fn build_system_prompt(target: Target, dims: &[DimensionSpec]) -> String {
     let mut s = String::new();
     s.push_str("You are an evaluator scoring outputs from a behavioral-interview coaching app. ");
     s.push_str("You score on the dimensions below, each 1–5 (1 = unusable, 5 = excellent). ");
-    s.push_str("Be strict: a 5 means the output cannot be meaningfully improved on that dimension.\n\n");
+    s.push_str(
+        "Be strict: a 5 means the output cannot be meaningfully improved on that dimension.\n\n",
+    );
     s.push_str(&format!("Target: `{}`\n\n", target.as_str()));
     s.push_str("Dimensions:\n");
     for d in dims {
@@ -287,7 +289,10 @@ fn render_packet(g: &CompanyGold) -> String {
     s.push_str(&format!("## Role JD\n{}\n\n", p.role_jd));
     s.push_str(&format!("## Values signal\n{}\n\n", p.values_signal));
     if !p.interview_process.is_empty() {
-        s.push_str(&format!("## Interview process\n{}\n\n", p.interview_process));
+        s.push_str(&format!(
+            "## Interview process\n{}\n\n",
+            p.interview_process
+        ));
     }
     s.push_str("## Sample questions\n");
     for q in &p.sample_questions {
@@ -296,7 +301,10 @@ fn render_packet(g: &CompanyGold) -> String {
     s.push('\n');
     s.push_str("## Sources\n");
     for src in &p.sources {
-        s.push_str(&format!("- [{}]({}) — {}\n", src.title, src.url, src.snippet));
+        s.push_str(&format!(
+            "- [{}]({}) — {}\n",
+            src.title, src.url, src.snippet
+        ));
     }
     s
 }
