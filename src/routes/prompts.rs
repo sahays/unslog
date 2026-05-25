@@ -61,6 +61,15 @@ fn describe(name: &str) -> &'static str {
         "story_refine_open" => {
             "Reopens a locked story with one fresh probe to drive a refined version."
         }
+        "story_spoken" => {
+            "Turns a locked-in STAR+ version into two verbatim-ready spoken monologues (3–5 min + full)."
+        }
+        "pitch_chat" => {
+            "Pitch coach — probes intro / narrative questions (TMAY, why this role, etc.) until distinctive."
+        }
+        "pitch_lockin" => {
+            "Turns a locked pitch chat into two verbatim-ready spoken monologues (≈90s + ≈3 min)."
+        }
         _ => "",
     }
 }

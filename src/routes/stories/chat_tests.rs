@@ -1,5 +1,4 @@
 use super::*;
-use crate::models::StoryBody;
 
 fn turn(role: ChatRole, content: &str) -> ChatTurn {
     ChatTurn {
@@ -76,47 +75,4 @@ fn case_alternating_turns() {
     ];
     let out = render_transcript(&chat);
     assert_eq!(out, "COACH:\nask\n\n---\n\nCANDIDATE:\nanswer");
-}
-
-// ── render_bullets ───────────────────────────────────────────────────
-
-#[test]
-fn case_all_empty_sections() {
-    let body = StoryBody::default();
-    let out = render_bullets(&body);
-    assert!(out.contains("Situation: (empty)"));
-    assert!(out.contains("Task: (empty)"));
-    assert!(out.contains("Action: (empty)"));
-    assert!(out.contains("Result: (empty)"));
-    assert!(out.contains("Reflection: (empty)"));
-}
-
-#[test]
-fn case_partial_sections() {
-    let body = StoryBody {
-        situation: vec!["s1".to_string()],
-        ..StoryBody::default()
-    };
-    let out = render_bullets(&body);
-    assert!(out.contains("Situation:\n- s1"));
-    assert!(out.contains("Task: (empty)"));
-}
-
-#[test]
-fn case_full_body() {
-    let body = StoryBody {
-        situation: vec!["s1".to_string()],
-        task: vec!["t1".to_string(), "t2".to_string()],
-        action: vec!["a1".to_string()],
-        result: vec!["r1".to_string()],
-        reflection: vec!["x1".to_string()],
-    };
-    let out = render_bullets(&body);
-    assert!(out.contains("- s1"));
-    assert!(out.contains("- t1"));
-    assert!(out.contains("- t2"));
-    assert!(out.contains("- a1"));
-    assert!(out.contains("- r1"));
-    assert!(out.contains("- x1"));
-    assert!(!out.contains("(empty)"));
 }

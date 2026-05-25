@@ -40,6 +40,10 @@ pub fn routes() -> Router<AppState> {
         .route("/stories/:id/mode", post(set_mode))
         .route("/stories/:id/delete", post(delete_story))
         .route("/stories/:id/versions/:vid", get(show::show_version))
+        .route(
+            "/stories/:id/versions/:vid/spoken",
+            post(show::generate_spoken),
+        )
 }
 
 // ── Helpers shared by landing + show + chat ──────────────────────────────

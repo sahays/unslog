@@ -83,6 +83,13 @@ pub fn safe_url<S: AsRef<str>>(s: S) -> askama::Result<String> {
     }
 }
 
+/// Whitespace-split word count for free-form prose. Used by the spoken-
+/// monologue view to surface "≈N words" next to each variant so the
+/// candidate can eyeball delivery length at a glance.
+pub fn word_count<S: AsRef<str>>(s: S) -> askama::Result<usize> {
+    Ok(s.as_ref().split_whitespace().count())
+}
+
 #[cfg(test)]
 #[path = "filters_tests.rs"]
 mod tests;

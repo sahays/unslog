@@ -15,7 +15,9 @@ use serde::Deserialize;
 use crate::error::AppError;
 use crate::models::{ChatRole, ChatTurn, Story, StoryBody, StoryVersion};
 use crate::services::openrouter::{self, ChatMessage};
-use crate::services::{category_store, llm_safety, prompt_store, settings_store, text_validation};
+use crate::services::{
+    category_store, llm_safety, prompt_store, settings_store, story_format, text_validation,
+};
 use crate::startup::AppState;
 
 /// Max chars a candidate may type into one chat turn. Story answers are
@@ -128,6 +130,7 @@ async fn run_generate(state: &AppState, story: &Story) -> Result<StoryVersion, A
         story_id: story.id.clone(),
         version_n: next_version_n,
         body,
+        spoken: None,
         created_at: chrono::Utc::now(),
     };
     state
@@ -236,7 +239,7 @@ pub(super) async fn continue_chat(
         .collect::<Vec<_>>()
         .join("\n\n---\n\n");
 
-    let bullets = render_bullets(&version.body);
+    let bullets = story_format::bullets(&version.body);
     let user = format!(
         "<current_version>\n{bullets}\n</current_version>\n\n<recent_chat>\n{recent_str}\n</recent_chat>"
     );
@@ -280,32 +283,6 @@ pub(super) async fn continue_chat(
     );
 
     Ok(Redirect::to(&format!("/stories/{id}")).into_response())
-}
-
-fn render_bullets(body: &StoryBody) -> String {
-    fn section(label: &str, items: &[String]) -> String {
-        if items.is_empty() {
-            format!("{label}: (empty)\n")
-        } else {
-            let lines = items
-                .iter()
-                .map(|b| format!("- {b}"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            format!("{label}:\n{lines}\n")
-        }
-    }
-    let mut out = String::new();
-    out.push_str(&section("Situation", &body.situation));
-    out.push('\n');
-    out.push_str(&section("Task", &body.task));
-    out.push('\n');
-    out.push_str(&section("Action", &body.action));
-    out.push('\n');
-    out.push_str(&section("Result", &body.result));
-    out.push('\n');
-    out.push_str(&section("Reflection", &body.reflection));
-    out
 }
 
 #[cfg(test)]

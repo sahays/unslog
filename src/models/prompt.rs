@@ -8,6 +8,9 @@ pub const PROMPT_NAMES: &[&str] = &[
     "story_chat_collaborative",
     "story_summarize",
     "story_refine_open",
+    "story_spoken",
+    "pitch_chat",
+    "pitch_lockin",
 ];
 
 pub fn is_valid_prompt_name(name: &str) -> bool {

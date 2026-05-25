@@ -1,8 +1,8 @@
 use mongodb::{Client, Collection, Database};
 
 use crate::models::{
-    Asset, Category, Company, Evaluation, JournalEntry, PromptVersion, Question, Session, Story,
-    StoryVersion, Summary,
+    Asset, Category, Company, Evaluation, JournalEntry, PitchVersion, PromptVersion, Question,
+    Session, Story, StoryVersion, Summary,
 };
 
 pub async fn connect(uri: &str, db_name: &str) -> anyhow::Result<Database> {
@@ -164,6 +164,17 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         )
         .build();
     story_versions.create_index(sv_idx).await?;
+
+    let pitch_versions: Collection<PitchVersion> = db.collection(PitchVersion::COLLECTION);
+    let pv_idx = IndexModel::builder()
+        .keys(bson::doc! { "pitch_id": 1, "version_n": -1 })
+        .options(
+            IndexOptions::builder()
+                .name("pitch_version".to_string())
+                .build(),
+        )
+        .build();
+    pitch_versions.create_index(pv_idx).await?;
 
     Ok(())
 }

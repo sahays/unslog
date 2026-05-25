@@ -21,6 +21,9 @@ const SEED_STORY_CHAT: &str = include_str!("../../prompts/story_chat.md");
 const SEED_STORY_CHAT_COLLAB: &str = include_str!("../../prompts/story_chat_collaborative.md");
 const SEED_STORY_SUMMARIZE: &str = include_str!("../../prompts/story_summarize.md");
 const SEED_STORY_REFINE_OPEN: &str = include_str!("../../prompts/story_refine_open.md");
+const SEED_STORY_SPOKEN: &str = include_str!("../../prompts/story_spoken.md");
+const SEED_PITCH_CHAT: &str = include_str!("../../prompts/pitch_chat.md");
+const SEED_PITCH_LOCKIN: &str = include_str!("../../prompts/pitch_lockin.md");
 
 fn seed_for(name: &str) -> Option<&'static str> {
     match name {
@@ -31,6 +34,9 @@ fn seed_for(name: &str) -> Option<&'static str> {
         "story_chat_collaborative" => Some(SEED_STORY_CHAT_COLLAB),
         "story_summarize" => Some(SEED_STORY_SUMMARIZE),
         "story_refine_open" => Some(SEED_STORY_REFINE_OPEN),
+        "story_spoken" => Some(SEED_STORY_SPOKEN),
+        "pitch_chat" => Some(SEED_PITCH_CHAT),
+        "pitch_lockin" => Some(SEED_PITCH_LOCKIN),
         _ => None,
     }
 }

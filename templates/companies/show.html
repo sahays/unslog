@@ -107,6 +107,7 @@
                 {% match q.source %}
                   {% when crate::models::QuestionSource::Agent %}{% call ui::badge("agent", "ai") %}
                   {% when crate::models::QuestionSource::Uploaded %}{% call ui::badge("uploaded", "default") %}
+                  {% when crate::models::QuestionSource::Pitch %}{% call ui::badge("pitch", "accent") %}
                 {% endmatch %}
                 <div class="flex-1 min-w-0 grid gap-1.5">
                   <span>{{ q.text }}</span>

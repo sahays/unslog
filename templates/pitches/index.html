@@ -1,0 +1,42 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}Pitches — unslog{% endblock %}
+
+{% block breadcrumbs %}<span>Pitches</span>{% endblock %}
+
+{% block content %}
+<div class="grid gap-5">
+  <div>
+    <h1 class="font-heading text-2xl font-semibold">Pitches</h1>
+    <p class="muted text-sm mt-1 max-w-2xl">
+      Rehearse the intro / narrative questions — "Tell me about yourself", "Why this role", "Why us", and friends. The coach probes until each answer is distinctive in your voice, then locks it in as two spoken versions (≈90s + ≈3 min) you can deliver verbatim. Distinct from <a class="link-primary" href="/stories">Stories</a> (STAR+ incidents) and <a class="link-primary" href="/practice">Practice</a> (mock).
+    </p>
+  </div>
+
+  {% if tiles.is_empty() %}
+    <div class="card flex items-center gap-3">
+      <i data-lucide="inbox" class="h-6 w-6 text-[color:var(--color-text-tertiary)]"></i>
+      <div>
+        <p class="muted m-0">No pitches yet. The canonical list seeds on first run; if this is empty something didn't seed.</p>
+      </div>
+    </div>
+  {% else %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 stagger-children">
+      {% for t in tiles %}
+        <a href="/pitches/{{ t.slug }}" class="card card-interactive grid gap-2 no-underline">
+          <h3 class="font-heading text-base font-semibold m-0 text-[color:var(--color-text-primary)]">{{ t.question_text }}</h3>
+          <p class="muted-soft text-xs m-0">{{ t.blurb }}</p>
+          <div>
+            {% match t.status %}
+              {% when crate::models::PitchStatus::NotStarted %}{% call ui::badge("not started", "default") %}
+              {% when crate::models::PitchStatus::InProgress %}{% call ui::badge("in progress", "warn") %}
+              {% when crate::models::PitchStatus::Locked %}{% call ui::badge("locked", "good") %}
+            {% endmatch %}
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

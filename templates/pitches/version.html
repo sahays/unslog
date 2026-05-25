@@ -1,0 +1,69 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}{{ pitch.question_text }} — v{{ version.version_n }}{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="/pitches">Pitches</a>
+  <a href="/pitches/{{ pitch.id }}">{{ pitch.question_text }}</a>
+  <span>v{{ version.version_n }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-5">
+  <div class="flex items-start justify-between gap-4">
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2 flex-wrap">
+        <h1 class="font-heading text-2xl font-semibold m-0">{{ pitch.question_text }}</h1>
+        <span class="tag tag-accent">v{{ version.version_n }}</span>
+        {% if is_current %}{% call ui::badge("current", "good") %}{% else %}{% call ui::badge("past version", "default") %}{% endif %}
+      </div>
+      <p class="muted-soft text-xs mt-1 m-0">
+        Locked in {% call ui::time_ago(version.created_at) %}. Past versions are immutable.
+      </p>
+    </div>
+    <div class="flex gap-2 flex-shrink-0">
+      <a class="btn" href="/pitches/{{ pitch.id }}"
+         onclick="if (history.length > 1) { event.preventDefault(); history.back(); }"
+         title="Back to pitch" aria-label="Back to pitch">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+      </a>
+    </div>
+  </div>
+
+  <section class="grid gap-3">
+    <div class="flex items-baseline justify-between gap-3 flex-wrap">
+      <div>
+        <h2 class="font-heading text-lg font-semibold m-0">Spoken versions</h2>
+        <p class="muted-soft text-xs mt-1 m-0">
+          What you'd actually <em>say</em> — same hook and throughline in two lengths. Bold and italics mark the words you'd lean into out loud.
+        </p>
+      </div>
+      <form method="post" action="/pitches/{{ pitch.id }}/versions/{{ version.id }}/regenerate" class="m-0"
+            data-loading-title="Regenerating…"
+            data-loading-detail="Re-rendering both versions from the chat.">
+        <button type="submit" class="btn btn-sm" title="Regenerate both versions from the same chat" aria-label="Regenerate spoken versions">
+          <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
+          <span>Regenerate</span>
+        </button>
+      </form>
+    </div>
+
+    <article class="card grid gap-2">
+      <header class="flex items-baseline justify-between gap-2 flex-wrap">
+        <h3 class="font-heading text-base font-semibold m-0">≈90 second version</h3>
+        <span class="muted-soft text-xs">≈{{ version.short|word_count }} words</span>
+      </header>
+      <div class="prose-chat text-sm">{{ version.short|safe_markdown|safe }}</div>
+    </article>
+
+    <article class="card grid gap-2">
+      <header class="flex items-baseline justify-between gap-2 flex-wrap">
+        <h3 class="font-heading text-base font-semibold m-0">≈3 minute version (say verbatim)</h3>
+        <span class="muted-soft text-xs">≈{{ version.long|word_count }} words</span>
+      </header>
+      <div class="prose-chat text-sm">{{ version.long|safe_markdown|safe }}</div>
+    </article>
+  </section>
+</div>
+{% endblock %}

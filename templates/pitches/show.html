@@ -1,0 +1,169 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}{{ pitch.question_text }} — Pitch{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="/pitches">Pitches</a>
+  <span>{{ pitch.question_text }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-5 pb-44">
+  <div class="flex items-start justify-between gap-4">
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2 flex-wrap">
+        <h1 class="font-heading text-2xl font-semibold m-0">{{ pitch.question_text }}</h1>
+        {% match pitch.status %}
+          {% when crate::models::PitchStatus::NotStarted %}{% call ui::badge("not started", "default") %}
+          {% when crate::models::PitchStatus::InProgress %}{% call ui::badge("in progress", "warn") %}
+          {% when crate::models::PitchStatus::Locked %}{% call ui::badge("locked", "good") %}
+        {% endmatch %}
+      </div>
+      {% if !pitch.blurb.is_empty() %}
+        <p class="muted text-sm mt-1 m-0 max-w-2xl">{{ pitch.blurb }}</p>
+      {% endif %}
+    </div>
+    <div class="flex gap-2 flex-shrink-0">
+      <a class="btn" href="/pitches" title="Back to pitches" aria-label="Back to pitches">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+      </a>
+      <form method="post" action="/pitches/{{ pitch.id }}/reset" class="m-0"
+            onsubmit="return confirm('Reset this pitch? The chat will be wiped, but past versions stay in history.');">
+        <button type="submit" class="btn btn-ghost text-[color:var(--color-error)]" title="Reset chat" aria-label="Reset pitch chat">
+          <i data-lucide="rotate-ccw" class="h-4 w-4"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <section id="pitch-thread" class="grid gap-4 max-w-3xl mx-auto w-full">
+    {% if pitch.chat.is_empty() %}
+      <p class="muted-soft text-sm m-0">
+        The coach will open with a focused question. If you don't see one, the model call may have failed — type your first thought below to kick it off.
+      </p>
+    {% else %}
+      {% for t in pitch.chat %}
+        {% match t.role %}
+          {% when crate::models::ChatRole::Assistant %}
+            <div class="rounded-md p-3 bg-[color:var(--color-accent-light)] border border-[color:var(--color-border)]">
+              <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Coach</div>
+              <div class="prose-chat text-sm">{{ t.content|safe_markdown|safe }}</div>
+            </div>
+          {% when crate::models::ChatRole::User %}
+            <div class="rounded-md p-3 border border-[color:var(--color-border)]">
+              <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">You</div>
+              <div class="text-sm whitespace-pre-wrap">{{ t.content }}</div>
+            </div>
+        {% endmatch %}
+      {% endfor %}
+    {% endif %}
+  </section>
+</div>
+
+<div class="chat-composer-wrapper">
+  <form method="post" action="/pitches/{{ pitch.id }}/turns"
+        class="card chat-composer-card max-w-3xl mx-auto grid gap-2 pointer-events-auto"
+        data-loading-title="Thinking…"
+        data-loading-detail="The coach is reading your reply and choosing the next probe."
+        x-data="{ submitOnEnter(e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.target.form.requestSubmit(); } } }">
+    <textarea name="content" rows="3" required maxlength="5000"
+              @keydown="submitOnEnter"
+              placeholder="Answer the coach — be specific: the actual moment, the actual number, your actual reason. (⌘/Ctrl + Enter to send)"></textarea>
+    <div class="flex items-center justify-end gap-2">
+      <button type="submit" class="btn btn-primary btn-icon-spring">
+        <span class="btn-icon"><i data-lucide="send" class="h-4 w-4"></i></span>
+        <span>Send</span>
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+  (function () {
+    function pinBottom() {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', pinBottom);
+    } else {
+      pinBottom();
+    }
+    window.setTimeout(pinBottom, 60);
+    window.setTimeout(pinBottom, 240);
+  })();
+</script>
+{% endblock %}
+
+{% block rail %}
+  <div class="grid gap-5">
+    {% if !versions.is_empty() %}
+      <div class="grid gap-2">
+        <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Versions</h2>
+        <ul class="grid gap-1.5 list-none p-0 m-0">
+          {% for ve in versions %}
+            <li>
+              <a href="/pitches/{{ pitch.id }}/versions/{{ ve.id }}"
+                 class="flex items-center gap-2 p-2 px-2.5 rounded-md border no-underline
+                        {% if ve.is_current %}border-[color:var(--color-accent)] bg-[color:var(--color-accent-light)]{% else %}border-[color:var(--color-border)] hover:border-[color:var(--color-accent)]{% endif %}">
+                <i data-lucide="file-text" class="h-3.5 w-3.5 {% if ve.is_current %}text-[color:var(--color-accent)]{% endif %}"></i>
+                <span class="text-xs font-medium flex-1 min-w-0 truncate text-[color:var(--color-text-primary)]">{{ ve.label }}</span>
+                {% if ve.is_current %}
+                  <span class="muted-soft text-xs">current</span>
+                {% endif %}
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+        {% if current.is_some() %}
+          <form method="post" action="/pitches/{{ pitch.id }}/continue" class="m-0"
+                data-loading-title="Reopening…"
+                data-loading-detail="The coach is choosing the next probe for a refined version.">
+            <button type="submit" class="btn btn-sm w-full" title="Continue chatting (refine into a new version)" aria-label="Continue chatting">
+              <i data-lucide="message-circle-plus" class="h-3.5 w-3.5"></i>
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if !pitch.chat.is_empty() && current.is_none() %}
+      <div class="grid gap-2">
+        <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Lock-in</h2>
+        <p class="muted-soft text-xs m-0">
+          Skip the agreement handshake and lock the current chat into v1 now.
+        </p>
+        <form method="post" action="/pitches/{{ pitch.id }}/generate" class="m-0"
+              data-loading-title="Writing your pitch…"
+              data-loading-detail="Turning the chat into a ≈90s and ≈3-min spoken version.">
+          <button type="submit" class="btn btn-primary btn-sm w-full" title="Lock in now" aria-label="Lock in now">
+            <i data-lucide="mic" class="h-3.5 w-3.5"></i>
+            <span class="ml-1">Lock in now</span>
+          </button>
+        </form>
+      </div>
+    {% endif %}
+
+    <div class="grid gap-2">
+      <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Other pitches</h2>
+      <ul class="grid gap-1.5 list-none p-0 m-0">
+        {% for s in siblings %}
+          <li>
+            <a href="/pitches/{{ s.slug }}"
+               class="flex items-center gap-2 p-2 px-2.5 rounded-md border border-[color:var(--color-border)] no-underline hover:border-[color:var(--color-accent)]">
+              {% match s.status %}
+                {% when crate::models::PitchStatus::NotStarted %}
+                  <i data-lucide="circle" class="h-3.5 w-3.5 text-[color:var(--color-text-tertiary)]"></i>
+                {% when crate::models::PitchStatus::InProgress %}
+                  <i data-lucide="message-circle" class="h-3.5 w-3.5 text-[color:var(--color-warning)]"></i>
+                {% when crate::models::PitchStatus::Locked %}
+                  <i data-lucide="check-circle-2" class="h-3.5 w-3.5 text-[color:var(--color-success)]"></i>
+              {% endmatch %}
+              <span class="text-xs font-medium flex-1 min-w-0 truncate text-[color:var(--color-text-primary)]">{{ s.question_text }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+{% endblock %}

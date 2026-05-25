@@ -132,12 +132,32 @@ pub struct StoryVersion {
     /// Monotonic per story: 1, 2, 3, …
     pub version_n: u32,
     pub body: StoryBody,
+    /// Spoken-prose variants generated on demand from `body`. `None` until the
+    /// candidate clicks Generate; replaced wholesale on Regenerate. Kept on
+    /// the version (rather than a separate doc) because the variants are a
+    /// pure function of the bullets at this version — they share its identity
+    /// and lifecycle.
+    #[serde(default)]
+    pub spoken: Option<SpokenStory>,
     #[serde(with = "crate::models::datetime_compat::required")]
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl StoryVersion {
     pub const COLLECTION: &'static str = "story_versions";
+}
+
+/// Two spoken-prose variants of the same StoryBody: a 3–5 minute monologue
+/// for time-constrained interviewers and a longer rehearsal-and-deliver
+/// version. Both are first-person verbatim prose — no STAR+ headers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpokenStory {
+    /// 3–5 min monologue. ~450–700 words.
+    pub short: String,
+    /// Longer fuller version. ~900–1400 words.
+    pub long: String,
+    #[serde(with = "crate::models::datetime_compat::required")]
+    pub generated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ pub mod companies;
 pub mod health;
 pub mod home;
 pub mod journal;
+pub mod pitches;
 pub mod practice;
 pub mod prompts;
 pub mod recordings;
@@ -23,6 +24,7 @@ pub fn router(state: AppState) -> Router {
         .merge(assets::routes())
         .merge(categories::routes())
         .merge(companies::routes())
+        .merge(pitches::routes())
         .merge(practice::routes())
         .merge(prompts::routes())
         .merge(recordings::routes())

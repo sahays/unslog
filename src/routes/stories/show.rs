@@ -1,16 +1,17 @@
-//! Show one story (`GET /stories/:id`) and one read-only past version
-//! (`GET /stories/:id/versions/:vid`).
+//! Show one story (`GET /stories/:id`), one read-only past version
+//! (`GET /stories/:id/versions/:vid`), and generate spoken variants for a
+//! version (`POST /stories/:id/versions/:vid/spoken`).
 
 use askama::Template;
 use axum::extract::{Path, State};
-use axum::response::Html;
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use futures::TryStreamExt;
 use mongodb::options::FindOptions;
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by stories/show.html.
 use crate::models::{Category, Story, StoryStatus, StoryVersion};
-use crate::services::category_store;
+use crate::services::{category_store, story_spoken};
 use crate::startup::AppState;
 
 #[derive(Template)]
@@ -156,12 +157,7 @@ pub(super) async fn show_version(
     Path((id, vid)): Path<(String, String)>,
 ) -> Result<Html<String>, AppError> {
     let story = super::load_story(&state, &id).await?;
-    let version = state
-        .db
-        .collection::<StoryVersion>(StoryVersion::COLLECTION)
-        .find_one(bson::doc! { "_id": &vid, "story_id": &id })
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("story version {vid}")))?;
+    let version = load_version(&state, &id, &vid).await?;
     let competency = category_store::get(&state.db, &story.competency_id)
         .await?
         .unwrap_or_else(|| super::unknown_competency(&story.competency_id));
@@ -176,4 +172,30 @@ pub(super) async fn show_version(
     .render()
     .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
     Ok(Html(body))
+}
+
+/// Generate (or regenerate) the two spoken monologue variants for `vid` and
+/// redirect back to the version page. Rerunning replaces whatever was there
+/// — past spoken outputs are not retained because they're a derived view of
+/// the bullets, not an independent artifact.
+pub(super) async fn generate_spoken(
+    State(state): State<AppState>,
+    Path((id, vid)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    let version = load_version(&state, &id, &vid).await?;
+    story_spoken::generate_and_save(&state.db, state.openrouter.as_ref(), &version).await?;
+    Ok(Redirect::to(&format!("/stories/{id}/versions/{vid}")).into_response())
+}
+
+async fn load_version(
+    state: &AppState,
+    story_id: &str,
+    version_id: &str,
+) -> Result<StoryVersion, AppError> {
+    state
+        .db
+        .collection::<StoryVersion>(StoryVersion::COLLECTION)
+        .find_one(bson::doc! { "_id": version_id, "story_id": story_id })
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("story version {version_id}")))
 }
