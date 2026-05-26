@@ -117,7 +117,7 @@ async fn call_lockin_model(
     pitch: &Pitch,
 ) -> Result<LockinPayload, AppError> {
     let settings = settings_store::load(db).await?;
-    let system = prompt_store::get_current_body(db, PROMPT_NAME).await?;
+    let system = prompt_store::get_current_body_with_schema(db, PROMPT_NAME).await?;
     let user = render_user_message(pitch);
 
     let raw = or
@@ -149,7 +149,7 @@ fn render_user_message(pitch: &Pitch) -> String {
     );
     let transcript = render_transcript(&pitch.chat);
     format!(
-        "{pitch_block}\n\n<chat_transcript>\n{transcript}\n</chat_transcript>\n\nWrite the two spoken variants now. Return only the JSON object — no other text, no fences.",
+        "{pitch_block}\n\n<chat_transcript>\n{transcript}\n</chat_transcript>\n\nWrite the two spoken variants now.",
     )
 }
 
@@ -223,7 +223,7 @@ mod tests {
     }
 
     #[test]
-    fn render_user_message_includes_pitch_block_and_transcript_and_json_directive() {
+    fn render_user_message_includes_pitch_block_and_transcript_and_action_directive() {
         let msg = render_user_message(&sample_pitch());
         assert!(msg.contains("<pitch>"), "missing pitch open");
         assert!(msg.contains("slug: tell-me-about-yourself"), "missing slug");
@@ -231,8 +231,9 @@ mod tests {
         assert!(msg.contains("CANDIDATE:"), "missing candidate label");
         assert!(msg.contains("COACH:"), "missing coach label");
         assert!(
-            msg.trim_end().ends_with("no fences."),
-            "missing JSON-only directive: {msg}",
+            msg.trim_end()
+                .ends_with("Write the two spoken variants now."),
+            "missing action directive: {msg}",
         );
     }
 

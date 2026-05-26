@@ -1,0 +1,7 @@
+{
+  "situation":  ["bullet 1", "bullet 2", "..."],
+  "task":       ["..."],
+  "action":     ["..."],
+  "result":     ["..."],
+  "reflection": ["..."]
+}

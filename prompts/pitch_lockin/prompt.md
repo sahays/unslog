@@ -12,16 +12,7 @@ You receive:
 
 ## Output shape
 
-Return a single JSON object with **exactly** this shape — no prose, no code fences, no commentary:
-
-```
-{
-  "short": "...",
-  "long":  "..."
-}
-```
-
-Each value is prose — paragraphs separated by `\n\n`. No headers, no bullets, no stage directions like "(pause)". Markdown is **only** allowed for two things: `**bold**` and `*italic*` for emphasis (see "Emphasis" below). No other Markdown — no links, no code, no lists, no headings.
+The schema (`short`, `long`) is appended to this prompt at request time. Both values are prose — paragraphs separated by `\n\n`. No headers, no bullets, no stage directions like "(pause)". Markdown is **only** allowed for two things: `**bold**` and `*italic*` for emphasis (see "Emphasis" below). No other Markdown — no links, no code, no lists, no headings.
 
 ## Length budgets
 

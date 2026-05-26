@@ -43,7 +43,7 @@ pub async fn generate_and_save(
     let start = std::time::Instant::now();
 
     let settings = settings_store::load(db).await?;
-    let system = prompt_store::get_current_body(db, PROMPT_NAME).await?;
+    let system = prompt_store::get_current_body_with_schema(db, PROMPT_NAME).await?;
     let user = render_user_message(version);
 
     let raw = or
@@ -98,9 +98,7 @@ async fn persist(db: &Database, version_id: &str, spoken: &SpokenStory) -> Resul
 
 fn render_user_message(version: &StoryVersion) -> String {
     let bullets = story_format::bullets(&version.body);
-    format!(
-        "<bullets>\n{bullets}</bullets>\n\nWrite the two spoken variants now. Return only the JSON object — no other text, no fences.",
-    )
+    format!("<bullets>\n{bullets}</bullets>\n\nWrite the two spoken variants now.",)
 }
 
 /// Whitespace-split word count. Good enough for logging — not for billing.
@@ -138,8 +136,9 @@ mod tests {
         assert!(msg.contains("Situation:\n- s1"), "missing situation line");
         assert!(msg.contains("Result: (empty)"), "missing empty marker");
         assert!(
-            msg.trim_end().ends_with("no fences."),
-            "missing JSON-only directive: {msg}"
+            msg.trim_end()
+                .ends_with("Write the two spoken variants now."),
+            "missing action directive: {msg}"
         );
     }
 

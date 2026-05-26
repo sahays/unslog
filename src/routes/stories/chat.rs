@@ -108,7 +108,7 @@ async fn run_generate(state: &AppState, story: &Story) -> Result<StoryVersion, A
         ));
     }
     let settings = settings_store::load(&state.db).await?;
-    let system = prompt_store::get_current_body(&state.db, "story_summarize").await?;
+    let system = prompt_store::get_current_body_with_schema(&state.db, "story_summarize").await?;
 
     let transcript = render_transcript(&story.chat);
     let user = format!("<chat_transcript>\n{transcript}\n</chat_transcript>");

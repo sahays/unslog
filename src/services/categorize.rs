@@ -102,7 +102,6 @@ async fn try_classify_batch(
 
 For each question, return the canonical category IDs (lowercase snake_case,
 exactly as listed above) that the question tests. 1–3 IDs per question.
-Return only the JSON object — no other text, no fences.
 
 Schema:
 {{

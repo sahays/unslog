@@ -1,0 +1,14 @@
+{
+  "scores": {
+    "specificity": 0-5,
+    "role_clarity": 0-5,
+    "star_plus_structure": 0-5,
+    "pitfalls_avoided": 0-5,
+    "company_fit": 0-5
+  },
+  "narrative": "<2–3 paragraphs of critique addressed to 'you', specific to this answer>",
+  "citations": [
+    { "chapter": "Chapter 3 — STAR+", "section": "Reflection", "quote": "<short quote or paraphrase>" }
+  ],
+  "improved_vs_prior": "<empty string on attempt 1; on attempt 2+, one paragraph comparing this attempt to the prior one>"
+}

@@ -18,14 +18,4 @@ Write the debrief.
 
 ## Output
 
-Return JSON with **exactly** this shape:
-
-```
-{
-  "narrative": "<3–5 paragraph debrief, written to 'you' — strong, weak, what to focus on next>",
-  "strengths": ["<thing you did well 1>", "<thing 2>"],
-  "recurring_weaknesses": ["<weakness pattern 1>", "<pattern 2>"],
-  "blind_spots": ["<unaware-of issue 1>", "..."],
-  "company_fit_signal": "<one paragraph on how you're tracking against this specific company's bar>"
-}
-```
+The schema is appended to this prompt at request time. Fill the shape exactly.

@@ -129,10 +129,13 @@ pub async fn generate_and_save(
         return Ok(existing);
     }
 
-    // Snapshotted summary prompt.
-    let summary_prompt_body = deps
-        .get_summary_prompt_body(&session.prompt_snapshot.summary)
-        .await?;
+    // Snapshotted summary prompt body, plus the current output schema
+    // (code-coupled, not snapshotted).
+    let summary_prompt_body = prompt_store::with_schema(
+        "summary",
+        deps.get_summary_prompt_body(&session.prompt_snapshot.summary)
+            .await?,
+    );
 
     // This session's evaluations, ordered as they were taken.
     let evals = deps.find_session_evaluations(&session.id).await?;
@@ -285,7 +288,7 @@ fn render_user_message(company: &Company, evals: &[Evaluation], priors: &[Summar
 {evals_block}
 </this_session>
 
-Write the debrief now. Return only the JSON object — no other text, no fences."#
+Write the debrief now."#
     )
 }
 

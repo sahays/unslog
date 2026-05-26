@@ -54,7 +54,7 @@ pub async fn score_adversarial(
 
     // Resolve the current story_summarize prompt + model once, reuse per case.
     let settings = settings_store::load(db).await?;
-    let prompt = prompt_store::get_current_body(db, "story_summarize").await?;
+    let prompt = prompt_store::get_current_body_with_schema(db, "story_summarize").await?;
 
     for case in &cases {
         let rubric = run_one(client, &prompt, &settings.critique_model, case).await;

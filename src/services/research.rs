@@ -46,13 +46,13 @@ pub async fn run(
     let prompt = prompt_store::get_prompt(db, "research")
         .await?
         .ok_or_else(|| AppError::NotFound("research prompt".into()))?;
-    let body = prompt_store::get_current_body(db, "research").await?;
+    let body = prompt_store::get_current_body_with_schema(db, "research").await?;
 
     // Wrap user-typed fields in named tags so the model treats them as data,
     // not as instructions. The system prompt is updated to reinforce this.
     let user = format!(
         "<user_input>\n<company_name>{company_name}</company_name>\n<role>{role}</role>\n</user_input>\n\n\
-         Produce the research packet now. Return only the JSON object specified, no other text."
+         Produce the research packet now."
     );
 
     let result = or

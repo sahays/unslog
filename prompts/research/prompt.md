@@ -15,17 +15,4 @@ Be skeptical of the company's own marketing. Trust candidate reports more than r
 
 ## Output
 
-Return JSON with **exactly** this shape — no prose outside the JSON:
-
-```
-{
-  "summary": "<3–5 paragraph synthesized brief, written to the candidate>",
-  "role_jd": "<plain-text excerpt or summary of the role JD>",
-  "values_signal": "<what behavior actually wins points here, beyond the public values list>",
-  "interview_process": "<plain-text or short bulleted rundown of the rounds, in order, with what to expect in each — behavioral vs technical, timeline, any quirks>",
-  "sample_questions": ["<question 1>", "<question 2>", "..."],
-  "sources": [
-    { "url": "...", "title": "...", "snippet": "<short relevant excerpt>" }
-  ]
-}
-```
+The schema is appended to this prompt at request time. Fill the shape exactly. Cite URLs in `sources` for every load-bearing claim in `summary`, `values_signal`, and `interview_process`.

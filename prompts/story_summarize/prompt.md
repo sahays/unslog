@@ -8,19 +8,7 @@ You receive the full chat transcript. The candidate's turns are the source. The 
 
 ## Output shape
 
-Return a single JSON object with **exactly** this shape — no prose, no code fences, no commentary:
-
-```
-{
-  "situation":  ["bullet 1", "bullet 2", ...],
-  "task":       ["..."],
-  "action":     ["..."],
-  "result":     ["..."],
-  "reflection": ["..."]
-}
-```
-
-Each section: **3–6 bullets**. Each bullet: **≤ 25 words**. Plain text, no leading dashes, no Markdown.
+The schema (one array per STAR+ section: `situation`, `task`, `action`, `result`, `reflection`) is appended to this prompt at request time. Each section: **3–6 bullets**. Each bullet: **≤ 25 words**. Plain text, no leading dashes, no Markdown.
 
 ## Hard rules
 

@@ -62,10 +62,13 @@ pub async fn build_messages(
     prior_attempts: &[Attempt],
     prior_summary_narratives: &[String],
 ) -> Result<Vec<ChatMessage>, AppError> {
-    // 1. System message — load by version_id from the session snapshot.
-    let critique_prompt_body = deps
-        .get_critique_prompt_body(&session.prompt_snapshot.critique)
-        .await?;
+    // 1. System message — load by version_id from the session snapshot and
+    // append the current output schema (code-coupled, not snapshotted).
+    let critique_prompt_body = prompt_store::with_schema(
+        "critique",
+        deps.get_critique_prompt_body(&session.prompt_snapshot.critique)
+            .await?,
+    );
 
     // 2. Book excerpts — primary asset's extracted text (cached).
     let book = deps.get_book_text().await?;
@@ -134,7 +137,7 @@ pub async fn build_messages(
 {new_answer}
 </new_attempt>
 
-This is attempt {next_attempt_n}. Produce the critique now. Return only the JSON object — no other text, no fences."#
+This is attempt {next_attempt_n}. Produce the critique now."#
     );
 
     Ok(vec![
