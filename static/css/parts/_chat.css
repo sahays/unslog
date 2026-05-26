@@ -1,6 +1,8 @@
 /* ── Chat composer wrapper — fixed to viewport bottom but inset to
-   respect the app shell columns (sidebar at lg+, rail at xl+). The
-   form inside is pointer-events-auto and centered to max-w-3xl. */
+   match the app-shell grid columns and .app-content padding exactly, so
+   the centered max-w-3xl form lines up with the centered chat bubbles
+   above it. Insets and padding here must mirror values in _app-shell.css
+   (.app-shell grid-template-columns + .app-content padding). */
 .chat-composer-wrapper {
   position: fixed;
   bottom: 0.75rem;
@@ -13,13 +15,17 @@
 @media (min-width: 640px) { .chat-composer-wrapper { padding: 0 1.5rem; } }
 @media (min-width: 1024px) {
   .chat-composer-wrapper {
-    left: 14rem;          /* skip sidebar */
-    padding: 0 2rem;
+    left: 17rem;          /* match .app-shell sidebar column (17rem) */
+    padding: 0 1.5rem;    /* match .app-content lg horizontal padding */
   }
+  /* Collapsed sidebar shrinks to 3.5rem — track it so the composer
+     follows the main column. */
+  .app-shell.is-collapsed .chat-composer-wrapper { left: 3.5rem; }
 }
 @media (min-width: 1280px) {
   .chat-composer-wrapper {
-    right: 18rem;         /* skip rail */
+    right: 18rem;         /* match .app-shell rail column (18rem) */
+    padding: 0 2rem;      /* match .app-content xl horizontal padding */
   }
 }
 
