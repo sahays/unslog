@@ -3,14 +3,17 @@
 use askama::Template;
 use axum::extract::{Form, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use futures::TryStreamExt;
-use mongodb::options::FindOptions;
 use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::Company;
-use crate::services::{redact, research, text_validation};
+use crate::services::company_store::CompanyListRow;
+use crate::services::{
+    company_store, questions, redact,
+    research::{self, ResearchCtx},
+    text_validation,
+};
 use crate::startup::AppState;
 
 /// Server-side input limits for the new-company form. Mirrored client-side
@@ -21,7 +24,7 @@ const MAX_COMPANY_ROLE: usize = 200;
 #[derive(Template)]
 #[template(path = "companies/list.html")]
 struct ListTemplate {
-    companies: Vec<Company>,
+    companies: Vec<CompanyListRow>,
 }
 
 #[derive(Template)]
@@ -43,26 +46,15 @@ pub struct NewCompanyForm {
 }
 
 pub async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let coll = crate::db::companies(&state.db);
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "created_at": -1 })
-        .build();
-    let cursor = coll.find(bson::doc! {}).with_options(opts).await?;
-    let companies: Vec<Company> = cursor.try_collect().await?;
-    let body = ListTemplate { companies }
-        .render()
-        .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    let companies = company_store::list_sorted(&state.db).await?;
+    crate::error::render_html(ListTemplate { companies })
 }
 
 pub async fn new_form(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let body = NewTemplate {
+    crate::error::render_html(NewTemplate {
         openrouter_configured: state.openrouter.configured(),
         role_options: super::role_options(),
-    }
-    .render()
-    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    })
 }
 
 pub async fn create(
@@ -74,12 +66,13 @@ pub async fn create(
     let canonical_role = crate::models::Role::parse(form.canonical_role.trim())
         .unwrap_or(crate::models::Role::SolutionsArchitect);
 
-    let coll = crate::db::companies(&state.db);
     let mut company = Company::new(name.clone(), role.clone(), canonical_role);
 
     // Run research synchronously — single user, expected to wait. Failures
     // become a packet-less company; user can hit "refresh packet" to retry.
-    let agent_questions = match research::run(&*state.openrouter, &state.db, &name, &role).await {
+    let research_ctx = ResearchCtx { db: &state.db };
+    let agent_questions = match research::run(&research_ctx, &*state.openrouter, &name, &role).await
+    {
         Ok(packet) => {
             let qs = packet.sample_questions.clone();
             company.research_packet = Some(packet);
@@ -96,9 +89,15 @@ pub async fn create(
         }
     };
 
-    coll.insert_one(&company).await?;
-    let agent_questions_n =
-        super::append_agent_questions(&state, &company, agent_questions).await?;
+    company_store::insert(&state.db, &company).await?;
+    let agent_questions_n = questions::append_skipping_existing(
+        &state.db,
+        &*state.openrouter,
+        &company,
+        agent_questions,
+        company.canonical_role,
+    )
+    .await?;
     tracing::info!(
         event = "company.create",
         company_id = %company.id,

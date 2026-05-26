@@ -21,7 +21,22 @@ async fn serve(
 ) -> Result<Response, AppError> {
     let root = PathBuf::from(&state.config.data_dir).join("recordings");
     let candidate = root.join(&path);
-    let canonical_root = tokio::fs::canonicalize(&root).await.unwrap_or(root.clone());
+    // Canonicalize the root strictly. A previous version silently fell back
+    // to the un-canonicalized root on failure, which made the
+    // `starts_with` check trivially pass for any candidate path — a
+    // working chroot is the entire point of this handler.
+    let canonical_root = tokio::fs::canonicalize(&root).await.map_err(|e| {
+        tracing::error!(
+            event = "recordings.root_canonicalize_failed",
+            root = %root.display(),
+            error = %e,
+            "could not resolve recordings root; refusing to serve",
+        );
+        AppError::Other(anyhow::anyhow!(
+            "recordings root unavailable: {}",
+            root.display()
+        ))
+    })?;
     let canonical_candidate = tokio::fs::canonicalize(&candidate)
         .await
         .map_err(|_| AppError::NotFound(format!("recording {path}")))?;

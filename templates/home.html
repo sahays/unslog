@@ -92,7 +92,7 @@
       {% call ui::stat_card("Companies", company_count) %}
       {% call ui::stat_card("Active sessions", active_count) %}
       <div class="card">
-        <div class="muted-soft text-xs uppercase tracking-wider font-medium">Primary asset</div>
+        <div class="section-label">Primary asset</div>
         <div class="mt-2">
           {% if primary_asset_present %}
             {% call ui::badge("configured", "good") %}
@@ -103,7 +103,7 @@
         </div>
       </div>
       <div class="card">
-        <div class="muted-soft text-xs uppercase tracking-wider font-medium">OpenRouter</div>
+        <div class="section-label">OpenRouter</div>
         <div class="mt-2">
           {% if openrouter_configured %}
             {% call ui::badge("key set", "good") %}

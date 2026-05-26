@@ -11,7 +11,7 @@ use mongodb::options::FindOptions;
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by the templates below.
 use crate::models::{Company, Evaluation, Session, SessionStatus, Summary};
-use crate::services::{questions, summary};
+use crate::services::{asset_store, company_store, evaluations, questions, sessions, summary};
 use crate::startup::AppState;
 
 #[derive(Template)]
@@ -38,10 +38,7 @@ pub(super) async fn start(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let company: Company = crate::db::companies(&state.db)
-        .find_one(bson::doc! { "_id": &id })
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("company {id}")))?;
+    let company = company_store::find_or_404(&state.db, &id).await?;
 
     // Single-company entry: scope = just this company.
     let session = crate::services::session::start(
@@ -99,24 +96,18 @@ pub(super) async fn show(
         .filter(|e| Some(&e.question_id) != session.current_question_id.as_ref())
         .collect();
 
-    let has_primary_asset = crate::db::assets(&state.db)
-        .count_documents(bson::doc! { "primary": true })
-        .await?
-        > 0;
+    let has_primary_asset = asset_store::count_primary(&state.db).await? > 0;
 
     let summary = summary::for_session(&state.db, &id).await?;
 
-    let body = ActiveTemplate {
+    crate::error::render_html(ActiveTemplate {
         session,
         company,
         history,
         current_eval,
         has_primary_asset,
         summary,
-    }
-    .render()
-    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    })
 }
 
 pub(super) async fn review(
@@ -134,15 +125,12 @@ pub(super) async fn review(
         .try_collect()
         .await?;
     let summary = summary::for_session(&state.db, &id).await?;
-    let body = ReviewTemplate {
+    crate::error::render_html(ReviewTemplate {
         session,
         company,
         evals,
         summary,
-    }
-    .render()
-    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    })
 }
 
 pub(super) async fn next_question(
@@ -170,15 +158,9 @@ pub(crate) async fn advance_to_next(
     state: &AppState,
     session: &Session,
 ) -> Result<Option<()>, AppError> {
-    let evals: Vec<Evaluation> = state
-        .db
-        .collection::<Evaluation>(Evaluation::COLLECTION)
-        .find(bson::doc! { "session_id": &session.id })
-        .await?
-        .try_collect()
-        .await?;
-    let answered: std::collections::HashSet<String> =
-        evals.iter().map(|e| e.question_id.clone()).collect();
+    // Only the question_id set is needed here — narrow projection skips
+    // the embedded `attempts[]` payload on every Evaluation row.
+    let answered = evaluations::answered_question_ids(&state.db, &session.id).await?;
 
     let next_id = crate::services::curator::next_curated(session, &answered);
 
@@ -200,22 +182,17 @@ pub(crate) async fn advance_to_next(
         match super::tts_to(state, session, &format!("question_{qid}.mp3"), &qtext).await {
             Ok(p) => Some(p),
             Err(e) => {
-                tracing::warn!(error = %e, "tts of question failed; continuing without audio");
+                tracing::warn!(
+                    error = %e,
+                    session_id = %session.id,
+                    question_id = %qid,
+                    "tts of question failed; continuing without audio",
+                );
                 None
             }
         };
 
-    state
-        .db
-        .collection::<Session>(Session::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": &session.id },
-            bson::doc! { "$set": {
-                "current_question_id": &qid,
-                "current_question_text": &qtext,
-                "current_question_audio_path": audio_path,
-            } },
-        )
+    sessions::set_current_question(&state.db, &session.id, &qid, &qtext, audio_path.as_deref())
         .await?;
 
     Ok(Some(()))
@@ -242,19 +219,7 @@ async fn end_inline(state: &AppState, session: &Session) -> Result<Response, App
     {
         tracing::warn!(error = %e, session_id = %session_id, "summary generation failed at auto-end");
     }
-    state
-        .db
-        .collection::<Session>(Session::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": &session_id },
-            bson::doc! { "$set": {
-                "status": "ended",
-                "ended_at": chrono::Utc::now().to_rfc3339(),
-                "current_question_id": null,
-                "current_question_text": null,
-            } },
-        )
-        .await?;
+    sessions::end(&state.db, &session_id).await?;
     tracing::info!(
         event = "session.auto_end",
         session_id = %session_id,

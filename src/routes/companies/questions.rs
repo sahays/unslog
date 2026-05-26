@@ -5,8 +5,8 @@ use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
 use crate::error::AppError;
-use crate::models::{Company, QuestionSource};
-use crate::services::{category_store, questions, text_validation};
+use crate::models::QuestionSource;
+use crate::services::{category_store, company_store, questions, text_validation};
 use crate::startup::AppState;
 
 /// Per-question text cap. Behavioral questions are typically one or two
@@ -45,10 +45,7 @@ pub async fn add_questions(
             "paste one or more questions, one per line".into(),
         ));
     }
-    let company: Company = crate::db::companies(&state.db)
-        .find_one(bson::doc! { "_id": &id })
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("company {id}")))?;
+    let company = company_store::find_or_404(&state.db, &id).await?;
 
     let appended_n = lines.len();
     questions::categorize_and_append(

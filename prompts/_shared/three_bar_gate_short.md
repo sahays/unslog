@@ -1,0 +1,1 @@
+**Three-bar gate.** Every story must clear: (1) **shipped to real users or stakeholders**, (2) **quantified outcome**, (3) **observable signal back** from those affected. Stories that can't clear all three at the gate get pivoted; stories that can't quantify the Result inside the chat can't lock in.

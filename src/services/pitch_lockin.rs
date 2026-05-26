@@ -4,15 +4,16 @@
 //! so the prose IS the artifact (parallel to `story_spoken`, but without
 //! the intermediate StoryBody).
 
-use futures::TryStreamExt;
-use mongodb::options::FindOptions;
 use mongodb::Database;
 use serde::Deserialize;
 
 use crate::error::AppError;
-use crate::models::{ChatRole, ChatTurn, Pitch, PitchVersion};
-use crate::services::openrouter::{self, ChatMessage, LlmClient};
-use crate::services::{llm_safety, pitch_store, prompt_store, settings_store};
+use crate::models::{Pitch, PitchVersion};
+use crate::services::openrouter::{ChatMessage, LlmClient};
+use crate::services::{
+    chat_transcript, llm_safety, pitch_store, pitch_version_store, prompt_escape, prompt_store,
+    settings_store,
+};
 
 const PROMPT_NAME: &str = "pitch_lockin";
 
@@ -46,18 +47,20 @@ pub async fn generate_and_save(
     }
 
     let payload = call_lockin_model(db, or, pitch).await?;
-    let next_n = next_version_n(db, &pitch.id).await?;
-    let version = PitchVersion {
+    let pitch_id = pitch.id.clone();
+    let short = payload.short.trim().to_string();
+    let long = payload.long.trim().to_string();
+    // The unique `(pitch_id, version_n)` index protects against the
+    // double-submit race; the helper retries once on duplicate-key.
+    let version = pitch_version_store::insert_with_next_n(db, &pitch_id, |n| PitchVersion {
         id: uuid::Uuid::now_v7().to_string(),
-        pitch_id: pitch.id.clone(),
-        version_n: next_n,
-        short: payload.short.trim().to_string(),
-        long: payload.long.trim().to_string(),
+        pitch_id: pitch_id.clone(),
+        version_n: n,
+        short: short.clone(),
+        long: long.clone(),
         created_at: chrono::Utc::now(),
-    };
-    db.collection::<PitchVersion>(PitchVersion::COLLECTION)
-        .insert_one(&version)
-        .await?;
+    })
+    .await?;
     pitch_store::set_current_version(db, &pitch.id, &version.id).await?;
 
     tracing::info!(
@@ -95,18 +98,19 @@ pub async fn regenerate_version(
     }
 
     let payload = call_lockin_model(db, or, pitch).await?;
-    db.collection::<PitchVersion>(PitchVersion::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": version_id, "pitch_id": &pitch.id },
-            bson::doc! { "$set": {
-                "short": payload.short.trim(),
-                "long": payload.long.trim(),
-            } },
-        )
-        .await?;
+    pitch_version_store::replace_in_place(
+        db,
+        version_id,
+        &pitch.id,
+        payload.short.trim(),
+        payload.long.trim(),
+    )
+    .await?;
     tracing::info!(
         event = "pitch.lockin.regenerated",
-        "pitch version replaced in place"
+        pitch_id = %pitch.id,
+        version_id = %version_id,
+        "pitch version replaced in place",
     );
     Ok(())
 }
@@ -129,61 +133,23 @@ async fn call_lockin_model(
         .await?;
     let raw = llm_safety::check_output(PROMPT_NAME, &raw)?;
 
-    openrouter::parse_json(&raw).map_err(|e| {
-        tracing::warn!(
-            error = %e,
-            raw_preview = %openrouter::preview(&raw, 240),
-            "pitch_lockin JSON parse failed",
-        );
-        AppError::Upstream(format!(
-            "pitch_lockin returned invalid JSON: {e} — raw: {}",
-            openrouter::preview(&raw, 280)
-        ))
-    })
+    crate::services::openrouter::parse_json_or_log("pitch_lockin", &raw)
 }
 
 fn render_user_message(pitch: &Pitch) -> String {
+    // Escape every user/catalog-editable field that lands inside the
+    // `<pitch>` wrapper so a stray `</pitch>` or `<system>` can't break
+    // out and inject directives the model would follow.
     let pitch_block = format!(
         "<pitch>\nslug: {}\nquestion: {}\nblurb: {}\n</pitch>",
-        pitch.id, pitch.question_text, pitch.blurb,
+        prompt_escape::for_tag(&pitch.id),
+        prompt_escape::for_tag(&pitch.question_text),
+        prompt_escape::for_tag(&pitch.blurb),
     );
-    let transcript = render_transcript(&pitch.chat);
+    let transcript = chat_transcript::render(&pitch.chat);
     format!(
         "{pitch_block}\n\n<chat_transcript>\n{transcript}\n</chat_transcript>\n\nWrite the two spoken variants now.",
     )
-}
-
-fn render_transcript(chat: &[ChatTurn]) -> String {
-    chat.iter()
-        .map(|t| {
-            let label = match t.role {
-                ChatRole::User => "CANDIDATE",
-                ChatRole::Assistant => "COACH",
-            };
-            format!("{label}:\n{}", t.content)
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n---\n\n")
-}
-
-async fn next_version_n(db: &Database, pitch_id: &str) -> Result<u32, AppError> {
-    #[derive(serde::Deserialize)]
-    struct VersionNRow {
-        version_n: u32,
-    }
-
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "version_n": -1 })
-        .limit(1)
-        .projection(bson::doc! { "version_n": 1 })
-        .build();
-    let cursor = db
-        .collection::<VersionNRow>(PitchVersion::COLLECTION)
-        .find(bson::doc! { "pitch_id": pitch_id })
-        .with_options(opts)
-        .await?;
-    let latest: Vec<VersionNRow> = cursor.try_collect().await?;
-    Ok(latest.first().map(|v| v.version_n + 1).unwrap_or(1))
 }
 
 fn word_count(s: &str) -> usize {
@@ -193,6 +159,7 @@ fn word_count(s: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{ChatRole, ChatTurn};
 
     fn turn(role: ChatRole, content: &str) -> ChatTurn {
         ChatTurn {
@@ -234,18 +201,6 @@ mod tests {
             msg.trim_end()
                 .ends_with("Write the two spoken variants now."),
             "missing action directive: {msg}",
-        );
-    }
-
-    #[test]
-    fn render_transcript_separates_turns() {
-        let chat = vec![
-            turn(ChatRole::Assistant, "ask"),
-            turn(ChatRole::User, "answer"),
-        ];
-        assert_eq!(
-            render_transcript(&chat),
-            "COACH:\nask\n\n---\n\nCANDIDATE:\nanswer",
         );
     }
 

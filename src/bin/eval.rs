@@ -162,6 +162,7 @@ fn build_client(config: &AppConfig) -> Option<Arc<OpenRouter>> {
     Some(Arc::new(OpenRouter::new(
         reqwest::Client::new(),
         config.openrouter_api_key.clone(),
+        config.referer.clone(),
     )))
 }
 

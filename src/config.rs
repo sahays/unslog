@@ -32,6 +32,10 @@ pub struct AppConfig {
     pub log_format: LogFormat,
     /// Subdirectory under `data_dir` for log files. Defaults to "logs".
     pub log_dir: String,
+    /// Optional HTTP-Referer to send to OpenRouter (env: `UNSLOG_REFERER`).
+    /// `None` (unset/blank) means omit the header — avoids leaking a
+    /// personal repo URL in attribution headers on shared/public builds.
+    pub referer: Option<String>,
 }
 
 impl AppConfig {
@@ -48,6 +52,10 @@ impl AppConfig {
             data_dir: env::var("DATA_DIR").unwrap_or_else(|_| "./data".to_string()),
             log_format: LogFormat::from_env(),
             log_dir: env::var("LOG_DIR").unwrap_or_else(|_| "logs".to_string()),
+            referer: env::var("UNSLOG_REFERER")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
         })
     }
 

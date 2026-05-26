@@ -10,12 +10,20 @@
 //!   tags (`<competency>`, `<thinking>`, etc.) back into the output, which
 //!   signals it confused instructions for content.
 //!
-//! Marker lists are intentionally lowercase + substring-matched after a
-//! lowercase normalize — over-matching is fine for refusal (better to
-//! reject one borderline output than to persist a polluted one). Leakage
-//! markers are exact tags we know we use in prompts.
+//! Refusal markers are lowercase + substring-matched, but only against
+//! the **first window** of the response. A genuine refusal opens with one
+//! of these phrases; a critique that quotes "as an AI engineer" inside its
+//! analysis is not a refusal and shouldn't be rejected. Leakage markers
+//! stay as full-text scans since they're explicit tag artifacts we want
+//! to strip wherever they appear.
 
 use crate::error::AppError;
+
+/// Window into the start of the response (in chars) used to detect
+/// refusal markers. Tuned so a normal model refusal — which always opens
+/// with the apology — is caught, while later quotations of the same
+/// phrase inside legitimate analysis are not.
+const REFUSAL_WINDOW_CHARS: usize = 200;
 
 const REFUSAL_MARKERS: &[&str] = &[
     "i cannot help",
@@ -64,9 +72,12 @@ pub enum LeakPolicy {
 /// the warning log (e.g. "critique", "summary", "story_summarize").
 pub fn check_output(op: &str, raw: &str) -> Result<String, AppError> {
     let lower = raw.to_lowercase();
+    // Char-aware truncation: byte-slicing `lower` could panic on a
+    // multibyte boundary if the response opens with non-ASCII text.
+    let refusal_window: String = lower.chars().take(REFUSAL_WINDOW_CHARS).collect();
 
     for marker in REFUSAL_MARKERS {
-        if lower.contains(marker) {
+        if refusal_window.contains(marker) {
             tracing::warn!(
                 op = %op,
                 marker = %marker,

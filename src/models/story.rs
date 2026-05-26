@@ -16,6 +16,18 @@ pub enum StoryStatus {
     Complete,
 }
 
+impl StoryStatus {
+    /// String form that mirrors the serde `rename_all = "snake_case"` mapping.
+    /// Use this for raw bson update docs so the literal can never drift from
+    /// the on-disk representation.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            StoryStatus::InProgress => "in_progress",
+            StoryStatus::Complete => "complete",
+        }
+    }
+}
+
 /// Coach behavior for this story's chat. `Strict` is the default — pure
 /// probing, never volunteers wording. `Collaborative` is the same probing
 /// rigor with one relaxation: when the candidate explicitly asks for help,

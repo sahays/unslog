@@ -60,6 +60,17 @@ fn case_strikethrough_renders() {
 }
 
 #[test]
+fn case_recording_url_strips_data_prefix() {
+    let out = super::recording_url("data/recordings/co1/sess1/x.mp3").unwrap();
+    assert_eq!(out, "/recordings/co1/sess1/x.mp3");
+}
+
+#[test]
+fn case_recording_url_empty_when_no_recordings_segment() {
+    assert_eq!(super::recording_url("/tmp/foo.mp3").unwrap(), "");
+}
+
+#[test]
 fn case_time_ago_buckets() {
     use super::format_relative_secs as f;
     assert_eq!(f(0), "just now");

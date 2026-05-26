@@ -1,4 +1,9 @@
-use super::*;
+//! Smoke tests that the route handlers wire the shared lock-in helper
+//! correctly. The strip helper itself lives in
+//! [`crate::services::chat_lockin`] and carries its own unit tests; this
+//! file just guards against accidentally dropping the dependency.
+
+use crate::services::chat_lockin::strip_lock_in_token;
 
 #[test]
 fn strip_lock_in_token_absent() {

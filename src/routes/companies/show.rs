@@ -6,13 +6,12 @@ use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::Html;
 use futures::TryStreamExt;
-use mongodb::options::FindOptions;
 use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
-use crate::models::{Company, Question, Session, Summary};
-use crate::services::{category_store, evaluations, questions};
+use crate::models::{Company, Question, Summary};
+use crate::services::{category_store, evaluations, questions, sessions as session_store};
 use crate::startup::AppState;
 
 use super::SessionRow;
@@ -44,17 +43,14 @@ pub async fn show(
     let sessions = load_session_rows(&state, &id).await?;
     let canonical_categories = category_store::list_all(&state.db).await?;
 
-    let body = ShowTemplate {
+    crate::error::render_html(ShowTemplate {
         company,
         questions: questions_list,
         sessions,
         canonical_categories,
         role_options: super::role_options(),
         edit_qid: query.edit,
-    }
-    .render()
-    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    })
 }
 
 /// Load sessions for a company plus their eval counts and summaries in two
@@ -63,17 +59,7 @@ async fn load_session_rows(
     state: &AppState,
     company_id: &str,
 ) -> Result<Vec<SessionRow>, AppError> {
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "started_at": -1 })
-        .build();
-    let sessions_raw: Vec<Session> = state
-        .db
-        .collection::<Session>(Session::COLLECTION)
-        .find(bson::doc! { "company_id": company_id })
-        .with_options(opts)
-        .await?
-        .try_collect()
-        .await?;
+    let sessions_raw = session_store::list_for_company(&state.db, company_id).await?;
 
     let session_ids: Vec<&str> = sessions_raw.iter().map(|s| s.id.as_str()).collect();
     let counts = evaluations::counts_by_session(&state.db, &session_ids).await?;

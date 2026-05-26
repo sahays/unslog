@@ -16,7 +16,7 @@ use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::models::{ChatRole, ChatTurn};
-use crate::services::{pitch_lockin, pitch_store, text_validation};
+use crate::services::{chat_lockin, pitch_lockin, pitch_store, text_validation};
 use crate::startup::AppState;
 
 /// Max chars a candidate may type into one chat turn. Generous, since pitch
@@ -47,7 +47,7 @@ pub(super) async fn post_turn(
     super::push_turn(&state, &mut pitch, user_turn).await?;
 
     let raw = super::run_chat_model(&state, &pitch).await?;
-    let (cleaned, lock_in) = strip_lock_in_token(&raw);
+    let (cleaned, lock_in) = chat_lockin::strip_lock_in_token(&raw);
 
     if !cleaned.is_empty() {
         let assistant_turn = ChatTurn {
@@ -63,18 +63,6 @@ pub(super) async fn post_turn(
     }
 
     Ok(Redirect::to(&format!("/pitches/{slug}")).into_response())
-}
-
-/// Sentinel token the coach emits when the candidate has agreed to lock in.
-/// Identical contract to Stories — see `prompts/pitch_chat.md`.
-const LOCK_IN_TOKEN: &str = "<<LOCK_IN>>";
-
-fn strip_lock_in_token(s: &str) -> (String, bool) {
-    if !s.contains(LOCK_IN_TOKEN) {
-        return (s.trim().to_string(), false);
-    }
-    let cleaned = s.replace(LOCK_IN_TOKEN, "").trim().to_string();
-    (cleaned, true)
 }
 
 // ── Generate ─────────────────────────────────────────────────────────────

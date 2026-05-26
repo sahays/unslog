@@ -139,3 +139,15 @@ pub fn html_escape(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
 }
+
+/// Render an Askama template into an `Html<String>` response, mapping
+/// template-render failures to a uniform `AppError::Other`. Centralizing
+/// this here keeps route handlers from sprinkling
+/// `.render().map_err(|e| AppError::Other(anyhow::anyhow!(e)))?` boilerplate
+/// at every site.
+pub fn render_html<T: askama::Template>(tmpl: T) -> Result<Html<String>, AppError> {
+    Ok(Html(
+        tmpl.render()
+            .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?,
+    ))
+}

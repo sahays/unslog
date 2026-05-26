@@ -9,6 +9,18 @@ pub enum SessionStatus {
     Ended,
 }
 
+impl SessionStatus {
+    /// String form that mirrors the serde `rename_all = "snake_case"` mapping.
+    /// Use this for raw bson update docs so the literal can never drift from
+    /// the on-disk representation.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SessionStatus::Active => "active",
+            SessionStatus::Ended => "ended",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelSnapshot {
     pub stt: String,

@@ -13,7 +13,7 @@
 
 use askama::Template;
 use axum::extract::{Path, State};
-use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
 
@@ -21,9 +21,9 @@ use axum_extra::extract::Form;
 use axum_htmx::HxRequest;
 
 use crate::error::AppError;
-use crate::models::{Category, ChatTurn, Difficulty, Story, StoryVersion};
+use crate::models::{Category, ChatTurn, Difficulty, Story};
 use crate::services::openrouter::ChatMessage;
-use crate::services::{prompt_store, settings_store};
+use crate::services::{prompt_escape, story_store};
 use crate::startup::AppState;
 
 mod chat;
@@ -48,33 +48,16 @@ pub fn routes() -> Router<AppState> {
 
 // ── Helpers shared by landing + show + chat ──────────────────────────────
 
+/// Thin route-side wrapper around [`story_store::find_or_404`]. Kept so
+/// submodules can call `super::load_story(&state, id)` without taking a
+/// `&Database` reference everywhere.
 async fn load_story(state: &AppState, id: &str) -> Result<Story, AppError> {
-    state
-        .db
-        .collection::<Story>(Story::COLLECTION)
-        .find_one(bson::doc! { "_id": id })
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("story {id}")))
+    story_store::find_or_404(&state.db, id).await
 }
 
-/// Append a chat turn and bump `updated_at`.
+/// Wrapper around [`story_store::push_turn`] — same reasoning as above.
 async fn push_turn(state: &AppState, story: &mut Story, turn: ChatTurn) -> Result<(), AppError> {
-    let now = chrono::Utc::now();
-    let turn_doc = bson::to_bson(&turn)?;
-    state
-        .db
-        .collection::<Story>(Story::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": &story.id },
-            bson::doc! {
-                "$push": { "chat": turn_doc },
-                "$set":  { "updated_at": now.to_rfc3339() },
-            },
-        )
-        .await?;
-    story.chat.push(turn);
-    story.updated_at = now;
-    Ok(())
+    story_store::push_turn(&state.db, story, turn).await
 }
 
 /// Build [system, ...history] and call the chat model. Picks the system prompt
@@ -85,11 +68,18 @@ async fn run_chat_model(
     story: &Story,
     competency: &Category,
 ) -> Result<String, AppError> {
-    let settings = settings_store::load(&state.db).await?;
-    let system_body = prompt_store::get_current_body(&state.db, story.mode.prompt_name()).await?;
+    let settings = state.settings_cache.get(&state.db).await?;
+    let system_body = state
+        .prompt_cache
+        .get(&state.db, story.mode.prompt_name())
+        .await?;
+    // Competency catalog rows are user-editable via `/categories`; escape
+    // each field so a stray `</competency>` can't break out of the wrapper.
     let competency_block = format!(
         "<competency>\nname: {}\nid: {}\ndescription: {}\n</competency>",
-        competency.name, competency.id, competency.description
+        prompt_escape::for_tag(&competency.name),
+        prompt_escape::for_tag(&competency.id),
+        prompt_escape::for_tag(&competency.description),
     );
     let system = format!("{system_body}\n\n{competency_block}");
 
@@ -141,17 +131,7 @@ async fn set_mode(
     Form(form): Form<ModeForm>,
 ) -> Result<Response, AppError> {
     let mode = Difficulty::from_form(&form.mode);
-    state
-        .db
-        .collection::<Story>(Story::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": &id },
-            bson::doc! { "$set": {
-                "mode": mode.as_str(),
-                "updated_at": chrono::Utc::now().to_rfc3339(),
-            } },
-        )
-        .await?;
+    story_store::set_mode(&state.db, &id, mode).await?;
     tracing::info!(
         event = "story.set_mode",
         story_id = %id,
@@ -161,10 +141,7 @@ async fn set_mode(
     // Htmx callers swap the pill in place; plain form posts (JS off) fall
     // back to a full redirect so the new mode is reflected after reload.
     if is_htmx {
-        let html = ModePillFragment { mode }
-            .render()
-            .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-        Ok(Html(html).into_response())
+        Ok(crate::error::render_html(ModePillFragment { mode })?.into_response())
     } else {
         Ok(Redirect::to(&format!("/stories/{id}")).into_response())
     }
@@ -174,16 +151,7 @@ async fn delete_story(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    state
-        .db
-        .collection::<Story>(Story::COLLECTION)
-        .delete_one(bson::doc! { "_id": &id })
-        .await?;
-    state
-        .db
-        .collection::<StoryVersion>(StoryVersion::COLLECTION)
-        .delete_many(bson::doc! { "story_id": &id })
-        .await?;
+    story_store::delete_cascade(&state.db, &id).await?;
     tracing::info!(event = "story.delete", story_id = %id, "story cascade-deleted");
     Ok(Redirect::to("/stories").into_response())
 }

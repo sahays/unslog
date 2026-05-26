@@ -1,9 +1,28 @@
+use mongodb::error::{ErrorKind, WriteFailure};
 use mongodb::{Client, Collection, Database};
 
 use crate::models::{
     Asset, Category, Company, Evaluation, JournalEntry, PitchVersion, PromptVersion, Question,
     Session, Story, StoryVersion, Summary,
 };
+
+/// MongoDB error code for a duplicate-key violation against a unique index.
+const DUPLICATE_KEY_CODE: i32 = 11000;
+
+/// `true` when `err` is a duplicate-key violation. Callers that wrap a write
+/// in a "next monotonic id" lookup use this to retry once on the natural
+/// race between two concurrent inserts.
+pub fn is_duplicate_key(err: &mongodb::error::Error) -> bool {
+    match err.kind.as_ref() {
+        ErrorKind::Write(WriteFailure::WriteError(we)) => we.code == DUPLICATE_KEY_CODE,
+        _ => false,
+    }
+}
+
+// Note: bypass accessors (`pub fn companies`, `pub fn assets`) were removed in
+// Stage 2 of the hygiene plan. Use `crate::services::company_store` and
+// `crate::services::asset_store` instead — they own these collections and
+// keep route handlers off raw `db.collection::<…>` calls.
 
 pub async fn connect(uri: &str, db_name: &str) -> anyhow::Result<Database> {
     let client = Client::with_uri_str(uri).await?;
@@ -61,11 +80,20 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         )
         .build();
     questions.create_index(q_company_idx).await?;
-    let q_role_idx = IndexModel::builder()
-        .keys(bson::doc! { "role": 1 })
-        .options(IndexOptions::builder().name("role".to_string()).build())
+    // Compound `(role, company_id)` covers `questions::list_for_pool`, which
+    // filters by `{role, $or:[{company_id:null},{company_id:{$in:...}}]}`.
+    // Subsumes the prior single-field `role` index (now deprecated — Mongo
+    // doesn't drop indexes at runtime, so existing installs keep the stray
+    // `role` index until manually dropped).
+    let q_role_company_idx = IndexModel::builder()
+        .keys(bson::doc! { "role": 1, "company_id": 1 })
+        .options(
+            IndexOptions::builder()
+                .name("role_company".to_string())
+                .build(),
+        )
         .build();
-    questions.create_index(q_role_idx).await?;
+    questions.create_index(q_role_company_idx).await?;
 
     let sessions: Collection<Session> = db.collection(Session::COLLECTION);
     let s_idx = IndexModel::builder()
@@ -155,11 +183,16 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
     journal_entries.create_index(je_idx).await?;
 
     let story_versions: Collection<StoryVersion> = db.collection(StoryVersion::COLLECTION);
+    // Unique on (story_id, version_n) — guards against the double-submit
+    // race that two concurrent `next_version_n` reads would otherwise
+    // resolve to the same monotonic value. The version stores catch the
+    // duplicate-key error and retry once.
     let sv_idx = IndexModel::builder()
         .keys(bson::doc! { "story_id": 1, "version_n": -1 })
         .options(
             IndexOptions::builder()
-                .name("story_version".to_string())
+                .unique(true)
+                .name("story_version_unique".to_string())
                 .build(),
         )
         .build();
@@ -170,19 +203,12 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         .keys(bson::doc! { "pitch_id": 1, "version_n": -1 })
         .options(
             IndexOptions::builder()
-                .name("pitch_version".to_string())
+                .unique(true)
+                .name("pitch_version_unique".to_string())
                 .build(),
         )
         .build();
     pitch_versions.create_index(pv_idx).await?;
 
     Ok(())
-}
-
-pub fn companies(db: &Database) -> Collection<Company> {
-    db.collection(Company::COLLECTION)
-}
-
-pub fn assets(db: &Database) -> Collection<Asset> {
-    db.collection(Asset::COLLECTION)
 }

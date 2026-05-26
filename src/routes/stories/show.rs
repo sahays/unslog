@@ -5,13 +5,11 @@
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use futures::TryStreamExt;
-use mongodb::options::FindOptions;
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by stories/show.html.
 use crate::models::{Category, Story, StoryStatus, StoryVersion};
-use crate::services::{category_store, story_spoken};
+use crate::services::{category_store, story_spoken, story_store, story_version_store};
 use crate::startup::AppState;
 
 #[derive(Template)]
@@ -46,60 +44,24 @@ pub(super) async fn show(
         .unwrap_or_else(|| super::unknown_competency(&story.competency_id));
 
     let current = match &story.current_version_id {
-        Some(vid) => {
-            state
-                .db
-                .collection::<StoryVersion>(StoryVersion::COLLECTION)
-                .find_one(bson::doc! { "_id": vid })
-                .await?
-        }
+        Some(vid) => story_version_store::get(&state.db, vid).await?,
         None => None,
     };
 
-    let versions = list_versions_for_picker(&state, &story).await?;
-    let siblings = list_sibling_stories(&state, &story).await?;
+    let versions = picker_entries(&state, &story).await?;
+    let siblings = siblings_view(&state, &story).await?;
 
-    let body = ShowTemplate {
+    crate::error::render_html(ShowTemplate {
         story,
         competency,
         current,
         versions,
         siblings,
-    }
-    .render()
-    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    })
 }
 
-/// Other stories for the same competency, excluding the current one.
-/// Sorted by most-recently-updated. Drives the side panel on the show page.
-async fn list_sibling_stories(
-    state: &AppState,
-    story: &Story,
-) -> Result<Vec<SiblingStory>, AppError> {
-    #[derive(serde::Deserialize)]
-    struct SiblingRow {
-        #[serde(rename = "_id")]
-        id: String,
-        status: StoryStatus,
-        #[serde(with = "crate::models::datetime_compat::required")]
-        updated_at: chrono::DateTime<chrono::Utc>,
-    }
-
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "updated_at": -1 })
-        .projection(bson::doc! { "_id": 1, "status": 1, "updated_at": 1 })
-        .build();
-    let cursor = state
-        .db
-        .collection::<SiblingRow>(Story::COLLECTION)
-        .find(bson::doc! {
-            "competency_id": &story.competency_id,
-            "_id": { "$ne": &story.id },
-        })
-        .with_options(opts)
-        .await?;
-    let rows: Vec<SiblingRow> = cursor.try_collect().await?;
+async fn siblings_view(state: &AppState, story: &Story) -> Result<Vec<SiblingStory>, AppError> {
+    let rows = story_store::list_siblings(&state.db, &story.id, &story.competency_id).await?;
     Ok(rows
         .into_iter()
         .map(|r| SiblingStory {
@@ -110,30 +72,13 @@ async fn list_sibling_stories(
         .collect())
 }
 
-async fn list_versions_for_picker(
+async fn picker_entries(
     state: &AppState,
     story: &Story,
 ) -> Result<Vec<VersionPickerEntry>, AppError> {
-    #[derive(serde::Deserialize)]
-    struct VersionRow {
-        #[serde(rename = "_id")]
-        id: String,
-        version_n: u32,
-    }
-
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "version_n": 1 })
-        .projection(bson::doc! { "_id": 1, "version_n": 1 })
-        .build();
-    let cursor = state
-        .db
-        .collection::<VersionRow>(StoryVersion::COLLECTION)
-        .find(bson::doc! { "story_id": &story.id })
-        .with_options(opts)
-        .await?;
-    let versions: Vec<VersionRow> = cursor.try_collect().await?;
+    let rows = story_version_store::list_for_picker(&state.db, &story.id).await?;
     let current = story.current_version_id.as_deref();
-    Ok(versions
+    Ok(rows
         .into_iter()
         .map(|v| VersionPickerEntry {
             is_current: current == Some(v.id.as_str()),
@@ -163,15 +108,12 @@ pub(super) async fn show_version(
         .unwrap_or_else(|| super::unknown_competency(&story.competency_id));
     let is_current = story.current_version_id.as_deref() == Some(version.id.as_str());
 
-    let body = VersionTemplate {
+    crate::error::render_html(VersionTemplate {
         story,
         competency,
         version,
         is_current,
-    }
-    .render()
-    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    })
 }
 
 /// Generate (or regenerate) the two spoken monologue variants for `vid` and
@@ -192,10 +134,7 @@ async fn load_version(
     story_id: &str,
     version_id: &str,
 ) -> Result<StoryVersion, AppError> {
-    state
-        .db
-        .collection::<StoryVersion>(StoryVersion::COLLECTION)
-        .find_one(bson::doc! { "_id": version_id, "story_id": story_id })
+    story_version_store::find_by_story_and_id(&state.db, story_id, version_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("story version {version_id}")))
 }

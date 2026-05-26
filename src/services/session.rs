@@ -9,7 +9,7 @@ use mongodb::Database;
 
 use crate::error::AppError;
 use crate::models::{ModelSnapshot, PromptSnapshot, Role, Session, SessionStatus};
-use crate::services::{curator, openrouter::LlmClient, prompt_store, settings_store};
+use crate::services::{curator, openrouter::LlmClient, prompt_store, sessions, settings_store};
 
 pub struct StartInput {
     pub role: Role,
@@ -74,9 +74,7 @@ pub async fn start(
         current_question_audio_path: None,
     };
 
-    db.collection::<Session>(Session::COLLECTION)
-        .insert_one(&session)
-        .await?;
+    sessions::insert(db, &session).await?;
 
     Ok(session)
 }

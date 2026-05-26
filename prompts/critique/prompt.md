@@ -24,9 +24,7 @@ The full scoring criteria, the three-bar test details, the style guide, and the 
 
 Every strong answer rests on a scenario that cleared three bars:
 
-1. **Shipped to real users or stakeholders.** Deployed code, adopted document, signed contract, executed reorg, onboarded customer, fielded incident response — not a draft, proposal, prototype, or pre-pilot.
-2. **Quantified outcome.** At least one number that wasn't there before: revenue, latency, error rate, deals closed, time saved, incidents reduced, headcount moved, GPUs released, NPS shift, churn delta, adoption %. "It was successful" is not a number; "incidents dropped from 14/week to 2/week" is.
-3. **Observable signal back from those affected.** Either a concrete number OR a concrete qualitative signal (a named customer quote, a follow-up RFP, a manager's specific reaction, a post-mortem outcome, an escalation that stopped). "It went well" is not a signal.
+{{include:_shared/three_bar_gate.md}}
 
 **Scoring rule.** Walk the answer against the three bars before assigning scores:
 

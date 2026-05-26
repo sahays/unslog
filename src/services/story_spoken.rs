@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::models::{SpokenStory, StoryVersion};
-use crate::services::openrouter::{self, ChatMessage, LlmClient};
+use crate::services::openrouter::{ChatMessage, LlmClient};
 use crate::services::{llm_safety, prompt_store, settings_store, story_format};
 
 const PROMPT_NAME: &str = "story_spoken";
@@ -55,17 +55,8 @@ pub async fn generate_and_save(
         .await?;
     let raw = llm_safety::check_output(PROMPT_NAME, &raw)?;
 
-    let payload: SpokenPayload = openrouter::parse_json(&raw).map_err(|e| {
-        tracing::warn!(
-            error = %e,
-            raw_preview = %openrouter::preview(&raw, 240),
-            "story_spoken JSON parse failed",
-        );
-        AppError::Upstream(format!(
-            "story_spoken returned invalid JSON: {e} — raw: {}",
-            openrouter::preview(&raw, 280)
-        ))
-    })?;
+    let payload: SpokenPayload =
+        crate::services::openrouter::parse_json_or_log("story_spoken", &raw)?;
 
     let spoken = SpokenStory {
         short: payload.short.trim().to_string(),

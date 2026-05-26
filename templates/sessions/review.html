@@ -57,7 +57,7 @@
 
       {% if !s.strengths.is_empty() %}
         <div class="mt-5">
-          <div class="muted-soft text-xs uppercase tracking-wider font-medium">Strengths</div>
+          <div class="section-label">Strengths</div>
           <ul class="list-disc pl-5 mt-1 grid gap-0.5">
             {% for x in s.strengths %}<li>{{ x }}</li>{% endfor %}
           </ul>
@@ -66,7 +66,7 @@
 
       {% if !s.recurring_weaknesses.is_empty() %}
         <div class="mt-5">
-          <div class="muted-soft text-xs uppercase tracking-wider font-medium">Recurring weaknesses</div>
+          <div class="section-label">Recurring weaknesses</div>
           <ul class="list-disc pl-5 mt-1 grid gap-0.5">
             {% for x in s.recurring_weaknesses %}<li>{{ x }}</li>{% endfor %}
           </ul>
@@ -75,7 +75,7 @@
 
       {% if !s.blind_spots.is_empty() %}
         <div class="mt-5">
-          <div class="muted-soft text-xs uppercase tracking-wider font-medium">Blind spots</div>
+          <div class="section-label">Blind spots</div>
           <ul class="list-disc pl-5 mt-1 grid gap-0.5">
             {% for x in s.blind_spots %}<li>{{ x }}</li>{% endfor %}
           </ul>
@@ -84,7 +84,7 @@
 
       {% if !s.company_fit_signal.is_empty() %}
         <div class="mt-5">
-          <div class="muted-soft text-xs uppercase tracking-wider font-medium">Company fit signal</div>
+          <div class="section-label">Company fit signal</div>
           <div class="prose-chat mt-1">{{ s.company_fit_signal|safe_markdown|safe }}</div>
         </div>
       {% endif %}
@@ -97,7 +97,7 @@
       <p class="muted m-0">No questions answered in this session.</p>
     </div>
   {% else %}
-    <h3 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Questions ({{ evals.len() }})</h3>
+    <h3 class="section-label m-0">Questions ({{ evals.len() }})</h3>
     <div class="grid gap-4 stagger-children">
       {% for eval in evals %}
         <div class="card">

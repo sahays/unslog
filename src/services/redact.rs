@@ -18,44 +18,6 @@ pub fn preview(s: &str, n: usize) -> String {
     }
 }
 
-/// Mask anything that looks like an email — keeps the local-part's first
-/// character + the domain, replaces the rest with `…`. Good enough for "I
-/// can still tell who this is roughly about" without leaving a usable
-/// address in the logs. Not a security boundary — assume motivated humans
-/// can still recover the value from context.
-pub fn redact_emails(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = String::with_capacity(s.len());
-    let mut last_word_start = 0usize;
-    for (i, &b) in bytes.iter().enumerate() {
-        let is_boundary = matches!(
-            b,
-            b' ' | b'\t' | b'\n' | b'\r' | b',' | b';' | b'(' | b')' | b'<' | b'>' | b'"'
-        );
-        if is_boundary {
-            push_redacted(&mut out, &s[last_word_start..i]);
-            out.push(b as char);
-            last_word_start = i + 1;
-        }
-    }
-    push_redacted(&mut out, &s[last_word_start..]);
-    out
-}
-
-fn push_redacted(out: &mut String, word: &str) {
-    if let Some(at) = word.find('@') {
-        let local = &word[..at];
-        let domain = &word[at..];
-        if !local.is_empty() && domain.len() > 1 && domain[1..].contains('.') {
-            out.push_str(&local[..1.min(local.len())]);
-            out.push('…');
-            out.push_str(domain);
-            return;
-        }
-    }
-    out.push_str(word);
-}
-
 #[cfg(test)]
 #[path = "redact_tests.rs"]
 mod tests;

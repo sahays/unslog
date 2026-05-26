@@ -1,14 +1,12 @@
-use super::*;
+//! Smoke tests for the wire-up between the chat routes and the shared
+//! helpers. The strip / render helpers themselves carry exhaustive unit
+//! tests in [`crate::services::chat_lockin`] / [`chat_transcript`]; this
+//! file mostly guards the imports.
 
-fn turn(role: ChatRole, content: &str) -> ChatTurn {
-    ChatTurn {
-        role,
-        content: content.to_string(),
-        ts: chrono::Utc::now(),
-    }
-}
+use crate::services::chat_lockin::strip_lock_in_token;
+use crate::services::chat_transcript;
 
-// ── strip_lock_in_token ──────────────────────────────────────────────
+// ── strip_lock_in_token (smoke) ──────────────────────────────────────
 
 #[test]
 fn case_token_absent() {
@@ -24,55 +22,9 @@ fn case_token_present_at_end() {
     assert!(locked);
 }
 
-#[test]
-fn case_token_present_with_whitespace() {
-    let (cleaned, locked) = strip_lock_in_token("text\n\n<<LOCK_IN>>\n");
-    assert_eq!(cleaned, "text");
-    assert!(locked);
-}
-
-#[test]
-fn case_token_only() {
-    let (cleaned, locked) = strip_lock_in_token("<<LOCK_IN>>");
-    assert_eq!(cleaned, "");
-    assert!(locked);
-}
-
-#[test]
-fn case_token_in_middle() {
-    // current behavior: replace leaves a double space; trim only touches
-    // edges.
-    let (cleaned, locked) = strip_lock_in_token("a <<LOCK_IN>> b");
-    assert_eq!(cleaned, "a  b");
-    assert!(locked);
-}
-
-#[test]
-fn case_multiple_tokens() {
-    let (cleaned, locked) = strip_lock_in_token("a <<LOCK_IN>> b <<LOCK_IN>>");
-    assert_eq!(cleaned, "a  b");
-    assert!(locked);
-}
-
-// ── render_transcript ────────────────────────────────────────────────
+// ── chat_transcript::render (smoke) ──────────────────────────────────
 
 #[test]
 fn case_empty_chat() {
-    assert_eq!(render_transcript(&[]), "");
-}
-
-#[test]
-fn case_single_user_turn() {
-    let chat = vec![turn(ChatRole::User, "hello")];
-    assert_eq!(render_transcript(&chat), "CANDIDATE:\nhello");
-}
-
-#[test]
-fn case_alternating_turns() {
-    let chat = vec![
-        turn(ChatRole::Assistant, "ask"),
-        turn(ChatRole::User, "answer"),
-    ];
-    let out = render_transcript(&chat);
-    assert_eq!(out, "COACH:\nask\n\n---\n\nCANDIDATE:\nanswer");
+    assert_eq!(chat_transcript::render(&[]), "");
 }

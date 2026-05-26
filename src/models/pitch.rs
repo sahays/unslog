@@ -22,6 +22,19 @@ pub enum PitchStatus {
     Locked,
 }
 
+impl PitchStatus {
+    /// String form that mirrors the serde `rename_all = "snake_case"` mapping.
+    /// Use this for raw bson update docs so the literal can never drift from
+    /// the on-disk representation.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PitchStatus::NotStarted => "not_started",
+            PitchStatus::InProgress => "in_progress",
+            PitchStatus::Locked => "locked",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pitch {
     /// Slug-as-id. Stable across re-seeds so URLs survive.

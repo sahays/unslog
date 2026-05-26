@@ -5,10 +5,11 @@
 //! attempts replace. The orchestration handler used to inline both steps —
 //! this module owns the upsert so handlers stay thin.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use futures::TryStreamExt;
+use mongodb::options::FindOptions;
 use mongodb::Database;
 
 use crate::error::AppError;
@@ -120,6 +121,31 @@ pub async fn counts_by_session(
         }
     }
     Ok(out)
+}
+
+/// Set of `question_id`s already answered in `session_id`. Used by the
+/// session-advance engine to skip questions the user has already worked.
+/// Projects only `question_id` so we don't ship the embedded `attempts[]`
+/// payload (potentially multi-KB per row) across the wire.
+pub async fn answered_question_ids(
+    db: &Database,
+    session_id: &str,
+) -> Result<HashSet<String>, AppError> {
+    #[derive(serde::Deserialize)]
+    struct QidRow {
+        question_id: String,
+    }
+    let opts = FindOptions::builder()
+        .projection(bson::doc! { "question_id": 1 })
+        .build();
+    let rows: Vec<QidRow> = db
+        .collection::<QidRow>(Evaluation::COLLECTION)
+        .find(bson::doc! { "session_id": session_id })
+        .with_options(opts)
+        .await?
+        .try_collect()
+        .await?;
+    Ok(rows.into_iter().map(|r| r.question_id).collect())
 }
 
 #[cfg(test)]

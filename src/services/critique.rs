@@ -9,7 +9,7 @@ use crate::error::AppError;
 use crate::models::{Attempt, Company, Critique, Session};
 use crate::services::{
     assets::BookCache,
-    openrouter::{self, ChatMessage, LlmClient},
+    openrouter::{ChatMessage, LlmClient},
     prompt_store,
 };
 
@@ -184,13 +184,7 @@ pub async fn run(
         .await?;
     let raw = crate::services::llm_safety::check_output("critique", &raw)?;
 
-    let critique: Critique = crate::services::openrouter::parse_json(&raw).map_err(|e| {
-        tracing::warn!(error = %e, raw_preview = %openrouter::preview(&raw, 240), "critique JSON parse failed");
-        AppError::Upstream(format!(
-            "critique returned invalid JSON: {e} — raw: {}",
-            openrouter::preview(&raw, 280)
-        ))
-    })?;
+    let critique: Critique = crate::services::openrouter::parse_json_or_log("critique", &raw)?;
 
     tracing::info!(
         op = "critique",

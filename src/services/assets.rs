@@ -36,8 +36,14 @@ pub fn extracted_path_for(data_dir: &str, asset_id: &str) -> PathBuf {
     extracted_dir(data_dir).join(format!("{asset_id}.md"))
 }
 
-/// Persist an uploaded blob to `data/assets/originals/<id>.<ext>` and
+/// Persist an uploaded blob to `data/assets/originals/<id>.pdf` and
 /// build a freshly-minted `Asset` row (extraction_status: pending).
+///
+/// Saved extension is hardcoded to `pdf`: the upload route already
+/// rejects anything that isn't a real PDF (magic-byte check), and
+/// trusting the client-supplied filename here would let an attacker
+/// stash, say, `evil.html` on disk and serve it back through any path
+/// that round-trips `original_path`.
 pub async fn save_upload(
     data_dir: &str,
     name: String,
@@ -45,17 +51,13 @@ pub async fn save_upload(
     original_filename: String,
     bytes: &[u8],
 ) -> Result<Asset, AppError> {
-    let ext = Path::new(&original_filename)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("bin")
-        .to_lowercase();
+    let ext = "pdf";
 
     let asset_id = uuid::Uuid::now_v7().to_string();
     tokio::fs::create_dir_all(originals_dir(data_dir)).await?;
     tokio::fs::create_dir_all(extracted_dir(data_dir)).await?;
 
-    let path = original_path_for(data_dir, &asset_id, &ext);
+    let path = original_path_for(data_dir, &asset_id, ext);
     tokio::fs::write(&path, bytes).await?;
 
     let mut asset = Asset::new(
@@ -167,8 +169,7 @@ impl BookCache {
     /// Return the primary asset's truncated extracted text. Loads from disk
     /// on first call (or after invalidation); subsequent calls hit memory.
     pub async fn get(&self, db: &Database) -> Result<Arc<String>, AppError> {
-        let primary = crate::db::assets(db)
-            .find_one(bson::doc! { "primary": true })
+        let primary = crate::services::asset_store::find_primary(db)
             .await?
             .ok_or_else(|| {
                 AppError::BadRequest(

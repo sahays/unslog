@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/chat.html" as chat %}
 {% extends "base.html" %}
 
 {% block title %}{{ pitch.question_text }} — Pitch{% endblock %}
@@ -37,75 +38,23 @@
     </div>
   </div>
 
-  <section id="pitch-thread" class="grid gap-4 max-w-3xl mx-auto w-full">
-    {% if pitch.chat.is_empty() %}
-      <p class="muted-soft text-sm m-0">
-        The coach will open with a focused question. If you don't see one, the model call may have failed — type your first thought below to kick it off.
-      </p>
-    {% else %}
-      {% for t in pitch.chat %}
-        {% match t.role %}
-          {% when crate::models::ChatRole::Assistant %}
-            <div class="rounded-md p-3 bg-[color:var(--color-accent-light)] border border-[color:var(--color-border)]">
-              <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Coach</div>
-              <div class="prose-chat text-sm">{{ t.content|safe_markdown|safe }}</div>
-            </div>
-          {% when crate::models::ChatRole::User %}
-            <div class="rounded-md p-3 border border-[color:var(--color-border)]">
-              <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">You</div>
-              <div class="text-sm whitespace-pre-wrap">{{ t.content }}</div>
-            </div>
-        {% endmatch %}
-      {% endfor %}
-    {% endif %}
-  </section>
+  {% call chat::chat_thread(pitch.chat, "pitch-thread") %}
 </div>
 
-<div class="chat-composer-wrapper">
-  <form method="post" action="/pitches/{{ pitch.id }}/turns"
-        class="card chat-composer-card max-w-3xl mx-auto grid gap-2 pointer-events-auto"
-        data-loading-title="Thinking…"
-        data-loading-detail="The coach is reading your reply and choosing the next probe."
-        x-data="{ submitOnEnter(e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.target.form.requestSubmit(); } } }">
-    <textarea name="content" rows="3" required maxlength="5000"
-              @keydown="submitOnEnter"
-              placeholder="Answer the coach — be specific: the actual moment, the actual number, your actual reason. (⌘/Ctrl + Enter to send)"></textarea>
-    <div class="flex items-center justify-end gap-2">
-      <button type="submit" class="btn btn-primary btn-icon-spring">
-        <span class="btn-icon"><i data-lucide="send" class="h-4 w-4"></i></span>
-        <span>Send</span>
-      </button>
-    </div>
-  </form>
-</div>
-
-<script>
-  (function () {
-    function pinBottom() {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
-    }
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', pinBottom);
-    } else {
-      pinBottom();
-    }
-    window.setTimeout(pinBottom, 60);
-    window.setTimeout(pinBottom, 240);
-  })();
-</script>
+{% call chat::chat_composer(turns_action, "Answer the coach — be specific: the actual moment, the actual number, your actual reason. (⌘/Ctrl + Enter to send)", "Thinking…", "The coach is reading your reply and choosing the next probe.") %}
+{# pin-to-bottom IIFE in /static/js/chat-pin-bottom.js auto-activates here. #}
 {% endblock %}
 
 {% block rail %}
   <div class="grid gap-5">
     {% if !versions.is_empty() %}
       <div class="grid gap-2">
-        <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Versions</h2>
+        <h2 class="section-label m-0">Versions</h2>
         <ul class="grid gap-1.5 list-none p-0 m-0">
           {% for ve in versions %}
             <li>
               <a href="/pitches/{{ pitch.id }}/versions/{{ ve.id }}"
-                 class="flex items-center gap-2 p-2 px-2.5 rounded-md border no-underline
-                        {% if ve.is_current %}border-[color:var(--color-accent)] bg-[color:var(--color-accent-light)]{% else %}border-[color:var(--color-border)] hover:border-[color:var(--color-accent)]{% endif %}">
+                 class="rail-row{% if ve.is_current %} rail-row--active{% endif %}">
                 <i data-lucide="file-text" class="h-3.5 w-3.5 {% if ve.is_current %}text-[color:var(--color-accent)]{% endif %}"></i>
                 <span class="text-xs font-medium flex-1 min-w-0 truncate text-[color:var(--color-text-primary)]">{{ ve.label }}</span>
                 {% if ve.is_current %}
@@ -129,7 +78,7 @@
 
     {% if !pitch.chat.is_empty() && current.is_none() %}
       <div class="grid gap-2">
-        <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Lock-in</h2>
+        <h2 class="section-label m-0">Lock-in</h2>
         <p class="muted-soft text-xs m-0">
           Skip the agreement handshake and lock the current chat into v1 now.
         </p>
@@ -145,12 +94,11 @@
     {% endif %}
 
     <div class="grid gap-2">
-      <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Other pitches</h2>
+      <h2 class="section-label m-0">Other pitches</h2>
       <ul class="grid gap-1.5 list-none p-0 m-0">
         {% for s in siblings %}
           <li>
-            <a href="/pitches/{{ s.slug }}"
-               class="flex items-center gap-2 p-2 px-2.5 rounded-md border border-[color:var(--color-border)] no-underline hover:border-[color:var(--color-accent)]">
+            <a href="/pitches/{{ s.slug }}" class="rail-row">
               {% match s.status %}
                 {% when crate::models::PitchStatus::NotStarted %}
                   <i data-lucide="circle" class="h-3.5 w-3.5 text-[color:var(--color-text-tertiary)]"></i>

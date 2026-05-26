@@ -6,14 +6,12 @@ use askama::Template;
 use axum::extract::State;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::Form;
-use futures::TryStreamExt;
-use mongodb::options::FindOptions;
 use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
-use crate::models::{Category, ChatRole, ChatTurn, Story, StoryStatus, StoryVersion};
-use crate::services::category_store;
+use crate::models::{Category, ChatRole, ChatTurn, Story, StoryStatus};
+use crate::services::{category_store, story_store, story_version_store};
 use crate::startup::AppState;
 
 // ── Landing ──────────────────────────────────────────────────────────────
@@ -49,39 +47,7 @@ pub struct CompletedCard {
 
 pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let categories = category_store::list_all(&state.db).await?;
-
-    // Projected row shape — we don't need the embedded chat to render the
-    // landing page. Match the projection exactly so deserialization
-    // succeeds against the partial document.
-    #[derive(serde::Deserialize)]
-    struct StoryListRow {
-        #[serde(rename = "_id")]
-        id: String,
-        competency_id: String,
-        status: StoryStatus,
-        #[serde(default)]
-        current_version_id: Option<String>,
-        #[serde(with = "crate::models::datetime_compat::required")]
-        updated_at: chrono::DateTime<chrono::Utc>,
-    }
-
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "updated_at": -1 })
-        .projection(bson::doc! {
-            "_id": 1,
-            "competency_id": 1,
-            "status": 1,
-            "current_version_id": 1,
-            "updated_at": 1,
-        })
-        .build();
-    let cursor = state
-        .db
-        .collection::<StoryListRow>(Story::COLLECTION)
-        .find(bson::doc! {})
-        .with_options(opts)
-        .await?;
-    let stories: Vec<StoryListRow> = cursor.try_collect().await?;
+    let stories = story_store::list_for_landing(&state.db).await?;
 
     let mut latest_by_comp: HashMap<String, String> = HashMap::new();
     let mut counts: HashMap<String, (usize, usize)> = HashMap::new();
@@ -105,32 +71,8 @@ pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>,
         .filter(|s| s.status == StoryStatus::Complete)
         .filter_map(|s| s.current_version_id.clone())
         .collect();
-
-    // Project to just the fields needed for the card label — skip the
-    // (potentially large) body, since we only render version_n + id and
-    // link out to the version page on click.
-    #[derive(serde::Deserialize)]
-    struct VersionLabelRow {
-        #[serde(rename = "_id")]
-        id: String,
-        version_n: u32,
-    }
-
-    let versions_by_id: HashMap<String, u32> = if completed_version_ids.is_empty() {
-        HashMap::new()
-    } else {
-        let opts = FindOptions::builder()
-            .projection(bson::doc! { "_id": 1, "version_n": 1 })
-            .build();
-        let cursor = state
-            .db
-            .collection::<VersionLabelRow>(StoryVersion::COLLECTION)
-            .find(bson::doc! { "_id": { "$in": &completed_version_ids } })
-            .with_options(opts)
-            .await?;
-        let rows: Vec<VersionLabelRow> = cursor.try_collect().await?;
-        rows.into_iter().map(|v| (v.id, v.version_n)).collect()
-    };
+    let versions_by_id =
+        story_version_store::list_version_labels_by_ids(&state.db, &completed_version_ids).await?;
 
     let category_name_by_id: HashMap<String, String> = categories
         .iter()
@@ -173,13 +115,10 @@ pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>,
         })
         .collect();
 
-    let body = IndexTemplate {
+    crate::error::render_html(IndexTemplate {
         tiles,
         completed_cards,
-    }
-    .render()
-    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    })
 }
 
 // ── Create ───────────────────────────────────────────────────────────────
@@ -212,11 +151,7 @@ pub(super) async fn create(
         created_at: now,
         updated_at: now,
     };
-    state
-        .db
-        .collection::<Story>(Story::COLLECTION)
-        .insert_one(&story)
-        .await?;
+    story_store::insert(&state.db, &story).await?;
     tracing::info!(
         event = "story.create",
         story_id = %story.id,

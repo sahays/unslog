@@ -183,33 +183,51 @@ async fn recently_asked_ids(
         return Ok(std::collections::HashSet::new());
     }
     // Pull the last N sessions for these companies + role, then collect
-    // every question_id their evaluations referenced.
+    // every question_id their evaluations referenced. Both reads project
+    // the minimal column set — Evaluation embeds an `attempts[]` array
+    // that can run multi-KB per row.
     let opts = FindOptions::builder()
         .sort(bson::doc! { "started_at": -1 })
         .limit(RECENT_SESSIONS * 2)
+        .projection(bson::doc! { "_id": 1 })
         .build();
-    let sessions: Vec<Session> = db
-        .collection::<Session>(Session::COLLECTION)
+    #[derive(serde::Deserialize)]
+    struct SidRow {
+        #[serde(rename = "_id")]
+        id: String,
+    }
+    let session_ids: Vec<String> = db
+        .collection::<SidRow>(Session::COLLECTION)
         .find(bson::doc! {
             "company_id": { "$in": selected_company_ids },
             "role": role.as_str(),
-            "status": "ended",
+            "status": SessionStatus::Ended.as_str(),
         })
         .with_options(opts)
         .await?
-        .try_collect()
-        .await?;
-    let session_ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
+        .try_collect::<Vec<SidRow>>()
+        .await?
+        .into_iter()
+        .map(|r| r.id)
+        .collect();
     if session_ids.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let evals: Vec<Evaluation> = db
-        .collection::<Evaluation>(Evaluation::COLLECTION)
+    #[derive(serde::Deserialize)]
+    struct QidRow {
+        question_id: String,
+    }
+    let eval_opts = FindOptions::builder()
+        .projection(bson::doc! { "question_id": 1 })
+        .build();
+    let qids: Vec<QidRow> = db
+        .collection::<QidRow>(Evaluation::COLLECTION)
         .find(bson::doc! { "session_id": { "$in": &session_ids } })
+        .with_options(eval_opts)
         .await?
         .try_collect()
         .await?;
-    Ok(evals.into_iter().map(|e| e.question_id).collect())
+    Ok(qids.into_iter().map(|r| r.question_id).collect())
 }
 
 async fn try_llm_curate(

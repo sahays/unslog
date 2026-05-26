@@ -90,6 +90,14 @@ pub fn word_count<S: AsRef<str>>(s: S) -> askama::Result<usize> {
     Ok(s.as_ref().split_whitespace().count())
 }
 
+/// Wrap a stored recording path as a `/recordings/...` URL. Lets templates
+/// say `{{ p|recording_url }}` instead of reaching into the
+/// `crate::recordings::to_url` Rust path from inside the template — keeps
+/// view code from binding tightly to internal module layout.
+pub fn recording_url<S: AsRef<str>>(p: S) -> askama::Result<String> {
+    Ok(crate::recordings::to_url(p.as_ref()))
+}
+
 #[cfg(test)]
 #[path = "filters_tests.rs"]
 mod tests;

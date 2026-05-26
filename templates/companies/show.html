@@ -81,7 +81,7 @@
                   </select>
                 </div>
                 <div>
-                  <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Categories</div>
+                  <div class="section-label mb-1">Categories</div>
                   <div class="flex gap-1.5 flex-wrap">
                     {% for c in canonical_categories %}
                       <label class="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-[color:var(--color-border)] cursor-pointer text-xs" title="{{ c.description }}">
@@ -146,30 +146,30 @@
 
       <div class="grid gap-5">
         <section>
-          <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Summary</h4>
+          <h4 class="section-label mb-1">Summary</h4>
           <div class="prose-chat">{{ p.summary|safe_markdown|safe }}</div>
         </section>
 
         <section>
-          <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Role JD</h4>
+          <h4 class="section-label mb-1">Role JD</h4>
           <div class="prose-chat">{{ p.role_jd|safe_markdown|safe }}</div>
         </section>
 
         <section>
-          <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Values signal</h4>
+          <h4 class="section-label mb-1">Values signal</h4>
           <div class="prose-chat">{{ p.values_signal|safe_markdown|safe }}</div>
         </section>
 
         {% if !p.interview_process.is_empty() %}
           <section>
-            <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Interview process</h4>
+            <h4 class="section-label mb-1">Interview process</h4>
             <div class="prose-chat">{{ p.interview_process|safe_markdown|safe }}</div>
           </section>
         {% endif %}
 
         {% if !p.sample_questions.is_empty() %}
           <section>
-            <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Sample questions</h4>
+            <h4 class="section-label mb-1">Sample questions</h4>
             <ul class="list-disc pl-5 m-0 grid gap-1">
               {% for q in p.sample_questions %}<li>{{ q }}</li>{% endfor %}
             </ul>
@@ -178,7 +178,7 @@
 
         <section>
           <div class="flex items-baseline justify-between mb-1">
-            <h4 class="muted-soft text-xs uppercase tracking-wider font-medium">Web search results (fetched by OpenRouter)</h4>
+            <h4 class="section-label">Web search results (fetched by OpenRouter)</h4>
             <span class="muted-soft text-xs">{{ p.fetched_urls.len() }} URL{% if p.fetched_urls.len() != 1 %}s{% endif %}</span>
           </div>
           {% if p.fetched_urls.is_empty() %}
@@ -202,7 +202,7 @@
 
         {% if !p.sources.is_empty() %}
           <section>
-            <h4 class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Sources (model-cited)</h4>
+            <h4 class="section-label mb-1">Sources (model-cited)</h4>
             <ul class="list-disc pl-5 m-0 grid gap-1">
               {% for s in p.sources %}
                 <li>
@@ -231,7 +231,7 @@
 
 {% block rail %}
   <div class="grid gap-3">
-    <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Past sessions</h2>
+    <h2 class="section-label m-0">Past sessions</h2>
     {% if sessions.is_empty() %}
       <p class="muted-soft text-xs m-0">No sessions yet for this company.</p>
     {% else %}

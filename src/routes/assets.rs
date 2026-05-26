@@ -4,14 +4,12 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use axum_extra::extract::Multipart;
-use futures::TryStreamExt;
-use mongodb::options::FindOptions;
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::{Asset, AssetKind, ExtractionStatus};
 use crate::services::assets as svc;
-use crate::services::{redact, text_validation};
+use crate::services::{asset_store, redact, text_validation};
 use crate::startup::AppState;
 
 /// Cap on the display name (the label shown in the library list).
@@ -40,20 +38,12 @@ struct ListTemplate {
 }
 
 async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let coll = crate::db::assets(&state.db);
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "uploaded_at": -1 })
-        .build();
-    let cursor = coll.find(bson::doc! {}).with_options(opts).await?;
-    let assets: Vec<Asset> = cursor.try_collect().await?;
+    let assets = asset_store::list_sorted(&state.db).await?;
     let has_primary = assets.iter().any(|a| a.primary);
-    let body = ListTemplate {
+    crate::error::render_html(ListTemplate {
         assets,
         has_primary,
-    }
-    .render()
-    .map_err(|e| AppError::Other(anyhow::anyhow!("template error: {e}")))?;
-    Ok(Html(body))
+    })
 }
 
 async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Response, AppError> {
@@ -135,12 +125,10 @@ async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Re
     asset.extraction_error = err;
 
     // If this is the only asset, mark it primary.
-    let coll = crate::db::assets(&state.db);
-    let count = coll.count_documents(bson::doc! {}).await?;
-    if count == 0 {
+    if asset_store::count(&state.db).await? == 0 {
         asset.primary = true;
     }
-    coll.insert_one(&asset).await?;
+    asset_store::insert(&state.db, &asset).await?;
     if asset.primary {
         state.book_cache.invalidate().await;
     }
@@ -162,18 +150,7 @@ async fn set_primary(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let coll = crate::db::assets(&state.db);
-    coll.update_many(bson::doc! {}, bson::doc! { "$set": { "primary": false } })
-        .await?;
-    let res = coll
-        .update_one(
-            bson::doc! { "_id": &id },
-            bson::doc! { "$set": { "primary": true } },
-        )
-        .await?;
-    if res.matched_count == 0 {
-        return Err(AppError::NotFound(format!("asset {id}")));
-    }
+    asset_store::set_primary(&state.db, &id).await?;
     state.book_cache.invalidate().await;
     Ok(Redirect::to("/assets").into_response())
 }
@@ -182,28 +159,12 @@ async fn reextract(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let coll = crate::db::assets(&state.db);
-    let asset: Asset = coll
-        .find_one(bson::doc! { "_id": &id })
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("asset {id}")))?;
-
+    let asset = asset_store::find_or_404(&state.db, &id).await?;
     let (status, extracted_path, err) = svc::extract(&state.config.data_dir, &asset).await;
-    coll.update_one(
-        bson::doc! { "_id": &id },
-        bson::doc! {
-            "$set": {
-                "extraction_status": bson::to_bson(&status)?,
-                "extracted_path": extracted_path,
-                "extraction_error": err,
-            }
-        },
-    )
-    .await?;
+    asset_store::update_extraction(&state.db, &id, status, extracted_path, err).await?;
     if asset.primary {
         state.book_cache.invalidate().await;
     }
-
     Ok(Redirect::to("/assets").into_response())
 }
 
@@ -211,35 +172,20 @@ async fn delete(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let coll = crate::db::assets(&state.db);
-    let asset: Asset = coll
-        .find_one(bson::doc! { "_id": &id })
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("asset {id}")))?;
+    let asset = asset_store::find_or_404(&state.db, &id).await?;
 
     let _ = tokio::fs::remove_file(&asset.original_path).await;
     if let Some(ext) = asset.extracted_path.as_ref() {
         let _ = tokio::fs::remove_file(ext).await;
     }
-    coll.delete_one(bson::doc! { "_id": &id }).await?;
+    // `asset_store::delete` promotes the next-most-recent row to primary
+    // *before* deleting the current primary, so the invariant "≥1 primary
+    // when any rows exist" never breaks (worst case: brief two-primary
+    // window, recoverable through `find_primary`).
+    let was_primary = asset.primary;
+    asset_store::delete(&state.db, &asset).await?;
 
-    if asset.primary {
-        // pick a new primary deterministically: most recently uploaded
-        if let Some(next) = coll
-            .find_one(bson::doc! {})
-            .with_options(
-                mongodb::options::FindOneOptions::builder()
-                    .sort(bson::doc! { "uploaded_at": -1 })
-                    .build(),
-            )
-            .await?
-        {
-            coll.update_one(
-                bson::doc! { "_id": &next.id },
-                bson::doc! { "$set": { "primary": true } },
-            )
-            .await?;
-        }
+    if was_primary {
         state.book_cache.invalidate().await;
     }
 
@@ -258,11 +204,7 @@ async fn preview(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
-    let coll = crate::db::assets(&state.db);
-    let asset: Asset = coll
-        .find_one(bson::doc! { "_id": &id })
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("asset {id}")))?;
+    let asset = asset_store::find_or_404(&state.db, &id).await?;
 
     let mut body = svc::read_extracted(&asset).await?;
     let truncated = body.chars().count() > 80_000;
@@ -270,14 +212,11 @@ async fn preview(
         body = body.chars().take(80_000).collect();
     }
 
-    let body = PreviewTemplate {
+    crate::error::render_html(PreviewTemplate {
         asset,
         body,
         truncated,
-    }
-    .render()
-    .map_err(|e| AppError::Other(anyhow::anyhow!("template error: {e}")))?;
-    Ok(Html(body))
+    })
 }
 
 pub fn fmt_status(s: ExtractionStatus) -> &'static str {

@@ -13,7 +13,8 @@ use axum::routing::{get, post};
 use axum::Router;
 
 use crate::error::AppError;
-use crate::models::{Company, QuestionSource, Session, Summary};
+use crate::models::{Company, Session, Summary};
+use crate::services::company_store;
 use crate::startup::AppState;
 
 mod actions;
@@ -61,42 +62,5 @@ fn role_options() -> Vec<(&'static str, &'static str)> {
 }
 
 async fn load_company(state: &AppState, id: &str) -> Result<Company, AppError> {
-    crate::db::companies(&state.db)
-        .find_one(bson::doc! { "_id": id })
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("company {id}")))
-}
-
-/// Categorize + persist agent-suggested questions for a company, skipping any
-/// whose text already exists (so user edits + tags survive re-runs). Returns
-/// the number of *new* questions actually appended. Shared between the
-/// initial-create path and the refresh-packet path.
-async fn append_agent_questions(
-    state: &AppState,
-    company: &Company,
-    candidate_questions: Vec<String>,
-) -> Result<usize, AppError> {
-    if candidate_questions.is_empty() {
-        return Ok(0);
-    }
-    let existing = crate::services::questions::list_for_company(&state.db, &company.id).await?;
-    let existing_texts: std::collections::HashSet<String> =
-        existing.iter().map(|q| q.text.clone()).collect();
-    let new_questions: Vec<String> = candidate_questions
-        .into_iter()
-        .filter(|q| !existing_texts.contains(q))
-        .collect();
-    let appended_n = new_questions.len();
-    if appended_n > 0 {
-        crate::services::questions::categorize_and_append(
-            &state.db,
-            &*state.openrouter,
-            new_questions,
-            QuestionSource::Agent,
-            company.canonical_role,
-            Some(company.id.clone()),
-        )
-        .await?;
-    }
-    Ok(appended_n)
+    company_store::find_or_404(&state.db, id).await
 }

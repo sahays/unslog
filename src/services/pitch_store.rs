@@ -12,6 +12,23 @@ use mongodb::Database;
 use crate::error::AppError;
 use crate::models::{ChatTurn, Pitch, PitchStatus, Question, Role};
 
+/// Hard ceiling on the embedded chat array. Mirrors `story_store` — the
+/// UX assumes a ~50-turn working set, the cap blocks pathological loops
+/// well before the 16 MB Mongo doc limit. Hitting the cap surfaces a
+/// 400 telling the user to lock in and continue from there.
+const MAX_CHAT_TURNS: usize = 100;
+
+/// Pure capacity guard for [`push_turn`]. Split out for unit testing
+/// without a live `&Database` handle.
+fn check_chat_capacity(current_len: usize) -> Result<(), AppError> {
+    if current_len >= MAX_CHAT_TURNS {
+        return Err(AppError::BadRequest(format!(
+            "chat is full ({MAX_CHAT_TURNS} turns) — lock this version in and refine from there"
+        )));
+    }
+    Ok(())
+}
+
 /// Seven canonical intro/narrative questions. Slug = `_id`. Tuple is
 /// `(slug, question_text, blurb)`. Index drives `sort_order`, so the order
 /// here is the order shown on the tile grid.
@@ -134,8 +151,11 @@ pub async fn get(db: &Database, slug: &str) -> Result<Option<Pitch>, AppError> {
 }
 
 /// Append a chat turn and bump `updated_at`. Mirrors the helper in
-/// `routes::stories::mod::push_turn`.
+/// `services::story_store::push_turn`. Refuses to grow the embedded
+/// `chat[]` past [`MAX_CHAT_TURNS`] turns — the caller should lock in
+/// a version and start a refine chat from a clean slate.
 pub async fn push_turn(db: &Database, pitch: &mut Pitch, turn: ChatTurn) -> Result<(), AppError> {
+    check_chat_capacity(pitch.chat.len())?;
     let now = chrono::Utc::now();
     let turn_doc = bson::to_bson(&turn)?;
     db.collection::<Pitch>(Pitch::COLLECTION)
@@ -145,7 +165,7 @@ pub async fn push_turn(db: &Database, pitch: &mut Pitch, turn: ChatTurn) -> Resu
                 "$push": { "chat": turn_doc },
                 "$set":  {
                     "updated_at": now.to_rfc3339(),
-                    "status": status_str(PitchStatus::InProgress),
+                    "status": PitchStatus::InProgress.as_str(),
                 },
             },
         )
@@ -170,7 +190,7 @@ pub async fn set_current_version(
             bson::doc! { "_id": pitch_id },
             bson::doc! { "$set": {
                 "current_version_id": version_id,
-                "status": status_str(PitchStatus::Locked),
+                "status": PitchStatus::Locked.as_str(),
                 "updated_at": chrono::Utc::now().to_rfc3339(),
             } },
         )
@@ -185,12 +205,50 @@ pub async fn reopen(db: &Database, pitch_id: &str) -> Result<(), AppError> {
         .update_one(
             bson::doc! { "_id": pitch_id },
             bson::doc! { "$set": {
-                "status": status_str(PitchStatus::InProgress),
+                "status": PitchStatus::InProgress.as_str(),
                 "updated_at": chrono::Utc::now().to_rfc3339(),
             } },
         )
         .await?;
     Ok(())
+}
+
+/// Sibling-pitch projection used by the show-page sidebar quick-jump panel.
+/// Slim row — only what the template renders.
+pub struct SiblingRow {
+    pub slug: String,
+    pub question_text: String,
+    pub status: PitchStatus,
+}
+
+/// All other pitches (everything except `pitch_id`), sorted by `sort_order`.
+/// Drives the sidebar on `/pitches/:slug`.
+pub async fn list_siblings(db: &Database, pitch_id: &str) -> Result<Vec<SiblingRow>, AppError> {
+    #[derive(serde::Deserialize)]
+    struct Row {
+        #[serde(rename = "_id")]
+        id: String,
+        question_text: String,
+        status: PitchStatus,
+    }
+    let opts = FindOptions::builder()
+        .sort(bson::doc! { "sort_order": 1 })
+        .projection(bson::doc! { "_id": 1, "question_text": 1, "status": 1 })
+        .build();
+    let cursor = db
+        .collection::<Row>(Pitch::COLLECTION)
+        .find(bson::doc! { "_id": { "$ne": pitch_id } })
+        .with_options(opts)
+        .await?;
+    let rows: Vec<Row> = cursor.try_collect().await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| SiblingRow {
+            slug: r.id,
+            question_text: r.question_text,
+            status: r.status,
+        })
+        .collect())
 }
 
 /// Wipe chat and version pointer, return status to not_started. Used by
@@ -200,7 +258,7 @@ pub async fn reset(db: &Database, pitch_id: &str) -> Result<(), AppError> {
         .update_one(
             bson::doc! { "_id": pitch_id },
             bson::doc! { "$set": {
-                "status": status_str(PitchStatus::NotStarted),
+                "status": PitchStatus::NotStarted.as_str(),
                 "current_version_id": bson::Bson::Null,
                 "chat": bson::Bson::Array(Vec::new()),
                 "updated_at": chrono::Utc::now().to_rfc3339(),
@@ -210,10 +268,31 @@ pub async fn reset(db: &Database, pitch_id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-fn status_str(s: PitchStatus) -> &'static str {
-    match s {
-        PitchStatus::NotStarted => "not_started",
-        PitchStatus::InProgress => "in_progress",
-        PitchStatus::Locked => "locked",
+#[cfg(test)]
+mod tests {
+    use super::{check_chat_capacity, MAX_CHAT_TURNS};
+    use crate::error::AppError;
+
+    #[test]
+    fn capacity_ok_at_just_below_cap() {
+        assert!(check_chat_capacity(MAX_CHAT_TURNS - 1).is_ok());
+    }
+
+    #[test]
+    fn capacity_rejects_at_cap_with_actionable_message() {
+        let err = check_chat_capacity(MAX_CHAT_TURNS).expect_err("should reject at cap");
+        match err {
+            AppError::BadRequest(msg) => {
+                assert!(msg.contains(&MAX_CHAT_TURNS.to_string()), "message: {msg}");
+                assert!(msg.to_lowercase().contains("lock"), "message: {msg}");
+            }
+            other => panic!("expected BadRequest, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn capacity_rejects_over_cap() {
+        assert!(check_chat_capacity(MAX_CHAT_TURNS + 1).is_err());
+        assert!(check_chat_capacity(MAX_CHAT_TURNS * 2).is_err());
     }
 }

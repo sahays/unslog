@@ -12,7 +12,7 @@ use mongodb::Database;
 use crate::error::AppError;
 use crate::models::{Company, Evaluation, Session, Summary, SummaryPayload};
 use crate::services::{
-    openrouter::{self, ChatMessage, LlmClient},
+    openrouter::{ChatMessage, LlmClient},
     prompt_store,
 };
 
@@ -164,13 +164,7 @@ pub async fn generate_and_save(
         .await?;
     let raw = crate::services::llm_safety::check_output("summary", &raw)?;
 
-    let payload: SummaryPayload = crate::services::openrouter::parse_json(&raw).map_err(|e| {
-        tracing::warn!(error = %e, raw_preview = %openrouter::preview(&raw, 240), "summary JSON parse failed");
-        AppError::Upstream(format!(
-            "summary returned invalid JSON: {e} — raw: {}",
-            openrouter::preview(&raw, 280)
-        ))
-    })?;
+    let payload: SummaryPayload = crate::services::openrouter::parse_json_or_log("summary", &raw)?;
 
     let summary = Summary {
         id: uuid::Uuid::now_v7().to_string(),

@@ -6,7 +6,7 @@
 {% block content %}
 <div class="grid gap-4 max-w-2xl mx-auto py-10">
   <div>
-    <div class="muted-soft text-xs uppercase tracking-wider font-medium">Error {{ status }}</div>
+    <div class="section-label">Error {{ status }}</div>
     <h1 class="font-heading text-3xl font-semibold mt-1">{{ kind_label }}</h1>
   </div>
 
@@ -22,10 +22,10 @@
   </div>
 
   <div class="flex gap-2 mt-2">
-    <a class="btn" href="javascript:history.back()">
+    <button type="button" class="btn" onclick="history.back()" aria-label="Go back">
       <i data-lucide="arrow-left" class="h-4 w-4"></i>
       Back
-    </a>
+    </button>
     <a class="btn btn-ghost" href="/">
       <i data-lucide="home" class="h-4 w-4"></i>
       Home

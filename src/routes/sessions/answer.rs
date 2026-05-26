@@ -20,6 +20,11 @@ const MAX_ANSWER_CHARS: usize = 10_000;
 /// accommodate large PDF assets; audio gets a tighter cap (~5 min @ 64 kbps
 /// audio/webm leaves plenty of headroom inside 25 MB).
 const MAX_AUDIO_BYTES: usize = 25 * 1024 * 1024;
+/// File extensions we will accept as inbound answer audio. Anything outside
+/// this set falls back to `webm` (what the browser MediaRecorder default
+/// emits), so a client-supplied `original.exe` never lands on disk.
+const ALLOWED_AUDIO_EXTS: &[&str] = &["webm", "ogg", "mp3", "wav", "m4a", "mp4"];
+const DEFAULT_AUDIO_EXT: &str = "webm";
 
 #[derive(Deserialize)]
 pub(super) struct AnswerForm {
@@ -93,7 +98,13 @@ pub(super) async fn submit_answer(
     {
         Ok(p) => Some(p),
         Err(e) => {
-            tracing::warn!(error = %e, "tts of critique failed; continuing without audio");
+            tracing::warn!(
+                error = %e,
+                session_id = %session.id,
+                question_id = %qid,
+                attempt_n,
+                "tts of critique failed; continuing without audio",
+            );
             None
         }
     };
@@ -111,6 +122,19 @@ pub(super) async fn submit_answer(
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
 
+/// Normalize a client-supplied audio extension. Lowercased + checked
+/// against [`ALLOWED_AUDIO_EXTS`]; anything outside the list falls back
+/// to [`DEFAULT_AUDIO_EXT`] so the on-disk filename can never carry an
+/// attacker-chosen suffix.
+fn sanitize_audio_ext(ext: &str) -> String {
+    let lower = ext.to_lowercase();
+    if ALLOWED_AUDIO_EXTS.iter().any(|a| *a == lower) {
+        lower
+    } else {
+        DEFAULT_AUDIO_EXT.to_string()
+    }
+}
+
 pub(super) async fn transcribe(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -122,7 +146,7 @@ pub(super) async fn transcribe(
     }
 
     let mut bytes: Vec<u8> = Vec::new();
-    let mut ext: String = "webm".to_string();
+    let mut ext: String = DEFAULT_AUDIO_EXT.to_string();
 
     while let Some(field) = form
         .next_field()
@@ -136,7 +160,7 @@ pub(super) async fn transcribe(
                     .extension()
                     .and_then(|s| s.to_str())
                 {
-                    ext = e.to_lowercase();
+                    ext = sanitize_audio_ext(e);
                 }
             }
             bytes = field

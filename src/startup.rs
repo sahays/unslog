@@ -22,6 +22,8 @@ pub struct AppState {
     pub openrouter: Arc<dyn crate::services::openrouter::LlmClient>,
     pub models_cache: crate::services::openrouter_models::ModelsCache,
     pub book_cache: crate::services::assets::BookCache,
+    pub settings_cache: crate::services::settings_store::SettingsCache,
+    pub prompt_cache: crate::services::prompt_cache::PromptCache,
 }
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
@@ -50,6 +52,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         Arc::new(crate::services::openrouter::OpenRouter::new(
             http.clone(),
             config.openrouter_api_key.clone(),
+            config.referer.clone(),
         ));
     let state = AppState {
         config: Arc::new(config),
@@ -58,6 +61,8 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         openrouter,
         models_cache: crate::services::openrouter_models::ModelsCache::new(),
         book_cache: crate::services::assets::BookCache::new(),
+        settings_cache: crate::services::settings_store::SettingsCache::new(),
+        prompt_cache: crate::services::prompt_cache::PromptCache::new(),
     };
 
     let static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static");

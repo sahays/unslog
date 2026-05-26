@@ -33,7 +33,28 @@ pub fn routes() -> Router<AppState> {
 #[derive(Template)]
 #[template(path = "journal/list.html")]
 struct ListTemplate {
-    entries: Vec<JournalEntry>,
+    entries: Vec<JournalListRow>,
+}
+
+/// View-model for one row on the journal list page. Built in the handler so
+/// the template never needs to call methods on the model — keeps render-time
+/// work to plain field reads.
+struct JournalListRow {
+    id: String,
+    title: String,
+    excerpt: String,
+    updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<JournalEntry> for JournalListRow {
+    fn from(e: JournalEntry) -> Self {
+        Self {
+            excerpt: e.excerpt(),
+            id: e.id,
+            title: e.title,
+            updated_at: e.updated_at,
+        }
+    }
 }
 
 #[derive(Template)]
@@ -60,12 +81,16 @@ struct EditTemplate {
 // ── Handlers ─────────────────────────────────────────────────────────────
 
 async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let entries = journal_store::list_active(&state.db).await?;
-    render(ListTemplate { entries })
+    let entries = journal_store::list_active(&state.db)
+        .await?
+        .into_iter()
+        .map(JournalListRow::from)
+        .collect();
+    crate::error::render_html(ListTemplate { entries })
 }
 
 async fn new_form() -> Result<Html<String>, AppError> {
-    render(NewTemplate {
+    crate::error::render_html(NewTemplate {
         max_title: MAX_TITLE_LEN,
         max_body: MAX_BODY_LEN,
     })
@@ -76,7 +101,7 @@ async fn show(
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
     let entry = require_entry(&state, &id).await?;
-    render(ShowTemplate { entry })
+    crate::error::render_html(ShowTemplate { entry })
 }
 
 async fn edit_form(
@@ -84,7 +109,7 @@ async fn edit_form(
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
     let entry = require_entry(&state, &id).await?;
-    render(EditTemplate {
+    crate::error::render_html(EditTemplate {
         entry,
         max_title: MAX_TITLE_LEN,
         max_body: MAX_BODY_LEN,
@@ -136,13 +161,6 @@ async fn archive(
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
-
-fn render<T: Template>(tmpl: T) -> Result<Html<String>, AppError> {
-    Ok(Html(
-        tmpl.render()
-            .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?,
-    ))
-}
 
 async fn require_entry(state: &AppState, id: &str) -> Result<JournalEntry, AppError> {
     journal_store::get(&state.db, id)

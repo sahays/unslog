@@ -1,4 +1,6 @@
-use super::*;
+use super::chat::{extract_fetched_urls, Annotation, UrlCitation};
+use super::json::{parse_json, unwrap_fenced_json};
+use serde::Deserialize;
 
 // ── extract_fetched_urls ─────────────────────────────────────────────
 
@@ -131,36 +133,4 @@ fn case_parse_error_on_garbage() {
         a: u32,
     }
     assert!(parse_json::<Toy>("not json").is_err());
-}
-
-// ── preview ──────────────────────────────────────────────────────────
-
-#[test]
-fn case_preview_short_passthrough() {
-    assert_eq!(preview("hello", 10), "hello");
-}
-
-#[test]
-fn case_preview_exact_length() {
-    // length == n: no ellipsis
-    assert_eq!(preview("hello", 5), "hello");
-}
-
-#[test]
-fn case_preview_truncates_with_ellipsis() {
-    assert_eq!(preview("hello world", 5), "hello…");
-}
-
-#[test]
-fn case_preview_multibyte() {
-    // Each emoji is a single codepoint; count is 4. Truncating to 2
-    // must not slice mid-byte.
-    let input = "🎉🎊🎈🎂";
-    let out = preview(input, 2);
-    assert_eq!(out, "🎉🎊…");
-}
-
-#[test]
-fn case_preview_n_zero_nonempty() {
-    assert_eq!(preview("hi", 0), "…");
 }

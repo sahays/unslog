@@ -17,7 +17,7 @@ use axum::Router;
 use crate::error::AppError;
 use crate::models::{ChatTurn, Pitch};
 use crate::services::openrouter::ChatMessage;
-use crate::services::{pitch_store, prompt_store, settings_store};
+use crate::services::{pitch_store, prompt_escape};
 use crate::startup::AppState;
 
 mod chat;
@@ -51,11 +51,16 @@ async fn load_pitch(state: &AppState, slug: &str) -> Result<Pitch, AppError> {
 /// is `pitch_chat`; the `<pitch>` block tells the coach which intro
 /// question is in play (parallel to the `<competency>` block on Stories).
 async fn run_chat_model(state: &AppState, pitch: &Pitch) -> Result<String, AppError> {
-    let settings = settings_store::load(&state.db).await?;
-    let system_body = prompt_store::get_current_body(&state.db, "pitch_chat").await?;
+    let settings = state.settings_cache.get(&state.db).await?;
+    let system_body = state.prompt_cache.get(&state.db, "pitch_chat").await?;
+    // Pitch catalog fields are seeded but editable in principle — escape
+    // every interpolation so a stray `</pitch>` can't break out and
+    // re-direct the coach prompt.
     let pitch_block = format!(
         "<pitch>\nslug: {}\nquestion: {}\nblurb: {}\n</pitch>",
-        pitch.id, pitch.question_text, pitch.blurb
+        prompt_escape::for_tag(&pitch.id),
+        prompt_escape::for_tag(&pitch.question_text),
+        prompt_escape::for_tag(&pitch.blurb),
     );
     let system = format!("{system_body}\n\n{pitch_block}");
 

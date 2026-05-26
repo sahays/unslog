@@ -1,0 +1,67 @@
+{# ── Chat macros — shared between story show + pitch show ───── #}
+
+{# Chat thread.
+   `chat` — a Vec of `crate::models::ChatTurn`. Each turn must expose
+            `role` (a `crate::models::ChatRole`) and `content`.
+   `thread_id` — the wrapping <section> id. The chat-pin-bottom IIFE in
+            `static/js/chat-pin-bottom.js` activates when an element with
+            id `story-thread` or `pitch-thread` is present, so callers
+            should pass one of those.
+
+   Coach turns render markdown-via-`safe_markdown`; user turns are escaped
+   plain text in a preserved-whitespace block. Empty state mirrors the
+   "first turn likely failed, type to kick it off" nudge both pages used. #}
+{% macro chat_thread(turns, thread_id) -%}
+<section id="{{ thread_id }}" class="grid gap-4 max-w-3xl mx-auto w-full">
+  {% if turns.is_empty() %}
+    <p class="section-label m-0" style="text-transform:none;letter-spacing:normal">
+      The coach will open with a focused question. If you don't see one, the model call may have failed — type your first thought below to kick it off.
+    </p>
+  {% else %}
+    {% for t in turns %}
+      {% match t.role %}
+        {% when crate::models::ChatRole::Assistant %}
+          <div class="rounded-md p-3 bg-[color:var(--color-accent-light)] border border-[color:var(--color-border)]">
+            <div class="section-label mb-1">Coach</div>
+            <div class="prose-chat text-sm">{{ t.content|safe_markdown|safe }}</div>
+          </div>
+        {% when crate::models::ChatRole::User %}
+          <div class="rounded-md p-3 border border-[color:var(--color-border)]">
+            <div class="section-label mb-1">You</div>
+            <div class="text-sm whitespace-pre-wrap">{{ t.content }}</div>
+          </div>
+      {% endmatch %}
+    {% endfor %}
+  {% endif %}
+</section>
+{%- endmacro %}
+
+{# Fixed-to-viewport composer card.
+   `action` — POST URL.
+   `placeholder` — textarea placeholder copy.
+   `loading_title` / `loading_detail` — copy shown by the app overlay
+            while the request is in flight (read by app-shell.js from the
+            data-loading-* attributes).
+
+   Stories use a different composer (with the mode-pill); they keep their
+   own inline form rather than expressing the "with mode pill" variant
+   through a `caller()` block here — keeps the macro contract simple. #}
+{% macro chat_composer(action, placeholder, loading_title, loading_detail) -%}
+<div class="chat-composer-wrapper">
+  <form method="post" action="{{ action }}"
+        class="card chat-composer-card max-w-3xl mx-auto grid gap-2 pointer-events-auto"
+        data-loading-title="{{ loading_title }}"
+        data-loading-detail="{{ loading_detail }}"
+        x-data="{ submitOnEnter(e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.target.form.requestSubmit(); } } }">
+    <textarea name="content" rows="3" required maxlength="5000"
+              @keydown="submitOnEnter"
+              placeholder="{{ placeholder }}"></textarea>
+    <div class="flex items-center justify-end gap-2">
+      <button type="submit" class="btn btn-primary btn-icon-spring">
+        <span class="btn-icon"><i data-lucide="send" class="h-4 w-4"></i></span>
+        <span>Send</span>
+      </button>
+    </div>
+  </form>
+</div>
+{%- endmacro %}

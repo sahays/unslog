@@ -27,10 +27,7 @@ struct ListTemplate {
 
 async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let categories = category_store::list_all(&state.db).await?;
-    let body = ListTemplate { categories }
-        .render()
-        .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    crate::error::render_html(ListTemplate { categories })
 }
 
 #[derive(Deserialize)]

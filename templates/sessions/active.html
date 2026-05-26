@@ -99,7 +99,7 @@
           </form>
         </div>
         {% if let Some(p) = session.current_question_audio_path.as_ref() %}
-          <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}"></audio>
+          <audio controls preload="none" src="{{ p|recording_url }}"></audio>
         {% endif %}
 
         {% if let Some(eval) = current_eval.as_ref() %}
@@ -125,7 +125,7 @@
             <span class="muted-soft text-xs" data-record-status>idle</span>
           </div>
           <details class="text-sm">
-            <summary class="muted-soft text-xs uppercase tracking-wider font-medium cursor-pointer select-none">Show transcript</summary>
+            <summary class="section-label cursor-pointer select-none">Show transcript</summary>
             <textarea id="answer" name="transcript" data-record-target rows="4" required maxlength="10000"
                       placeholder="Filled in automatically after you stop recording." class="mt-2"></textarea>
           </details>
@@ -185,7 +185,7 @@
 
         {% if !s.strengths.is_empty() %}
           <div class="mt-5">
-            <div class="muted-soft text-xs uppercase tracking-wider font-medium">Strengths</div>
+            <div class="section-label">Strengths</div>
             <ul class="list-disc pl-5 mt-1 grid gap-0.5">
               {% for x in s.strengths %}<li>{{ x }}</li>{% endfor %}
             </ul>
@@ -194,7 +194,7 @@
 
         {% if !s.recurring_weaknesses.is_empty() %}
           <div class="mt-5">
-            <div class="muted-soft text-xs uppercase tracking-wider font-medium">Recurring weaknesses</div>
+            <div class="section-label">Recurring weaknesses</div>
             <ul class="list-disc pl-5 mt-1 grid gap-0.5">
               {% for x in s.recurring_weaknesses %}<li>{{ x }}</li>{% endfor %}
             </ul>
@@ -203,7 +203,7 @@
 
         {% if !s.blind_spots.is_empty() %}
           <div class="mt-5">
-            <div class="muted-soft text-xs uppercase tracking-wider font-medium">Blind spots</div>
+            <div class="section-label">Blind spots</div>
             <ul class="list-disc pl-5 mt-1 grid gap-0.5">
               {% for x in s.blind_spots %}<li>{{ x }}</li>{% endfor %}
             </ul>
@@ -212,7 +212,7 @@
 
         {% if !s.company_fit_signal.is_empty() %}
           <div class="mt-5">
-            <div class="muted-soft text-xs uppercase tracking-wider font-medium">Company fit signal</div>
+            <div class="section-label">Company fit signal</div>
             <div class="prose-chat mt-1">{{ s.company_fit_signal|safe_markdown|safe }}</div>
           </div>
         {% endif %}
@@ -224,7 +224,7 @@
 
 {% block rail %}
   <div class="grid gap-3">
-    <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Session history</h2>
+    <h2 class="section-label m-0">Session history</h2>
     {% if history.is_empty() && current_eval.is_none() %}
       <p class="muted-soft text-xs m-0">No questions answered yet.</p>
     {% else %}

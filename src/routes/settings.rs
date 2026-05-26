@@ -85,7 +85,7 @@ fn is_preferred(id: &str) -> bool {
 }
 
 async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let settings = settings_store::load(&state.db).await?;
+    let settings = state.settings_cache.get(&state.db).await?;
 
     let (mut chat_models, mut audio_in_models, mut audio_out_models, models_error) =
         if state.openrouter.configured() {
@@ -129,7 +129,7 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     ensure_present(&mut audio_in_models, &settings.stt_model);
     ensure_present(&mut audio_out_models, &settings.tts_model);
 
-    let body = SettingsTemplate {
+    crate::error::render_html(SettingsTemplate {
         settings,
         chat_models,
         audio_in_models,
@@ -143,10 +143,7 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
         tts_languages: LANGUAGE_OPTIONS,
         models_error,
         openrouter_configured: state.openrouter.configured(),
-    }
-    .render()
-    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    })
 }
 
 fn ensure_present(list: &mut Vec<ModelInfo>, id: &str) {
@@ -248,6 +245,7 @@ async fn save(
         updated_at: chrono::Utc::now(),
     };
     settings_store::save(&state.db, &next).await?;
+    state.settings_cache.invalidate().await;
     tracing::info!(
         event = "settings.save",
         critique_model = %next.critique_model,

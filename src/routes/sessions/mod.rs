@@ -16,8 +16,8 @@ use axum::routing::{get, post};
 use axum::Router;
 
 use crate::error::AppError;
-use crate::models::{Company, Evaluation, Session, SessionStatus, Summary};
-use crate::services::{summary, tts};
+use crate::models::{Company, Session, SessionStatus};
+use crate::services::{company_store, sessions, summary, tts};
 use crate::startup::AppState;
 
 mod answer;
@@ -49,19 +49,11 @@ pub fn routes() -> Router<AppState> {
 // ── Helpers shared by lifecycle + answer ─────────────────────────────────
 
 async fn load_session(state: &AppState, id: &str) -> Result<Session, AppError> {
-    state
-        .db
-        .collection::<Session>(Session::COLLECTION)
-        .find_one(bson::doc! { "_id": id })
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("session {id}")))
+    sessions::find_or_404(&state.db, id).await
 }
 
 async fn load_company(state: &AppState, id: &str) -> Result<Company, AppError> {
-    crate::db::companies(&state.db)
-        .find_one(bson::doc! { "_id": id })
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("company {id}")))
+    company_store::find_or_404(&state.db, id).await
 }
 
 /// Synthesize `text` to MP3 in this session's recording dir at `filename`,
@@ -110,14 +102,7 @@ async fn toggle_voice(
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     let session = load_session(&state, &id).await?;
-    state
-        .db
-        .collection::<Session>(Session::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": &id },
-            bson::doc! { "$set": { "voice_critique_enabled": !session.voice_critique_enabled } },
-        )
-        .await?;
+    sessions::toggle_voice(&state.db, &session).await?;
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
 
@@ -140,20 +125,7 @@ async fn end(State(state): State<AppState>, Path(id): Path<String>) -> Result<Re
             tracing::warn!(error = %e, session_id = %id, "summary generation failed; ending session anyway");
         }
     }
-
-    state
-        .db
-        .collection::<Session>(Session::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": &id },
-            bson::doc! { "$set": {
-                "status": "ended",
-                "ended_at": chrono::Utc::now().to_rfc3339(),
-                "current_question_id": null,
-                "current_question_text": null,
-            } },
-        )
-        .await?;
+    sessions::end(&state.db, &id).await?;
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
 
@@ -161,23 +133,8 @@ async fn delete_session(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let sessions = state.db.collection::<Session>(Session::COLLECTION);
-    let evals = state.db.collection::<Evaluation>(Evaluation::COLLECTION);
-    let summaries = state.db.collection::<Summary>(Summary::COLLECTION);
-
-    let evals_deleted = evals
-        .delete_many(bson::doc! { "session_id": &id })
-        .await?
-        .deleted_count;
-    let summaries_deleted = summaries
-        .delete_many(bson::doc! { "session_id": &id })
-        .await?
-        .deleted_count;
-    let session_deleted = sessions
-        .delete_one(bson::doc! { "_id": &id })
-        .await?
-        .deleted_count;
-
+    let (session_deleted, evals_deleted, summaries_deleted) =
+        sessions::delete_cascade(&state.db, &id).await?;
     tracing::info!(
         event = "session.delete",
         session_id = %id,
@@ -186,6 +143,5 @@ async fn delete_session(
         summaries_deleted,
         "session deleted",
     );
-
     Ok(Redirect::to("/practice").into_response())
 }

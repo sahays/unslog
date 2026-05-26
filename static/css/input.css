@@ -153,4 +153,6 @@
 @import "./parts/_overlay.css";
 @import "./parts/_misc.css";
 @import "./parts/_app-shell.css";
+@import "./parts/_sidebar.css";
+@import "./parts/_rail.css";
 @import "./parts/_chat.css";

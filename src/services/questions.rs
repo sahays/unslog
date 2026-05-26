@@ -9,7 +9,7 @@ use mongodb::{Collection, Database};
 use rand::seq::SliceRandom;
 
 use crate::error::AppError;
-use crate::models::{Question, QuestionSource, Role};
+use crate::models::{Company, Question, QuestionSource, Role};
 use crate::services::categorize;
 use crate::services::category_store;
 use crate::services::openrouter::LlmClient;
@@ -131,6 +131,41 @@ pub async fn delete_for_company(db: &Database, company_id: &str) -> Result<u64, 
 pub fn pick_random<'a>(pool: &'a [Question], seen: &HashSet<String>) -> Option<&'a Question> {
     let candidates: Vec<&Question> = pool.iter().filter(|q| !seen.contains(&q.id)).collect();
     candidates.choose(&mut rand::thread_rng()).copied()
+}
+
+/// Categorize + persist agent-suggested questions for a company, skipping any
+/// whose text already exists (so user edits + tags survive re-runs). Returns
+/// the number of *new* questions actually appended. Shared between the
+/// initial-create path and the refresh-packet path.
+pub async fn append_skipping_existing(
+    db: &Database,
+    or: &dyn LlmClient,
+    company: &Company,
+    candidates: Vec<String>,
+    role: Role,
+) -> Result<usize, AppError> {
+    if candidates.is_empty() {
+        return Ok(0);
+    }
+    let existing = list_for_company(db, &company.id).await?;
+    let existing_texts: HashSet<String> = existing.iter().map(|q| q.text.clone()).collect();
+    let new_questions: Vec<String> = candidates
+        .into_iter()
+        .filter(|q| !existing_texts.contains(q))
+        .collect();
+    let appended_n = new_questions.len();
+    if appended_n > 0 {
+        categorize_and_append(
+            db,
+            or,
+            new_questions,
+            QuestionSource::Agent,
+            role,
+            Some(company.id.clone()),
+        )
+        .await?;
+    }
+    Ok(appended_n)
 }
 
 /// Tag a batch of question texts via the lite_model classifier and persist

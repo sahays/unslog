@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/chat.html" as chat %}
 {% extends "base.html" %}
 
 {% block title %}{{ competency.name }} — Story{% endblock %}
@@ -37,28 +38,7 @@
   </div>
 
   {# ── Chat thread — last thing in normal flow; page scrolls. ── #}
-  <section id="story-thread" class="grid gap-4 max-w-3xl mx-auto w-full">
-    {% if story.chat.is_empty() %}
-      <p class="muted-soft text-sm m-0">
-        The coach will open with a focused question. If you don't see one, the model call may have failed — type your first thought below to kick it off.
-      </p>
-    {% else %}
-      {% for t in story.chat %}
-        {% match t.role %}
-          {% when crate::models::ChatRole::Assistant %}
-            <div class="rounded-md p-3 bg-[color:var(--color-accent-light)] border border-[color:var(--color-border)]">
-              <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">Coach</div>
-              <div class="prose-chat text-sm">{{ t.content|safe_markdown|safe }}</div>
-            </div>
-          {% when crate::models::ChatRole::User %}
-            <div class="rounded-md p-3 border border-[color:var(--color-border)]">
-              <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">You</div>
-              <div class="text-sm whitespace-pre-wrap">{{ t.content }}</div>
-            </div>
-        {% endmatch %}
-      {% endfor %}
-    {% endif %}
-  </section>
+  {% call chat::chat_thread(story.chat, "story-thread") %}
 </div>
 
 {# ── Composer — fixed to the viewport bottom (always visible, regardless
@@ -102,23 +82,8 @@
   </form>
 </div>
 
-<script>
-  // Scroll the page to bottom on load so the latest chat turn sits just
-  // above the fixed composer. Two extra ticks cover Lucide-icon and
-  // font-load reflows that change layout shortly after DOMContentLoaded.
-  (function () {
-    function pinBottom() {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
-    }
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', pinBottom);
-    } else {
-      pinBottom();
-    }
-    window.setTimeout(pinBottom, 60);
-    window.setTimeout(pinBottom, 240);
-  })();
-</script>
+{# pin-to-bottom IIFE lives in /static/js/chat-pin-bottom.js (auto-activates
+   when #story-thread or #pitch-thread is present). #}
 {% endblock %}
 
 {% block rail %}
@@ -126,13 +91,12 @@
     {# ── Versions for the current story ─────────────────────── #}
     {% if !versions.is_empty() %}
       <div class="grid gap-2">
-        <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Versions</h2>
+        <h2 class="section-label m-0">Versions</h2>
         <ul class="grid gap-1.5 list-none p-0 m-0">
           {% for ve in versions %}
             <li>
               <a href="/stories/{{ story.id }}/versions/{{ ve.id }}"
-                 class="flex items-center gap-2 p-2 px-2.5 rounded-md border no-underline
-                        {% if ve.is_current %}border-[color:var(--color-accent)] bg-[color:var(--color-accent-light)]{% else %}border-[color:var(--color-border)] hover:border-[color:var(--color-accent)]{% endif %}">
+                 class="rail-row{% if ve.is_current %} rail-row--active{% endif %}">
                 <i data-lucide="file-text" class="h-3.5 w-3.5 {% if ve.is_current %}text-[color:var(--color-accent)]{% endif %}"></i>
                 <span class="text-xs font-medium flex-1 min-w-0 truncate text-[color:var(--color-text-primary)]">{{ ve.label }}</span>
                 {% if ve.is_current %}
@@ -157,7 +121,7 @@
     {# ── Stories for this competency ─────────────────────────── #}
     <div class="grid gap-2">
       <div class="flex items-center justify-between gap-2">
-        <h2 class="muted-soft text-xs uppercase tracking-wider font-medium m-0">Stories</h2>
+        <h2 class="section-label m-0">Stories</h2>
         <form method="post" action="/stories" class="m-0">
           <input type="hidden" name="competency_id" value="{{ competency.id }}" />
           <button type="submit" class="btn btn-primary btn-sm" title="Start a new story for this competency" aria-label="New story">
@@ -168,7 +132,7 @@
       <ul class="grid gap-1.5 list-none p-0 m-0">
         {# Current story — shown at top, non-link, accent-marked #}
         <li>
-          <div class="flex items-center gap-2 p-2 px-2.5 rounded-md border border-[color:var(--color-accent)] bg-[color:var(--color-accent-light)]">
+          <div class="rail-row rail-row--active">
             {% match story.status %}
               {% when crate::models::StoryStatus::InProgress %}
                 <i data-lucide="message-circle" class="h-3.5 w-3.5 text-[color:var(--color-warning)]"></i>
@@ -186,8 +150,7 @@
         </li>
         {% for s in siblings %}
           <li>
-            <a href="/stories/{{ s.id }}"
-               class="flex items-center gap-2 p-2 px-2.5 rounded-md border border-[color:var(--color-border)] no-underline hover:border-[color:var(--color-accent)]">
+            <a href="/stories/{{ s.id }}" class="rail-row">
               {% match s.status %}
                 {% when crate::models::StoryStatus::InProgress %}
                   <i data-lucide="message-circle" class="h-3.5 w-3.5 text-[color:var(--color-warning)]"></i>

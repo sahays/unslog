@@ -93,7 +93,7 @@
 {# Stat card — small at-a-glance tile #}
 {% macro stat_card(label, value) -%}
 <div class="card card-interactive">
-  <div class="muted-soft text-xs uppercase tracking-wider font-medium">{{ label }}</div>
+  <div class="section-label">{{ label }}</div>
   <div class="font-heading text-2xl font-semibold mt-1">{{ value }}</div>
 </div>
 {%- endmacro %}
@@ -112,13 +112,13 @@
 <div class="prose-chat mt-2">{{ c.narrative|safe_markdown|safe }}</div>
 {% if !c.improved_vs_prior.is_empty() %}
   <div class="mt-2 p-2 px-3 border-l-2 border-[color:var(--color-accent)] bg-[color:var(--color-bg-tertiary)] rounded-r-md">
-    <div class="muted-soft text-xs uppercase tracking-wider font-medium">Vs. prior attempt</div>
+    <div class="section-label">Vs. prior attempt</div>
     <div class="prose-chat">{{ c.improved_vs_prior|safe_markdown|safe }}</div>
   </div>
 {% endif %}
 {% if !c.citations.is_empty() %}
   <div class="mt-3">
-    <div class="muted-soft text-xs uppercase tracking-wider font-medium">Citations</div>
+    <div class="section-label">Citations</div>
     <ul class="list-disc pl-5 m-0 mt-1 text-sm grid gap-0.5">
       {% for cit in c.citations %}
         <li><strong>{{ cit.chapter }}</strong>{% if !cit.section.is_empty() %} — {{ cit.section }}{% endif %}: {{ cit.quote }}</li>
@@ -140,28 +140,28 @@
 <div class="border-t border-[color:var(--color-border)] pt-3 mt-3">
   {% if collapse_transcript %}
     <details>
-      <summary class="muted-soft text-xs uppercase tracking-wider font-medium cursor-pointer select-none">
+      <summary class="section-label cursor-pointer select-none">
         Attempt {{ a.attempt_n }} — show transcript
       </summary>
       <div class="whitespace-pre-wrap mt-2">{{ a.answer_transcript }}</div>
       {% if show_answer_audio %}
         {% if let Some(p) = a.answer_audio_path.as_ref() %}
-          <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" class="mt-2"></audio>
+          <audio controls preload="none" src="{{ p|recording_url }}" class="mt-2"></audio>
         {% endif %}
       {% endif %}
     </details>
   {% else %}
-    <div class="muted-soft text-xs uppercase tracking-wider font-medium">Attempt {{ a.attempt_n }} — your answer</div>
+    <div class="section-label">Attempt {{ a.attempt_n }} — your answer</div>
     <div class="whitespace-pre-wrap mt-1">{{ a.answer_transcript }}</div>
     {% if show_answer_audio %}
       {% if let Some(p) = a.answer_audio_path.as_ref() %}
-        <audio controls preload="none" src="{{ crate::recordings::to_url(p) }}" class="mt-2"></audio>
+        <audio controls preload="none" src="{{ p|recording_url }}" class="mt-2"></audio>
       {% endif %}
     {% endif %}
   {% endif %}
   {% if let Some(c) = a.critique.as_ref() %}
     {% if !collapse_feedback %}
-      <div class="muted-soft text-xs uppercase tracking-wider font-medium mt-3">Critique</div>
+      <div class="section-label mt-3">Critique</div>
     {% endif %}
     <div class="flex gap-2 flex-wrap mt-3">
       <span class="tag">specificity {{ c.scores.specificity }}/5</span>
@@ -176,7 +176,7 @@
       <div class="critique-audio mt-2">
         <i data-lucide="volume-2" class="h-4 w-4"></i>
         <span class="critique-audio__label">Listen</span>
-        <audio controls preload="{% if autoplay %}auto{% else %}none{% endif %}" src="{{ crate::recordings::to_url(p) }}"
+        <audio controls preload="{% if autoplay %}auto{% else %}none{% endif %}" src="{{ p|recording_url }}"
                {% if autoplay %}autoplay{% endif %}></audio>
       </div>
     {% else %}
@@ -193,7 +193,7 @@
     {% endif %}
     {% if collapse_feedback %}
       <details class="mt-2">
-        <summary class="muted-soft text-xs uppercase tracking-wider font-medium cursor-pointer select-none">Show feedback</summary>
+        <summary class="section-label cursor-pointer select-none">Show feedback</summary>
         {% call critique_body(c) %}
       </details>
     {% else %}
@@ -207,7 +207,7 @@
 {% macro star_section(label, items) -%}
 {% if !items.is_empty() %}
 <div>
-  <div class="muted-soft text-xs uppercase tracking-wider font-medium mb-1">{{ label }}</div>
+  <div class="section-label mb-1">{{ label }}</div>
   <ul class="grid gap-1 m-0 pl-5 list-disc">
     {% for b in items %}<li class="text-sm">{{ b }}</li>{% endfor %}
   </ul>

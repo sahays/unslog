@@ -7,15 +7,13 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::get;
 use axum::Router;
 use axum_extra::extract::Form;
-use futures::TryStreamExt;
-use mongodb::options::FindOptions;
 use serde::Deserialize;
 
 use std::collections::HashMap;
 
 use crate::error::AppError;
-use crate::models::{Company, Role, Session};
-use crate::services::evaluations;
+use crate::models::{Company, Role};
+use crate::services::{company_store, evaluations, sessions};
 use crate::startup::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -44,27 +42,11 @@ pub struct InProgress {
 }
 
 async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "name": 1 })
-        .build();
-    let cursor = crate::db::companies(&state.db)
-        .find(bson::doc! {})
-        .with_options(opts)
-        .await?;
-    let companies: Vec<Company> = cursor.try_collect().await?;
+    let companies = company_store::list_by_name(&state.db).await?;
     let company_by_id: HashMap<String, &Company> =
         companies.iter().map(|c| (c.id.clone(), c)).collect();
 
-    let active_opts = FindOptions::builder()
-        .sort(bson::doc! { "started_at": -1 })
-        .build();
-    let active_cursor = state
-        .db
-        .collection::<Session>(Session::COLLECTION)
-        .find(bson::doc! { "status": "active" })
-        .with_options(active_opts)
-        .await?;
-    let active_sessions: Vec<Session> = active_cursor.try_collect().await?;
+    let active_sessions = sessions::list_active(&state.db).await?;
 
     // Bulk eval counts: one aggregate keyed by session_id instead of N
     // count_documents calls.
@@ -104,14 +86,11 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
         .map(|r| (r.as_str(), r.display_name()))
         .collect();
 
-    let body = PracticeTemplate {
+    crate::error::render_html(PracticeTemplate {
         role_options,
         companies,
         in_progress,
-    }
-    .render()
-    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?;
-    Ok(Html(body))
+    })
 }
 
 #[derive(Deserialize)]
@@ -145,11 +124,15 @@ async fn start(
         ));
     }
 
-    // Validate the picked companies exist and match the chosen role.
-    let coll = crate::db::companies(&state.db);
+    // Bulk-load the picked companies in one `$in` query, then validate
+    // existence + role in app code. Avoids N round-trips for N selected
+    // companies (no big-O improvement for tiny N, but the contract is the
+    // same and the index hit is cheaper).
+    let rows = company_store::find_by_ids(&state.db, &selected).await?;
+    let mut by_id: HashMap<String, Company> = rows.into_iter().map(|c| (c.id.clone(), c)).collect();
     let mut matched: Vec<Company> = Vec::with_capacity(selected.len());
     for cid in &selected {
-        match coll.find_one(bson::doc! { "_id": cid }).await? {
+        match by_id.remove(cid) {
             Some(c) if c.canonical_role == role => matched.push(c),
             Some(_) => {
                 tracing::warn!(

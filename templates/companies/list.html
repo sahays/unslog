@@ -26,7 +26,7 @@
           <div>
             <div class="flex items-center gap-2 flex-wrap">
               <a href="/companies/{{ c.id }}" class="font-heading font-semibold text-base text-[color:var(--color-text-primary)] no-underline hover:text-[color:var(--color-accent)]">{{ c.name }}</a>
-              {% if c.research_packet.is_some() %}
+              {% if c.has_packet %}
                 {% call ui::badge("packet ready", "good") %}
               {% else %}
                 {% call ui::badge("no packet", "bad") %}
