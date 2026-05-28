@@ -39,7 +39,12 @@ struct HomeTemplate {
 
 async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let company_count = company_store::count(&state.db).await?;
-    let primary_asset_present = asset_store::count_primary(&state.db).await? > 0;
+    // Critique flow requires a primary *book*. A resume alone doesn't
+    // unblock it; scope the presence check to AssetKind::Book.
+    let primary_asset_present =
+        asset_store::find_primary_by_kind(&state.db, crate::models::AssetKind::Book)
+            .await?
+            .is_some();
 
     let active_count = sessions::count_active(&state.db).await?;
     let recent_sessions = sessions::list_recent(&state.db, 5).await?;

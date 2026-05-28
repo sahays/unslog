@@ -23,7 +23,7 @@ use axum_htmx::HxRequest;
 use crate::error::AppError;
 use crate::models::{Category, ChatTurn, Difficulty, Story};
 use crate::services::openrouter::ChatMessage;
-use crate::services::{prompt_escape, story_store};
+use crate::services::{prompt_escape, resume_context, story_store};
 use crate::startup::AppState;
 
 mod chat;
@@ -81,7 +81,19 @@ async fn run_chat_model(
         prompt_escape::for_tag(&competency.id),
         prompt_escape::for_tag(&competency.description),
     );
-    let system = format!("{system_body}\n\n{competency_block}");
+    // Resume context is optional — empty string when the user hasn't
+    // uploaded one, in which case we omit the surrounding double-newline
+    // so the prompt stays clean.
+    let resume_block = resume_context::block(state).await?;
+    let system = resume_context::join_blocks(&[&system_body, &resume_block, &competency_block]);
+    tracing::info!(
+        event = "story.chat",
+        story_id = %story.id,
+        mode = %story.mode.as_str(),
+        resume_loaded = !resume_block.is_empty(),
+        turns = story.chat.len(),
+        "story chat model invocation",
+    );
 
     let mut messages: Vec<ChatMessage> = Vec::with_capacity(story.chat.len() + 2);
     messages.push(ChatMessage::system(system));

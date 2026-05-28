@@ -22,6 +22,7 @@ pub struct AppState {
     pub openrouter: Arc<dyn crate::services::openrouter::LlmClient>,
     pub models_cache: crate::services::openrouter_models::ModelsCache,
     pub book_cache: crate::services::assets::BookCache,
+    pub resume_cache: crate::services::assets::ResumeCache,
     pub settings_cache: crate::services::settings_store::SettingsCache,
     pub prompt_cache: crate::services::prompt_cache::PromptCache,
 }
@@ -61,6 +62,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         openrouter,
         models_cache: crate::services::openrouter_models::ModelsCache::new(),
         book_cache: crate::services::assets::BookCache::new(),
+        resume_cache: crate::services::assets::ResumeCache::new(),
         settings_cache: crate::services::settings_store::SettingsCache::new(),
         prompt_cache: crate::services::prompt_cache::PromptCache::new(),
     };

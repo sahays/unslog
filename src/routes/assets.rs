@@ -33,16 +33,30 @@ pub fn routes() -> Router<AppState> {
 #[derive(Template)]
 #[template(path = "assets/list.html")]
 struct ListTemplate {
-    assets: Vec<Asset>,
-    has_primary: bool,
+    books: Vec<Asset>,
+    resumes: Vec<Asset>,
+    others: Vec<Asset>,
+    has_primary_book: bool,
 }
 
 async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let assets = asset_store::list_sorted(&state.db).await?;
-    let has_primary = assets.iter().any(|a| a.primary);
+    let mut books = Vec::new();
+    let mut resumes = Vec::new();
+    let mut others = Vec::new();
+    for a in assets {
+        match a.kind {
+            AssetKind::Book => books.push(a),
+            AssetKind::Resume => resumes.push(a),
+            AssetKind::Other => others.push(a),
+        }
+    }
+    let has_primary_book = books.iter().any(|a| a.primary);
     crate::error::render_html(ListTemplate {
-        assets,
-        has_primary,
+        books,
+        resumes,
+        others,
+        has_primary_book,
     })
 }
 
@@ -64,10 +78,9 @@ async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Re
             }
             "kind" => {
                 let v = field.text().await.unwrap_or_default();
-                kind = match v.as_str() {
-                    "book" => AssetKind::Book,
-                    _ => AssetKind::Other,
-                };
+                // Default to Book on unknown values — preserves the legacy
+                // "no kind field" behavior the upload form used to have.
+                kind = AssetKind::from_form(&v).unwrap_or(AssetKind::Book);
             }
             "file" => {
                 filename = field.file_name().map(|s| s.to_string());
@@ -124,13 +137,18 @@ async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Re
     asset.extracted_path = extracted_path;
     asset.extraction_error = err;
 
-    // If this is the only asset, mark it primary.
-    if asset_store::count(&state.db).await? == 0 {
+    // If no primary asset of this kind exists yet, mark this one primary.
+    // Keeps the "one primary per kind" invariant on bootstrap without
+    // requiring a separate user action.
+    if asset_store::find_primary_by_kind(&state.db, kind)
+        .await?
+        .is_none()
+    {
         asset.primary = true;
     }
     asset_store::insert(&state.db, &asset).await?;
     if asset.primary {
-        state.book_cache.invalidate().await;
+        invalidate_kind_cache(&state, kind).await;
     }
     tracing::info!(
         event = "asset.upload",
@@ -150,8 +168,10 @@ async fn set_primary(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
+    // Load to learn the kind, so we invalidate the matching cache.
+    let asset = asset_store::find_or_404(&state.db, &id).await?;
     asset_store::set_primary(&state.db, &id).await?;
-    state.book_cache.invalidate().await;
+    invalidate_kind_cache(&state, asset.kind).await;
     Ok(Redirect::to("/assets").into_response())
 }
 
@@ -163,7 +183,7 @@ async fn reextract(
     let (status, extracted_path, err) = svc::extract(&state.config.data_dir, &asset).await;
     asset_store::update_extraction(&state.db, &id, status, extracted_path, err).await?;
     if asset.primary {
-        state.book_cache.invalidate().await;
+        invalidate_kind_cache(&state, asset.kind).await;
     }
     Ok(Redirect::to("/assets").into_response())
 }
@@ -178,18 +198,30 @@ async fn delete(
     if let Some(ext) = asset.extracted_path.as_ref() {
         let _ = tokio::fs::remove_file(ext).await;
     }
-    // `asset_store::delete` promotes the next-most-recent row to primary
-    // *before* deleting the current primary, so the invariant "≥1 primary
-    // when any rows exist" never breaks (worst case: brief two-primary
-    // window, recoverable through `find_primary`).
+    // `asset_store::delete` promotes the next-most-recent peer of the same
+    // kind to primary *before* deleting the current primary, so the
+    // invariant "≥1 primary per non-empty kind" never breaks (worst case:
+    // brief two-primary window within that kind, recoverable through
+    // `find_primary_by_kind`).
     let was_primary = asset.primary;
+    let kind = asset.kind;
     asset_store::delete(&state.db, &asset).await?;
 
     if was_primary {
-        state.book_cache.invalidate().await;
+        invalidate_kind_cache(&state, kind).await;
     }
 
     Ok(Redirect::to("/assets").into_response())
+}
+
+/// Route-side helper: invalidate whichever in-process cache covers `kind`.
+/// `Other` has no cache today and is a no-op.
+async fn invalidate_kind_cache(state: &AppState, kind: AssetKind) {
+    match kind {
+        AssetKind::Book => state.book_cache.invalidate().await,
+        AssetKind::Resume => state.resume_cache.invalidate().await,
+        AssetKind::Other => {}
+    }
 }
 
 #[derive(Template)]

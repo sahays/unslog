@@ -37,15 +37,20 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
     use mongodb::IndexModel;
 
     let assets: Collection<Asset> = db.collection(Asset::COLLECTION);
-    let primary_idx = IndexModel::builder()
-        .keys(bson::doc! { "primary": 1 })
+    // Compound `(kind, primary)` covers the hot per-coach-turn lookup
+    // `find_one({kind: <X>, primary: true})` used by `BookCache::get` and
+    // `ResumeCache::get`. Subsumes the prior single-field `primary_1` index
+    // (now deprecated — Mongo doesn't drop indexes at runtime, so existing
+    // installs keep the stray `primary_1` index until manually dropped).
+    let kind_primary_idx = IndexModel::builder()
+        .keys(bson::doc! { "kind": 1, "primary": 1 })
         .options(
             IndexOptions::builder()
-                .name("primary_1".to_string())
+                .name("kind_primary".to_string())
                 .build(),
         )
         .build();
-    assets.create_index(primary_idx).await?;
+    assets.create_index(kind_primary_idx).await?;
 
     let versions: Collection<PromptVersion> = db.collection(PromptVersion::COLLECTION);
     let pname_idx = IndexModel::builder()

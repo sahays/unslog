@@ -21,6 +21,7 @@ pub mod prompt_store;
 pub mod questions;
 pub mod redact;
 pub mod research;
+pub mod resume_context;
 pub mod session;
 pub mod sessions;
 pub mod settings_store;

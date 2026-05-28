@@ -166,14 +166,14 @@ impl BookCache {
         Self::default()
     }
 
-    /// Return the primary asset's truncated extracted text. Loads from disk
+    /// Return the primary book's truncated extracted text. Loads from disk
     /// on first call (or after invalidation); subsequent calls hit memory.
     pub async fn get(&self, db: &Database) -> Result<Arc<String>, AppError> {
-        let primary = crate::services::asset_store::find_primary(db)
+        let primary = crate::services::asset_store::find_primary_by_kind(db, AssetKind::Book)
             .await?
             .ok_or_else(|| {
                 AppError::BadRequest(
-                    "no primary asset configured — upload the book and mark it primary".into(),
+                    "no primary book configured — upload the book and mark it primary".into(),
                 )
             })?;
 
@@ -202,6 +202,58 @@ impl BookCache {
     }
 
     /// Drop the cache. Called by routes that mutate the primary asset.
+    pub async fn invalidate(&self) {
+        let mut guard = self.inner.write().await;
+        *guard = None;
+    }
+}
+
+/// In-process cache for the primary resume's extracted text. Mirrors
+/// [`BookCache`] but is **optional**: many users will have no resume
+/// uploaded, in which case `get` returns `Ok(None)` and the coach prompts
+/// simply omit the `<resume>` block.
+///
+/// Single-user app; the cache is invalidated explicitly from the `/assets`
+/// route after any insert / delete / set_primary on a `kind=resume` row.
+#[derive(Clone, Default)]
+pub struct ResumeCache {
+    inner: Arc<RwLock<CacheSlot>>,
+}
+
+impl ResumeCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Return the primary resume's extracted text. Loads from disk on first
+    /// call (or after invalidation); subsequent calls hit memory. Returns
+    /// `Ok(None)` when no primary resume exists — this is a normal state.
+    pub async fn get(&self, db: &Database) -> Result<Option<Arc<String>>, AppError> {
+        let Some(primary) =
+            crate::services::asset_store::find_primary_by_kind(db, AssetKind::Resume).await?
+        else {
+            return Ok(None);
+        };
+
+        {
+            let guard = self.inner.read().await;
+            if let Some((cached_id, text)) = guard.as_ref() {
+                if cached_id == &primary.id {
+                    return Ok(Some(text.clone()));
+                }
+            }
+        }
+
+        let raw = read_extracted(&primary).await?;
+        let arc = Arc::new(raw);
+        {
+            let mut guard = self.inner.write().await;
+            *guard = Some((primary.id.clone(), arc.clone()));
+        }
+        Ok(Some(arc))
+    }
+
+    /// Drop the cache. Called by routes that mutate a kind=resume row.
     pub async fn invalidate(&self) {
         let mut guard = self.inner.write().await;
         *guard = None;

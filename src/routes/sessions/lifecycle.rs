@@ -96,7 +96,12 @@ pub(super) async fn show(
         .filter(|e| Some(&e.question_id) != session.current_question_id.as_ref())
         .collect();
 
-    let has_primary_asset = asset_store::count_primary(&state.db).await? > 0;
+    // Critique requires a primary *book*. Resume presence is unrelated;
+    // scope the check to AssetKind::Book.
+    let has_primary_asset =
+        asset_store::find_primary_by_kind(&state.db, crate::models::AssetKind::Book)
+            .await?
+            .is_some();
 
     let summary = summary::for_session(&state.db, &id).await?;
 

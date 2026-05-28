@@ -17,7 +17,7 @@ use axum::Router;
 use crate::error::AppError;
 use crate::models::{ChatTurn, Pitch};
 use crate::services::openrouter::ChatMessage;
-use crate::services::{pitch_store, prompt_escape};
+use crate::services::{pitch_store, prompt_escape, resume_context};
 use crate::startup::AppState;
 
 mod chat;
@@ -62,7 +62,17 @@ async fn run_chat_model(state: &AppState, pitch: &Pitch) -> Result<String, AppEr
         prompt_escape::for_tag(&pitch.question_text),
         prompt_escape::for_tag(&pitch.blurb),
     );
-    let system = format!("{system_body}\n\n{pitch_block}");
+    // Resume context is optional — empty string when the user hasn't
+    // uploaded one. Same join helper as the story coach.
+    let resume_block = resume_context::block(state).await?;
+    let system = resume_context::join_blocks(&[&system_body, &resume_block, &pitch_block]);
+    tracing::info!(
+        event = "pitch.chat",
+        pitch_id = %pitch.id,
+        resume_loaded = !resume_block.is_empty(),
+        turns = pitch.chat.len(),
+        "pitch chat model invocation",
+    );
 
     let mut messages: Vec<ChatMessage> = Vec::with_capacity(pitch.chat.len() + 2);
     messages.push(ChatMessage::system(system));

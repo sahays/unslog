@@ -4,7 +4,32 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum AssetKind {
     Book,
+    Resume,
     Other,
+}
+
+impl AssetKind {
+    /// Stable lowercase token used in form values and in the BSON-serialized
+    /// kind discriminator. Must round-trip through `serde(rename_all =
+    /// "snake_case")` above — keep the two in sync.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AssetKind::Book => "book",
+            AssetKind::Resume => "resume",
+            AssetKind::Other => "other",
+        }
+    }
+
+    /// Inverse of [`as_str`]. Returns `None` for unknown values so callers
+    /// can decide between defaulting and rejecting.
+    pub fn from_form(s: &str) -> Option<Self> {
+        match s {
+            "book" => Some(AssetKind::Book),
+            "resume" => Some(AssetKind::Resume),
+            "other" => Some(AssetKind::Other),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

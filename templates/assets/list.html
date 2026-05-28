@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/assets.html" as assets %}
 {% extends "base.html" %}
 
 {% block title %}Assets — unslog{% endblock %}
@@ -10,7 +11,9 @@
   <div class="card">
     {% call ui::card_header("book-open", "Assets") %}
     <p class="muted text-sm mb-5 max-w-2xl">
-      Upload the book (and any reference works) here. The asset marked <em>primary</em> is the one inlined into every critique.
+      Upload the book (and any reference works) here, plus your resume to give the coach career context.
+      The book marked <em>primary</em> is inlined into every critique;
+      the resume marked <em>primary</em> is auto-injected into the story and pitch coach prompts.
     </p>
 
     <form method="post" action="/assets" enctype="multipart/form-data" class="grid gap-3">
@@ -22,6 +25,7 @@
         <label for="asset_kind">Kind</label>
         <select id="asset_kind" name="kind" data-n-select>
           <option value="book">Book</option>
+          <option value="resume">Resume</option>
           <option value="other">Other</option>
         </select>
       </div>
@@ -39,66 +43,43 @@
   </div>
 
   <div class="card">
-    {% call ui::card_header("library", "Library") %}
-    {% if assets.is_empty() %}
-      <p class="muted m-0">No assets yet. Upload one above.</p>
+    {% call ui::card_header("library", "Reference books") %}
+    {% if books.is_empty() %}
+      <p class="muted m-0">No books uploaded. Upload one above to power the critique flow.</p>
     {% else %}
-      {% if !has_primary %}
+      {% if !has_primary_book %}
         <div class="alert alert-error mb-4" role="alert">
           <i data-lucide="alert-triangle" class="h-4 w-4 mt-0.5"></i>
           <div>
-            <strong class="font-medium">No primary asset.</strong>
-            <div class="text-sm muted mt-0.5">Critiques can't run until one asset is marked primary.</div>
+            <strong class="font-medium">No primary book.</strong>
+            <div class="text-sm muted mt-0.5">Critiques can't run until one book is marked primary.</div>
           </div>
         </div>
       {% endif %}
       <div class="grid gap-3 stagger-children">
-        {% for a in assets %}
-          <div class="grid grid-cols-[1fr_auto] gap-3 p-3 rounded-md border border-[color:var(--color-border)]">
-            <div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <strong class="font-medium">{{ a.name }}</strong>
-                {% if a.primary %}{% call ui::badge("primary", "accent") %}{% endif %}
-                <span class="tag">{{ a.kind|json|safe }}</span>
-                {% match a.extraction_status %}
-                  {% when crate::models::ExtractionStatus::Ok %}{% call ui::badge("extracted", "good") %}
-                  {% when crate::models::ExtractionStatus::Pending %}{% call ui::badge("pending", "default") %}
-                  {% when crate::models::ExtractionStatus::Failed %}{% call ui::badge("failed", "bad") %}
-                {% endmatch %}
-              </div>
-              <div class="muted text-sm mt-1">
-                {{ a.original_filename }} • uploaded {% call ui::time_ago(a.uploaded_at) %}
-              </div>
-              {% if let Some(err) = a.extraction_error.as_ref() %}
-                <div class="text-sm mt-1 text-[color:var(--color-error)]">{{ err }}</div>
-              {% endif %}
-            </div>
-            <div class="flex gap-1.5 items-start flex-shrink-0">
-              {% if !a.primary %}
-                <form method="post" action="/assets/{{ a.id }}/primary">
-                  <button type="submit" class="btn btn-sm" title="Set as primary" aria-label="Set as primary">
-                    <i data-lucide="star" class="h-3.5 w-3.5"></i>
-                  </button>
-                </form>
-              {% endif %}
-              <a class="btn btn-sm" href="/assets/{{ a.id }}/preview" title="Preview" aria-label="Preview">
-                <i data-lucide="eye" class="h-3.5 w-3.5"></i>
-              </a>
-              <form method="post" action="/assets/{{ a.id }}/reextract">
-                <button type="submit" class="btn btn-sm" title="Re-extract text from PDF" aria-label="Re-extract">
-                  <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
-                </button>
-              </form>
-              <form method="post" action="/assets/{{ a.id }}/delete" onsubmit="return confirm('Delete asset?')">
-                <button type="submit" class="btn btn-sm btn-danger" title="Delete asset" aria-label="Delete asset">
-                  <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
-                </button>
-              </form>
-            </div>
-          </div>
-        {% endfor %}
+        {% for a in books %}{% call assets::row(a) %}{% endfor %}
       </div>
     {% endif %}
   </div>
+
+  <div class="card">
+    {% call ui::card_header("file-text", "Resumes") %}
+    {% if resumes.is_empty() %}
+      <p class="muted m-0">No resume uploaded. Upload one above to give the coach career context.</p>
+    {% else %}
+      <div class="grid gap-3 stagger-children">
+        {% for a in resumes %}{% call assets::row(a) %}{% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  {% if !others.is_empty() %}
+    <div class="card">
+      {% call ui::card_header("file", "Other") %}
+      <div class="grid gap-3 stagger-children">
+        {% for a in others %}{% call assets::row(a) %}{% endfor %}
+      </div>
+    </div>
+  {% endif %}
 </div>
 {% endblock %}
