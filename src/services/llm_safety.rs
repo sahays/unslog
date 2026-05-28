@@ -10,30 +10,57 @@
 //!   tags (`<competency>`, `<thinking>`, etc.) back into the output, which
 //!   signals it confused instructions for content.
 //!
-//! Refusal markers are lowercase + substring-matched, but only against
-//! the **first window** of the response. A genuine refusal opens with one
-//! of these phrases; a critique that quotes "as an AI engineer" inside its
-//! analysis is not a refusal and shouldn't be rejected. Leakage markers
-//! stay as full-text scans since they're explicit tag artifacts we want
-//! to strip wherever they appear.
+//! Refusal markers are lowercase + substring-matched against the **first
+//! window** of the response only — refusals always open with one of these
+//! phrases. Two defenses against false positives:
+//!
+//! 1. **Tight window.** Short enough that mid-response phrasing — e.g. a
+//!    coach probe like "what's it like to work as an AI engineer?" or a
+//!    critique that quotes the candidate's own answer — can't accidentally
+//!    fire a marker just by mentioning "AI" or "I cannot" later on.
+//! 2. **Specific phrases.** Every marker is the *whole refusal opening*
+//!    (e.g. `"as an ai language model"`, `"i cannot help with that"`) not a
+//!    fragment (`"as an ai"`, `"i cannot help"`). Fragments matched too many
+//!    legitimate uses (a candidate saying "I cannot help feeling…" in a
+//!    story, a coach using "as an AI engineer" as context for the user's
+//!    own domain). The full opening only appears in actual model refusals.
+//!
+//! Leakage markers stay as full-text scans since they're explicit tag
+//! artifacts we want to strip wherever they appear.
 
 use crate::error::AppError;
 
 /// Window into the start of the response (in chars) used to detect
-/// refusal markers. Tuned so a normal model refusal — which always opens
-/// with the apology — is caught, while later quotations of the same
-/// phrase inside legitimate analysis are not.
-const REFUSAL_WINDOW_CHARS: usize = 200;
+/// refusal markers. Refusals always open at position 0; 160 chars is
+/// enough headroom for soft openings like "I'm sorry, but unfortunately
+/// I am not able to assist with that request because…" while still
+/// fitting inside almost every short coach response without triggering
+/// on later text.
+const REFUSAL_WINDOW_CHARS: usize = 160;
 
+/// Refusal *openings*, not fragments. Each marker is a complete phrase
+/// the model says when it's declining the task — never something that
+/// appears mid-coaching. Substring match (case-insensitive).
 const REFUSAL_MARKERS: &[&str] = &[
-    "i cannot help",
-    "i can't help",
+    "i cannot help with that",
+    "i can't help with that",
     "i'm sorry, but i can't",
     "i'm sorry, i can't",
-    "as an ai",
-    "as a large language model",
-    "i am not able to",
-    "i'm not able to",
+    "i'm sorry, but i cannot",
+    "i'm sorry, i cannot",
+    "as an ai language model",
+    "as an ai assistant, i",
+    "as an ai, i cannot",
+    "as an ai, i can't",
+    "as an ai, i'm not",
+    "as an ai, i am not",
+    "as a large language model, i",
+    "i am not able to assist",
+    "i'm not able to assist",
+    "i am unable to assist",
+    "i'm unable to assist",
+    "i cannot fulfill",
+    "i can't fulfill",
 ];
 
 const LEAKAGE_MARKERS: &[&str] = &[
