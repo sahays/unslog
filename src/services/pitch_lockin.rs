@@ -157,56 +157,5 @@ fn word_count(s: &str) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::models::{ChatRole, ChatTurn};
-
-    fn turn(role: ChatRole, content: &str) -> ChatTurn {
-        ChatTurn {
-            role,
-            content: content.to_string(),
-            ts: chrono::Utc::now(),
-        }
-    }
-
-    fn sample_pitch() -> Pitch {
-        Pitch {
-            id: "tell-me-about-yourself".into(),
-            question_text: "Tell me about yourself.".into(),
-            blurb: "blurb".into(),
-            sort_order: 0,
-            status: crate::models::PitchStatus::InProgress,
-            current_version_id: None,
-            chat: vec![
-                turn(ChatRole::Assistant, "What's your ten-second hook?"),
-                turn(
-                    ChatRole::User,
-                    "I joined the platform team after we paged seventeen times in one week.",
-                ),
-            ],
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        }
-    }
-
-    #[test]
-    fn render_user_message_includes_pitch_block_and_transcript_and_action_directive() {
-        let msg = render_user_message(&sample_pitch());
-        assert!(msg.contains("<pitch>"), "missing pitch open");
-        assert!(msg.contains("slug: tell-me-about-yourself"), "missing slug");
-        assert!(msg.contains("<chat_transcript>"), "missing transcript open");
-        assert!(msg.contains("CANDIDATE:"), "missing candidate label");
-        assert!(msg.contains("COACH:"), "missing coach label");
-        assert!(
-            msg.trim_end()
-                .ends_with("Write the two spoken variants now."),
-            "missing action directive: {msg}",
-        );
-    }
-
-    #[test]
-    fn word_count_handles_whitespace() {
-        assert_eq!(word_count(""), 0);
-        assert_eq!(word_count("one   two\nthree\n\nfour"), 4);
-    }
-}
+#[path = "pitch_lockin_tests.rs"]
+mod tests;

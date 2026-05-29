@@ -263,3 +263,7 @@ pub(super) async fn regenerate_critique_audio(
 
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
+
+#[cfg(test)]
+#[path = "answer_tests.rs"]
+mod tests;

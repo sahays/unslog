@@ -1,3 +1,7 @@
+//! Tests defending the `Scores` serde round-trip (Mongo↔Rust) and the
+//! `average()` divide-by-zero guard. The avg math itself is not tested
+//! since a wrong score is a UX bug, not a corruption or availability bug.
+
 use super::*;
 
 fn scores(s: u8, r: u8, st: u8, p: u8, fit: Option<u8>) -> Scores {
@@ -10,61 +14,42 @@ fn scores(s: u8, r: u8, st: u8, p: u8, fit: Option<u8>) -> Scores {
     }
 }
 
-// ── Scores::average ──────────────────────────────────────────────────
-
+/// Handler availability: if `average` ever divides by zero the request crashes.
 #[test]
-fn case_avg_without_company_fit() {
-    // (1+2+3+4)/4 = 2.5
-    assert_eq!(scores(1, 2, 3, 4, None).average(), 2.5);
-}
-
-#[test]
-fn case_avg_with_company_fit() {
-    // (2+2+2+2+5)/5 = 2.6
-    assert_eq!(scores(2, 2, 2, 2, Some(5)).average(), 2.6);
-}
-
-#[test]
-fn case_avg_zero_no_panic() {
-    // All zeros — must not divide by zero (n is 4 or 5, never 0).
+fn average_does_not_panic_on_all_zero_scores() {
     assert_eq!(scores(0, 0, 0, 0, None).average(), 0.0);
     assert_eq!(scores(0, 0, 0, 0, Some(0)).average(), 0.0);
 }
 
-#[test]
-fn case_avg_max() {
-    assert_eq!(scores(5, 5, 5, 5, Some(5)).average(), 5.0);
-}
-
-// ── deserialize_optional_u8 (via Scores serde round-trip) ────────────
+// ── deserialize_optional_u8: db↔rust round-trip integrity ────────────
 
 #[test]
-fn case_company_fit_null() {
+fn company_fit_null_preserved_through_db_serde() {
     let json = r#"{"specificity":1,"role_clarity":1,"star_plus_structure":1,"pitfalls_avoided":1,"company_fit":null}"#;
     let s: Scores = serde_json::from_str(json).expect("parse");
     assert_eq!(s.company_fit, None);
 }
 
 #[test]
-fn case_company_fit_missing() {
+fn company_fit_missing_preserved_through_db_serde() {
     let json = r#"{"specificity":1,"role_clarity":1,"star_plus_structure":1,"pitfalls_avoided":1}"#;
     let s: Scores = serde_json::from_str(json).expect("parse");
     assert_eq!(s.company_fit, None);
 }
 
 #[test]
-fn case_company_fit_number() {
+fn company_fit_number_preserved_through_db_serde() {
     let json = r#"{"specificity":1,"role_clarity":1,"star_plus_structure":1,"pitfalls_avoided":1,"company_fit":3}"#;
     let s: Scores = serde_json::from_str(json).expect("parse");
     assert_eq!(s.company_fit, Some(3));
 }
 
+/// Pinned behavior: literal 0 deserializes to Some(0), NOT None — the
+/// doc-comment on `deserialize_optional_u8` suggests otherwise, but the
+/// impl just delegates to Option::<u8>::deserialize. Pinned so a future
+/// "fix" to match the doc-comment doesn't silently change displayed scores.
 #[test]
-fn case_company_fit_zero_is_some_zero() {
-    // Pin current behavior: a literal 0 deserializes to Some(0), NOT
-    // None. Doc-comment on deserialize_optional_u8 claims otherwise; the
-    // implementation just delegates to Option::<u8>::deserialize so this
-    // is what actually happens.
+fn company_fit_zero_serdes_as_some_zero_not_none() {
     let json = r#"{"specificity":1,"role_clarity":1,"star_plus_structure":1,"pitfalls_avoided":1,"company_fit":0}"#;
     let s: Scores = serde_json::from_str(json).expect("parse");
     assert_eq!(s.company_fit, Some(0));

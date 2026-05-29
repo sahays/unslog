@@ -26,35 +26,5 @@ pub fn strip_lock_in_token(s: &str) -> (String, bool) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn case_no_token_returns_trimmed_passthrough() {
-        let (out, locked) = strip_lock_in_token("  hello coach  ");
-        assert_eq!(out, "hello coach");
-        assert!(!locked);
-    }
-
-    #[test]
-    fn case_token_at_end_is_stripped_and_flag_true() {
-        let (out, locked) = strip_lock_in_token("Great answer. <<LOCK_IN>>");
-        assert_eq!(out, "Great answer.");
-        assert!(locked);
-    }
-
-    #[test]
-    fn case_token_in_middle_is_stripped() {
-        let (out, locked) = strip_lock_in_token("Yes <<LOCK_IN>> let's go");
-        // `replace` + `trim` collapses the trailing whitespace.
-        assert_eq!(out, "Yes  let's go");
-        assert!(locked);
-    }
-
-    #[test]
-    fn case_token_only_yields_empty_content() {
-        let (out, locked) = strip_lock_in_token("<<LOCK_IN>>");
-        assert_eq!(out, "");
-        assert!(locked);
-    }
-}
+#[path = "chat_lockin_tests.rs"]
+mod tests;

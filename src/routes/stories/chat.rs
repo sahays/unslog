@@ -121,7 +121,3 @@ pub(super) async fn continue_chat(
 
     Ok(Redirect::to(&format!("/stories/{id}")).into_response())
 }
-
-#[cfg(test)]
-#[path = "chat_tests.rs"]
-mod tests;

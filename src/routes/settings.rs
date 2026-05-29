@@ -217,20 +217,7 @@ async fn save(
     // `sanitize_short` above enforces non-empty per field — the old
     // "all model and voice fields are required" fallback is no longer needed.
 
-    let speed_raw = form.tts_speed.trim();
-    let tts_speed = if speed_raw.is_empty() {
-        None
-    } else {
-        let v: f32 = speed_raw
-            .parse()
-            .map_err(|_| AppError::BadRequest("tts_speed must be a number".into()))?;
-        if !(0.25..=4.0).contains(&v) {
-            return Err(AppError::BadRequest(
-                "tts_speed must be between 0.25 and 4.0".into(),
-            ));
-        }
-        Some(v)
-    };
+    let tts_speed = parse_tts_speed(&form.tts_speed)?;
 
     let next = Settings {
         id: Settings::SINGLETON_ID.to_string(),
@@ -266,3 +253,32 @@ async fn refresh_models(State(state): State<AppState>) -> Result<Response, AppEr
     state.models_cache.invalidate().await;
     Ok(Redirect::to("/settings").into_response())
 }
+
+/// Allowed TTS speed range from the OpenAI gpt-4o-mini-tts spec. Values
+/// outside this band would be rejected by the upstream endpoint anyway,
+/// but we reject at the trust boundary so the user sees a clean error
+/// instead of a 4xx from OpenRouter that costs a billed retry.
+const TTS_SPEED_MIN: f32 = 0.25;
+const TTS_SPEED_MAX: f32 = 4.0;
+
+/// Parse the `tts_speed` form field. Empty → `None` (use endpoint default).
+/// Non-numeric → BadRequest. Out-of-range → BadRequest.
+fn parse_tts_speed(raw: &str) -> Result<Option<f32>, AppError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let v: f32 = trimmed
+        .parse()
+        .map_err(|_| AppError::BadRequest("tts_speed must be a number".into()))?;
+    if !(TTS_SPEED_MIN..=TTS_SPEED_MAX).contains(&v) {
+        return Err(AppError::BadRequest(format!(
+            "tts_speed must be between {TTS_SPEED_MIN} and {TTS_SPEED_MAX}"
+        )));
+    }
+    Ok(Some(v))
+}
+
+#[cfg(test)]
+#[path = "settings_tests.rs"]
+mod tests;

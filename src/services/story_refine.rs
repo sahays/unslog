@@ -51,42 +51,5 @@ fn last_n_in_order(items: &[ChatTurn], n: usize) -> &[ChatTurn] {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::last_n_in_order;
-    use crate::models::{ChatRole, ChatTurn};
-
-    fn turn(content: &str) -> ChatTurn {
-        ChatTurn {
-            role: ChatRole::User,
-            content: content.to_string(),
-            ts: chrono::Utc::now(),
-        }
-    }
-
-    #[test]
-    fn last_n_returns_full_slice_when_n_exceeds_len() {
-        let v = vec![turn("a"), turn("b"), turn("c")];
-        assert_eq!(last_n_in_order(&v, 10).len(), 3);
-    }
-
-    #[test]
-    fn last_n_returns_tail() {
-        let v = vec![turn("a"), turn("b"), turn("c"), turn("d"), turn("e")];
-        let tail = last_n_in_order(&v, 2);
-        assert_eq!(tail.len(), 2);
-        assert_eq!(tail[0].content, "d");
-        assert_eq!(tail[1].content, "e");
-    }
-
-    #[test]
-    fn last_n_empty_when_n_zero() {
-        let v = vec![turn("a"), turn("b")];
-        assert!(last_n_in_order(&v, 0).is_empty());
-    }
-
-    #[test]
-    fn last_n_empty_slice_passthrough() {
-        let v: Vec<ChatTurn> = vec![];
-        assert!(last_n_in_order(&v, 5).is_empty());
-    }
-}
+#[path = "story_refine_tests.rs"]
+mod tests;

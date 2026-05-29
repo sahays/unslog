@@ -104,23 +104,7 @@ async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Re
     let display_name =
         text_validation::sanitize_short(&display_name_raw, MAX_ASSET_NAME, "asset name")?;
 
-    if bytes.is_empty() {
-        return Err(AppError::BadRequest("uploaded file is empty".into()));
-    }
-    if bytes.len() > MAX_ASSET_BYTES {
-        return Err(AppError::BadRequest(format!(
-            "asset is {} bytes — max {MAX_ASSET_BYTES}",
-            bytes.len()
-        )));
-    }
-    // Magic-byte check — server-side defense against a file with .pdf
-    // extension but non-PDF contents (which would also break extraction
-    // downstream with a confusing error).
-    if !bytes.starts_with(PDF_MAGIC) {
-        return Err(AppError::BadRequest(
-            "uploaded file is not a PDF (missing %PDF header)".into(),
-        ));
-    }
+    validate_pdf_upload(&bytes)?;
 
     let mut asset = svc::save_upload(
         &state.config.data_dir,
@@ -258,3 +242,35 @@ pub fn fmt_status(s: ExtractionStatus) -> &'static str {
         ExtractionStatus::Failed => "failed",
     }
 }
+
+/// Trust-boundary validator for an inbound asset upload. Three checks,
+/// each protecting a distinct failure mode:
+///   1. **Empty** — a zero-byte upload is never legitimate and writing it
+///      would create a dead row that pdf-extract would then crash on.
+///   2. **Oversize** — caps disk usage so a single huge PDF cannot fill
+///      the data dir silently. The global body cap is 50 MB to allow
+///      audio; assets get a tighter cap.
+///   3. **Magic-byte** — defends against a `.pdf`-suffixed but non-PDF
+///      file (deliberate or accidental). pdf-extract would fail anyway,
+///      but with a less useful error and after disk has been touched.
+fn validate_pdf_upload(bytes: &[u8]) -> Result<(), AppError> {
+    if bytes.is_empty() {
+        return Err(AppError::BadRequest("uploaded file is empty".into()));
+    }
+    if bytes.len() > MAX_ASSET_BYTES {
+        return Err(AppError::BadRequest(format!(
+            "asset is {} bytes — max {MAX_ASSET_BYTES}",
+            bytes.len()
+        )));
+    }
+    if !bytes.starts_with(PDF_MAGIC) {
+        return Err(AppError::BadRequest(
+            "uploaded file is not a PDF (missing %PDF header)".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "assets_tests.rs"]
+mod tests;

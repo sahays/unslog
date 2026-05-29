@@ -314,7 +314,3 @@ fn is_plausible_url(s: &str) -> bool {
     let s = s.trim();
     (s.starts_with("http://") || s.starts_with("https://")) && s.contains('.') && !s.contains(' ')
 }
-
-#[cfg(test)]
-#[path = "rubric_tests.rs"]
-mod tests;

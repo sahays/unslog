@@ -8,8 +8,12 @@
 use mongodb::Database;
 
 use crate::error::AppError;
-use crate::models::{ModelSnapshot, PromptSnapshot, Role, Session, SessionStatus};
-use crate::services::{curator, openrouter::LlmClient, prompt_store, sessions, settings_store};
+use crate::models::{ModelSnapshot, PromptSnapshot, Role, Session, SessionStatus, Settings};
+use crate::services::{
+    curator::{self, CuratorOutput},
+    openrouter::LlmClient,
+    prompt_store, sessions, settings_store,
+};
 
 pub struct StartInput {
     pub role: Role,
@@ -44,7 +48,34 @@ pub async fn start(
     )
     .await?;
 
-    let session = Session {
+    let session = build_session(
+        input,
+        &settings,
+        &critique_prompt.current_version_id,
+        &summary_prompt.current_version_id,
+        curated,
+    );
+
+    sessions::insert(db, &session).await?;
+
+    Ok(session)
+}
+
+/// Assemble a `Session` from already-resolved inputs. Pure — no DB / LLM /
+/// clock dependency beyond `Utc::now()` for the started timestamp. Split
+/// out so the snapshot-capture invariant can be tested without spinning
+/// up Mongo: the critique + summary prompt version IDs MUST land in
+/// `prompt_snapshot` verbatim (so subsequent prompt edits cannot retro-
+/// actively change this session's behavior), and the model fields MUST
+/// mirror the current Settings document.
+fn build_session(
+    input: StartInput,
+    settings: &Settings,
+    critique_version_id: &str,
+    summary_version_id: &str,
+    curated: CuratorOutput,
+) -> Session {
+    Session {
         id: uuid::Uuid::now_v7().to_string(),
         company_id: input.anchor_company_id,
         role: input.role,
@@ -65,16 +96,16 @@ pub async fn start(
             lite: settings.lite_model.clone(),
         },
         prompt_snapshot: PromptSnapshot {
-            critique: critique_prompt.current_version_id,
-            summary: summary_prompt.current_version_id,
+            critique: critique_version_id.to_string(),
+            summary: summary_version_id.to_string(),
         },
         voice_critique_enabled: false,
         current_question_id: None,
         current_question_text: None,
         current_question_audio_path: None,
-    };
-
-    sessions::insert(db, &session).await?;
-
-    Ok(session)
+    }
 }
+
+#[cfg(test)]
+#[path = "session_tests.rs"]
+mod tests;

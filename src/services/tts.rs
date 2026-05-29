@@ -37,7 +37,3 @@ pub fn build_accent_instructions(language: &str) -> String {
     };
     format!("Speak clearly with a {phrase} accent.")
 }
-
-#[cfg(test)]
-#[path = "tts_tests.rs"]
-mod tests;

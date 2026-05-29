@@ -26,25 +26,7 @@ pub async fn add_questions(
     Path(id): Path<String>,
     Form(form): Form<AddQuestionsForm>,
 ) -> Result<Response, AppError> {
-    let mut lines: Vec<String> = Vec::new();
-    for raw in form.text.lines() {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let line = text_validation::sanitize_short(trimmed, MAX_QUESTION_TEXT, "question")?;
-        lines.push(line);
-        if lines.len() > MAX_BULK_QUESTIONS {
-            return Err(AppError::BadRequest(format!(
-                "too many questions in one paste — cap is {MAX_BULK_QUESTIONS}"
-            )));
-        }
-    }
-    if lines.is_empty() {
-        return Err(AppError::BadRequest(
-            "paste one or more questions, one per line".into(),
-        ));
-    }
+    let lines = parse_bulk_questions(&form.text)?;
     let company = company_store::find_or_404(&state.db, &id).await?;
 
     let appended_n = lines.len();
@@ -121,3 +103,35 @@ pub async fn edit_question(
     );
     Ok(Redirect::to(&format!("/companies/{id}")).into_response())
 }
+
+/// Trust-boundary parser for the bulk-paste textarea. Splits on newlines,
+/// drops blank lines, sanitizes each survivor, and enforces the
+/// [`MAX_BULK_QUESTIONS`] cap mid-stream so a 5 MB paste stops at the cap
+/// without buffering the whole thing. Returns the cleaned questions; the
+/// caller is responsible for the downstream categorize + persist.
+fn parse_bulk_questions(raw: &str) -> Result<Vec<String>, AppError> {
+    let mut lines: Vec<String> = Vec::new();
+    for raw_line in raw.lines() {
+        let trimmed = raw_line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let line = text_validation::sanitize_short(trimmed, MAX_QUESTION_TEXT, "question")?;
+        lines.push(line);
+        if lines.len() > MAX_BULK_QUESTIONS {
+            return Err(AppError::BadRequest(format!(
+                "too many questions in one paste — cap is {MAX_BULK_QUESTIONS}"
+            )));
+        }
+    }
+    if lines.is_empty() {
+        return Err(AppError::BadRequest(
+            "paste one or more questions, one per line".into(),
+        ));
+    }
+    Ok(lines)
+}
+
+#[cfg(test)]
+#[path = "questions_tests.rs"]
+mod tests;
