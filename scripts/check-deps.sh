@@ -40,6 +40,33 @@ else
   warn "start one with: docker run -d -p 27017:27017 --name mongo mongo:latest"
 fi
 
+echo "Postgres (localhost:5432):"
+if command -v pg_isready &>/dev/null; then
+  if pg_isready -h localhost -p 5432 -q; then
+    pass "postgres is reachable on localhost:5432"
+  else
+    warn "postgres not reachable on localhost:5432"
+    warn "start one with: docker run -d -p 5432:5432 -e POSTGRES_USER=unslog -e POSTGRES_PASSWORD=unslog -e POSTGRES_DB=unslog --name unslog-pg postgres:17"
+  fi
+elif command -v nc &>/dev/null; then
+  if nc -z localhost 5432 2>/dev/null; then
+    pass "postgres tcp port 5432 is open"
+  else
+    warn "postgres not reachable on localhost:5432"
+    warn "start one with: docker run -d -p 5432:5432 -e POSTGRES_USER=unslog -e POSTGRES_PASSWORD=unslog -e POSTGRES_DB=unslog --name unslog-pg postgres:17"
+  fi
+else
+  warn "neither pg_isready nor nc available — skipping postgres reachability check"
+fi
+
+echo "sqlx-cli:"
+if command -v sqlx &>/dev/null; then
+  pass "sqlx-cli available ($(sqlx --version 2>/dev/null || echo 'version unknown'))"
+else
+  warn "sqlx-cli not installed"
+  warn "to install: cargo install sqlx-cli --no-default-features --features postgres,rustls"
+fi
+
 echo "pdftotext (poppler) — optional fallback for PDF extraction:"
 if command -v pdftotext &>/dev/null; then pass "pdftotext available"; else warn "pdftotext not installed (brew install poppler) — pdf-extract crate will be sole path"; fi
 

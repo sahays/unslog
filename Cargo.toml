@@ -26,9 +26,12 @@ tokio = { version = "1.40", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Database
+# Database — MongoDB is the current store; sqlx is being added alongside
+# during the Postgres migration (Phase A). Both will coexist until the code
+# swap lands in a later sub-phase.
 mongodb = "3"
 bson = { version = "2", features = ["chrono-0_4", "uuid-1"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "chrono", "json", "migrate"] }
 
 # Errors
 anyhow = "1.0"

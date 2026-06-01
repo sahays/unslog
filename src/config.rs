@@ -27,6 +27,10 @@ pub struct AppConfig {
     pub port: u16,
     pub mongo_uri: String,
     pub mongo_db: String,
+    /// Postgres connection URL. Read at boot but unused until the
+    /// Mongo → Postgres code swap lands in a later sub-phase. No default —
+    /// once Postgres becomes required, `from_env` will fail fast if missing.
+    pub database_url: String,
     pub openrouter_api_key: String,
     pub data_dir: String,
     pub log_format: LogFormat,
@@ -48,6 +52,10 @@ impl AppConfig {
             mongo_uri: env::var("MONGO_URI")
                 .unwrap_or_else(|_| "mongodb://localhost:27017".to_string()),
             mongo_db: env::var("MONGO_DB").unwrap_or_else(|_| "behavioral_coach".to_string()),
+            // Soft default for now — keeps existing dev boots working while
+            // Postgres tooling is being added. Will switch to hard-fail when
+            // the code swap lands.
+            database_url: env::var("DATABASE_URL").unwrap_or_default(),
             openrouter_api_key: env::var("OPENROUTER_API_KEY").unwrap_or_default(),
             data_dir: env::var("DATA_DIR").unwrap_or_else(|_| "./data".to_string()),
             log_format: LogFormat::from_env(),
