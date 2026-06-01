@@ -49,6 +49,8 @@ cargo run --bin import_from_mongo -- --force
 
 The user runs `cargo watch -x run` themselves — don't spawn a parallel `cargo run`. Use `cargo check` / `cargo clippy` / `cargo test` for verification, and rely on their browser to exercise the UI.
 
+`cargo test` requires a reachable Postgres on `DATABASE_URL` (the cross-tenant integration suite under `tests/cross_tenant/` is `#[sqlx::test]` — it spins up a per-test database against the live server). Start one with `docker run -d -p 5433:5432 -e POSTGRES_USER=unslog -e POSTGRES_PASSWORD=unslog -e POSTGRES_DB=unslog --name unslog-pg postgres:17`. Migration 0003 self-bootstraps a placeholder master user; the real argon2id hash is written by `services::master_seed::ensure_master` on first boot.
+
 ## Required external services
 
 - **Postgres** on `postgres://unslog:unslog@localhost:5432/unslog` (project-scoped container `unslog-pg`). Schema lives in `migrations/`; `sqlx::migrate!()` runs on first boot.

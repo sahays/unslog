@@ -79,11 +79,14 @@ fn parse_status(s: &str) -> Result<PitchStatus, AppError> {
 }
 
 /// Columns selected by every catalog+state JOIN read. Centralized so a
-/// schema add only edits one place.
+/// schema add only edits one place. The SQL is interpolated into
+/// `sqlx::query_as` (not the `query_as!` macro), so the chat alias is
+/// plain — a `AS "name: Type"` annotation would become part of the
+/// actual returned column name and break the `FromRow` lookup.
 const JOIN_COLS: &str = r#"p.id, p.question_text, p.blurb, p.sort_order, p.created_at,
     COALESCE(s.status, 'not_started') AS status,
     s.current_version_id,
-    COALESCE(s.chat, '[]'::jsonb) AS "chat: Json<Vec<ChatTurn>>",
+    COALESCE(s.chat, '[]'::jsonb) AS chat,
     COALESCE(s.updated_at, p.created_at) AS updated_at"#;
 
 // ── Reads ────────────────────────────────────────────────────────────────

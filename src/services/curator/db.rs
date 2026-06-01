@@ -21,11 +21,15 @@ pub(super) async fn recent_summaries(
     if selected_company_ids.is_empty() {
         return Ok(Vec::new());
     }
+    // Plain column names — this SQL is fed to `sqlx::query_as` (not the
+    // `query_as!` macro), so an `AS "name!: Type"` annotation would
+    // otherwise become part of the actual returned column name and
+    // break the `FromRow` lookup.
     let sql = r#"
         SELECT id, owner_id, session_id, company_id, narrative,
-               strengths            AS "strengths!: Json<Vec<String>>",
-               recurring_weaknesses AS "recurring_weaknesses!: Json<Vec<String>>",
-               blind_spots          AS "blind_spots!: Json<Vec<String>>",
+               strengths,
+               recurring_weaknesses,
+               blind_spots,
                company_fit_signal, created_at
         FROM summaries
         WHERE owner_id = $1 AND company_id = ANY($2)

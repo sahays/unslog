@@ -20,11 +20,13 @@ use sqlx::PgPool;
 use crate::error::AppError;
 use crate::models::{SpokenStory, StoryBody, StoryVersion};
 
-/// Columns for full-row `StoryVersion` reads. Note the explicit JSONB-to-
-/// `Json<...>` aliases so sqlx maps them straight onto `body` / `spoken`.
+/// Columns for full-row `StoryVersion` reads. Plain column names — the
+/// SQL is interpolated into `sqlx::query_as` (not the `query_as!`
+/// macro), so a `AS "name: Type"` annotation would otherwise become part
+/// of the actual returned column name and break the `FromRow` lookup.
 const VERSION_COLS: &str = r#"id, story_id, version_n,
-    body AS "body: Json<StoryBody>",
-    spoken AS "spoken: Json<SpokenStory>",
+    body,
+    spoken,
     created_at"#;
 
 #[derive(sqlx::FromRow)]

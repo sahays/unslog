@@ -9,12 +9,15 @@ use sqlx::PgPool;
 use crate::error::AppError;
 use crate::models::Summary;
 
-/// SELECT clause shared by every full-row read.
+/// SELECT clause shared by every full-row read. Plain column names —
+/// these go into `sqlx::query_as` (not the `query_as!` macro), so a
+/// `AS "name!: Type"` annotation would become part of the actual
+/// returned column name and break the `FromRow` lookup.
 const SUMMARY_SELECT: &str = r#"
     SELECT id, owner_id, session_id, company_id, narrative,
-           strengths            AS "strengths!: Json<Vec<String>>",
-           recurring_weaknesses AS "recurring_weaknesses!: Json<Vec<String>>",
-           blind_spots          AS "blind_spots!: Json<Vec<String>>",
+           strengths,
+           recurring_weaknesses,
+           blind_spots,
            company_fit_signal, created_at
     FROM summaries
 "#;

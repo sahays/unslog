@@ -11,9 +11,12 @@ use crate::error::AppError;
 use crate::models::{Question, QuestionSource, Role};
 
 /// Columns selected by every full-row read, in the order [`QuestionRow`]
-/// expects. Centralized so a schema add only touches one place.
+/// expects. Centralized so a schema add only touches one place. Plain
+/// column names — the SQL is interpolated into `sqlx::query_as`, not
+/// the `query_as!` macro, so an `AS "name: Type"` annotation would
+/// become part of the actual returned column name and break `FromRow`.
 pub(super) const QUESTION_COLS: &str = r#"id, owner_id, text, source, role,
-    categories AS "categories: Json<Vec<String>>",
+    categories,
     company_id, added_at"#;
 
 #[derive(sqlx::FromRow)]

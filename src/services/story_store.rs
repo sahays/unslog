@@ -30,10 +30,13 @@ pub use row::{SiblingRow, StoryListRow};
 pub const MAX_CHAT_TURNS: usize = 100;
 
 /// Columns selected by every full-row read. Centralized so a schema add
-/// only edits one place.
+/// only edits one place. Plain column names — these go into
+/// `sqlx::query_as` (not the `query_as!` macro), so a `AS "name: Type"`
+/// annotation would become part of the actual returned column name and
+/// break the `FromRow` lookup.
 const STORY_COLS: &str = r#"id, owner_id, competency_id, status, mode,
     current_version_id,
-    chat AS "chat: Json<Vec<ChatTurn>>",
+    chat,
     created_at, updated_at"#;
 
 /// Pure capacity guard for [`push_turn`]. Split out so we can unit-test

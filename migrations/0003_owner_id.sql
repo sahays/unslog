@@ -7,19 +7,25 @@
 --   * pitches, pitch_versions — handled in 0004 (catalog/state split).
 --   * users, login_attempts — identity layer.
 --
--- The data backfill points every existing row at the master user; the
--- master must have been seeded by the application before this migration
--- runs (the DO block raises if not).
+-- The data backfill points every existing row at the master user. To make
+-- this migration safe on fresh databases (including per-test databases
+-- created by `#[sqlx::test]`), we insert a placeholder master row here if
+-- one is not already present. `services::master_seed::ensure_master`
+-- recognises the placeholder code_hash and force-overwrites it with the
+-- real argon2id hash on first boot, so production installs end up with
+-- the real hash and nothing else changes.
 
--- Guard: master must exist or the backfill cannot proceed.
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM users WHERE is_master = TRUE) THEN
-        RAISE EXCEPTION
-            'master user not seeded — application must seed master before running 0003_owner_id';
-    END IF;
-END
-$$;
+INSERT INTO users (id, code_hash, code_hint, label, tier, is_master, created_at)
+VALUES (
+    'usrmaster',
+    '$argon2id$v=19$m=19456,t=2,p=1$placeholder$placeholder',
+    'plac…er',
+    'master',
+    'master',
+    TRUE,
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
 
 -- ── companies ───────────────────────────────────────────────────────────
 ALTER TABLE companies ADD COLUMN owner_id TEXT;

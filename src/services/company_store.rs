@@ -27,8 +27,11 @@ use crate::models::{Company, Role};
 
 /// Columns shared by every full-row read. Centralized so a schema add only
 /// edits one place. `research_packet` returns as JSONB → `Option<Json<...>>`.
+/// Plain column names — the SQL is interpolated into `sqlx::query_as`
+/// (not the `query_as!` macro), so `AS "name: Type"` would become part
+/// of the actual returned column name and break the `FromRow` lookup.
 const COMPANY_COLS: &str = r#"id, owner_id, name, role, canonical_role,
-    research_packet AS "research_packet: Json<ResearchPacket>",
+    research_packet,
     is_public, created_at, updated_at"#;
 
 #[derive(sqlx::FromRow)]

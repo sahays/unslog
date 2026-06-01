@@ -82,8 +82,11 @@ impl<'a> EvalSource for PgEvalSource<'a> {
     }
 }
 
+// Plain column names — these go into `sqlx::query_as` (not the
+// `query_as!` macro), so a `AS "name: Type"` annotation would become part
+// of the actual returned column name and break the `FromRow` lookup.
 const EVAL_COLS: &str = r#"id, owner_id, session_id, company_id, question_id, question_text,
-    attempts AS "attempts: Json<Vec<Attempt>>""#;
+    attempts"#;
 
 #[derive(sqlx::FromRow)]
 struct EvalRow {

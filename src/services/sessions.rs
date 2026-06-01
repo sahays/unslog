@@ -23,13 +23,17 @@ use crate::error::AppError;
 use crate::models::{ModelSnapshot, PromptSnapshot, Role, Session, SessionStatus};
 
 /// Columns selected by every full-row read, in the order [`SessionRow`]
-/// expects. Centralized so a schema add only edits one place.
+/// expects. Centralized so a schema add only edits one place. We use the
+/// plain column names (no `AS "name: Type"` annotation) because these SQL
+/// fragments are interpolated into `sqlx::query_as` calls, not the
+/// `query_as!` macro — the macro-only annotation would otherwise become
+/// part of the actual returned column name and break `FromRow` lookup.
 const SESSION_COLS: &str = r#"id, owner_id, company_id, role,
-    selected_company_ids AS "selected_company_ids: Json<Vec<String>>",
-    curated_question_ids AS "curated_question_ids: Json<Vec<String>>",
+    selected_company_ids,
+    curated_question_ids,
     focus_line, started_at, ended_at, status,
-    model_snapshot AS "model_snapshot: Json<ModelSnapshot>",
-    prompt_snapshot AS "prompt_snapshot: Json<PromptSnapshot>",
+    model_snapshot,
+    prompt_snapshot,
     voice_critique_enabled,
     current_question_id, current_question_text, current_question_audio_path"#;
 
