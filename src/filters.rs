@@ -120,6 +120,16 @@ pub fn current_user_is_master<S: AsRef<str>>(_unused: S) -> askama::Result<bool>
     Ok(crate::middleware::current_user_is_master())
 }
 
+/// Resolve the in-flight request's last-24h usage snapshot as a
+/// `(used, cap, pct)` triple. Templates read this via
+/// `{% let (used, cap, pct) = ""|current_user_usage %}` then pass the
+/// values into the `usage_bar` macro. Empty / unlimited (`cap == u64::MAX`)
+/// for users who don't have a configured tier cap (master).
+pub fn current_user_usage<S: AsRef<str>>(_unused: S) -> askama::Result<(u64, u64, u8)> {
+    let w = crate::middleware::current_user_usage();
+    Ok((w.used, w.cap, w.pct()))
+}
+
 #[cfg(test)]
 #[path = "filters_tests.rs"]
 mod tests;

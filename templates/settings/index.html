@@ -149,5 +149,24 @@
       </button>
     </div>
   </form>
+
+  <section class="card grid gap-3">
+    {% call ui::card_header("gauge", "Tier caps (read-only)") %}
+    <p class="muted text-sm -mt-2">
+      Daily request budgets enforced by the metering middleware. Values come from the environment
+      (<code class="font-mono">PRO_REQUEST_CAP_DAILY</code>, <code class="font-mono">PRO_MAX_REQUEST_CAP_DAILY</code>);
+      edit your <code class="font-mono">.env</code> and restart to change. Master tier is exempt.
+    </p>
+    <dl class="grid gap-2 grid-cols-1 sm:grid-cols-2">
+      <div>
+        <dt class="section-label">Pro</dt>
+        <dd class="font-mono">{{ pro_request_cap_daily }} units / 24h</dd>
+      </div>
+      <div>
+        <dt class="section-label">Pro Max</dt>
+        <dd class="font-mono">{{ pro_max_request_cap_daily }} units / 24h</dd>
+      </div>
+    </dl>
+  </section>
 </div>
 {% endblock %}

@@ -40,6 +40,11 @@ struct SettingsTemplate {
     tts_languages: &'static [LanguageOption],
     models_error: Option<String>,
     openrouter_configured: bool,
+    /// Read-only view of the configured per-tier daily caps. Source of
+    /// truth is `AppConfig` (env), surfaced here so the admin can see the
+    /// active values without grepping `.env`.
+    pro_request_cap_daily: u32,
+    pro_max_request_cap_daily: u32,
 }
 
 struct VoiceOption {
@@ -146,6 +151,8 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
         tts_languages: LANGUAGE_OPTIONS,
         models_error,
         openrouter_configured: state.openrouter.configured(),
+        pro_request_cap_daily: state.config.pro_request_cap_daily,
+        pro_max_request_cap_daily: state.config.pro_max_request_cap_daily,
     })
 }
 

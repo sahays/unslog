@@ -264,6 +264,21 @@
 <time datetime="{{ dt.to_rfc3339() }}" title="{{ dt.format("%Y-%m-%d %H:%M UTC").to_string() }}">{{ dt|time_ago }}</time>
 {%- endmacro %}
 
+{# Per-user 24h request budget bar. Renders a semantic <progress> with a
+   short "{used} / {cap}" label and a color band keyed off the percentage:
+   green < 70, amber 70–94, red ≥ 95. `pct` is pre-computed (the
+   `current_user_usage` filter returns it alongside used+cap so the
+   template doesn't have to math). The macro renders nothing when cap is
+   the sentinel `u64::MAX` ("unlimited", used for master). #}
+{% macro usage_bar(used, cap, pct) -%}
+{% if cap != 18446744073709551615 %}
+<div class="usage-bar{% if pct < 70 %} usage-bar--ok{% else if pct < 95 %} usage-bar--warn{% else %} usage-bar--danger{% endif %}">
+  <progress max="{{ cap }}" value="{{ used }}" aria-label="Daily request budget">{{ used }} of {{ cap }}</progress>
+  <span class="usage-bar__label">{{ used }} / {{ cap }}</span>
+</div>
+{% endif %}
+{%- endmacro %}
+
 {# Button-styled link. variant ∈ {primary, secondary, danger, ghost} #}
 {% macro link_btn(href, text, icon, variant) -%}
 {% if variant == "primary" -%}

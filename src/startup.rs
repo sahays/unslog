@@ -39,6 +39,10 @@ pub struct AppState {
     /// can read users via the trait instead of taking a raw `PgPool`.
     #[allow(dead_code)]
     pub users: Arc<dyn crate::services::user_store::UserSource>,
+    /// Per-user cost meter + cap policy. Owned wrapper so it lives the
+    /// life of the process; the trait keeps the production type swappable
+    /// for tests.
+    pub metering_deps: Arc<dyn crate::services::metering::MeteringDeps>,
 }
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
@@ -80,8 +84,14 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         });
     let login_throttle: Arc<dyn crate::services::login_throttle::LoginThrottle> =
         Arc::new(crate::services::login_throttle::PgLoginThrottleOwned { pool: pool.clone() });
+    let config = Arc::new(config);
+    let metering_deps: Arc<dyn crate::services::metering::MeteringDeps> =
+        Arc::new(crate::services::request_log_store::PgMeteringDepsOwned {
+            pool: pool.clone(),
+            config: config.clone(),
+        });
     let state = AppState {
-        config: Arc::new(config),
+        config,
         pool,
         http,
         openrouter,
@@ -94,6 +104,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         auth_deps,
         login_throttle,
         users,
+        metering_deps,
     };
 
     let static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
@@ -106,13 +117,25 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         // middleware a request hits. Desired hit order:
         //   1. request_context_middleware  (sets request_id + is_htmx)
         //   2. auth_middleware             (attaches CurrentUser + CSRF mint)
-        //   3. csrf_verify_middleware      (rejects state-changing requests
+        //   3. metering_middleware         (cap-check pre-handler; appends
+        //                                   request_log fire-and-forget
+        //                                   post-handler. Runs BEFORE CSRF
+        //                                   so a cap-block doesn't depend
+        //                                   on CSRF — and CSRF rejections
+        //                                   still get logged as 4xx with
+        //                                   cost_units = 0.)
+        //   4. csrf_verify_middleware      (rejects state-changing requests
         //                                   missing a valid double-submit
-        //                                   token; runs after auth so the
-        //                                   rejection can be attributed)
+        //                                   token; runs after auth + meter
+        //                                   so the rejection is attributed
+        //                                   and counted as $0 traffic.)
         .layer(from_fn_with_state(
             state.clone(),
             crate::middleware::csrf_verify_middleware,
+        ))
+        .layer(from_fn_with_state(
+            state.clone(),
+            crate::middleware::metering_middleware,
         ))
         .layer(from_fn_with_state(
             state.clone(),
@@ -122,6 +145,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
 
     let addr = state.config.addr();
     tracing::info!(addr = %addr, "starting unslog");
+
     let listener = TcpListener::bind(&addr).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

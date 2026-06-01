@@ -88,3 +88,6 @@ ammonia = "4"
 mockall = "0.12"
 # tempdir helper for tests that need a real filesystem path.
 tempfile = "3"
+# Source-grep for the metering route-coverage test — walks src/routes/
+# and asserts every endpoint has a billing decision.
+regex = "1"

@@ -1,4 +1,5 @@
 {% import "macros/forms.html" as forms %}
+{% import "macros/ui.html" as ui %}
 <!doctype html>
 <html lang="en"
       class="h-full"
@@ -113,8 +114,16 @@
         </nav>
         {% block sidebar_footer %}
         {% let current_label = ""|current_user_label %}
+        {% let is_master = ""|current_user_is_master %}
         {% if current_label|trim != "" %}
         <div class="app-sidebar__user">
+          {% let usage = ""|current_user_usage %}
+          {% if !is_master %}
+          <div class="app-sidebar__usage" x-show="!sidebarCollapsed" x-cloak>
+            <div class="section-label">Last 24h</div>
+            {% call ui::usage_bar(usage.0, usage.1, usage.2) %}
+          </div>
+          {% endif %}
           <div class="app-sidebar__user-label" title="Signed in as">
             <i data-lucide="user" class="h-4 w-4"></i>
             <span class="app-sidebar__user-name">{{ current_label }}</span>
