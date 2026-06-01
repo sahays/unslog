@@ -20,6 +20,9 @@ pub enum AppError {
     #[error(transparent)]
     Mongo(#[from] mongodb::error::Error),
 
+    #[error("database error")]
+    Sqlx(#[from] sqlx::Error),
+
     #[error(transparent)]
     Bson(#[from] bson::ser::Error),
 
@@ -57,7 +60,7 @@ impl AppError {
             Self::BadRequest(_) => "Bad request",
             Self::OpenRouterNotConfigured => "OpenRouter not configured",
             Self::Upstream(_) => "Upstream service error",
-            Self::Mongo(_) | Self::Bson(_) | Self::BsonDe(_) => "Database error",
+            Self::Mongo(_) | Self::Sqlx(_) | Self::Bson(_) | Self::BsonDe(_) => "Database error",
             Self::Io(_) => "I/O error",
             Self::Http(_) => "Network error",
             Self::Json(_) => "Bad data",

@@ -7,6 +7,7 @@ pub mod chat_transcript;
 pub mod company_store;
 pub mod critique;
 pub mod curator;
+pub mod db;
 pub mod evaluations;
 pub mod journal_store;
 pub mod llm_safety;

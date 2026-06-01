@@ -52,10 +52,12 @@ impl AppConfig {
             mongo_uri: env::var("MONGO_URI")
                 .unwrap_or_else(|_| "mongodb://localhost:27017".to_string()),
             mongo_db: env::var("MONGO_DB").unwrap_or_else(|_| "behavioral_coach".to_string()),
-            // Soft default for now — keeps existing dev boots working while
-            // Postgres tooling is being added. Will switch to hard-fail when
-            // the code swap lands.
-            database_url: env::var("DATABASE_URL").unwrap_or_default(),
+            // Soft default mirrors `scripts/dev-up.sh` so a fresh checkout
+            // boots against the project-scoped `unslog-pg` container without
+            // a `.env` change. Will switch to hard-fail when the code swap
+            // lands.
+            database_url: env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://unslog:unslog@localhost:5432/unslog".to_string()),
             openrouter_api_key: env::var("OPENROUTER_API_KEY").unwrap_or_default(),
             data_dir: env::var("DATA_DIR").unwrap_or_else(|_| "./data".to_string()),
             log_format: LogFormat::from_env(),
