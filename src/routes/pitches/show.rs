@@ -45,7 +45,7 @@ pub(super) async fn show(
     let pitch = super::load_pitch(&state, &slug).await?;
 
     let current = match &pitch.current_version_id {
-        Some(vid) => pitch_version_store::get(&state.db, vid).await?,
+        Some(vid) => pitch_version_store::get(&state.pool, vid).await?,
         None => None,
     };
 
@@ -63,7 +63,7 @@ pub(super) async fn show(
 }
 
 async fn siblings_view(state: &AppState, pitch: &Pitch) -> Result<Vec<SiblingPitch>, AppError> {
-    let rows = pitch_store::list_siblings(&state.db, &pitch.id).await?;
+    let rows = pitch_store::list_siblings(&state.pool, &pitch.id).await?;
     Ok(rows
         .into_iter()
         .map(|r| SiblingPitch {
@@ -78,7 +78,7 @@ async fn picker_entries(
     state: &AppState,
     pitch: &Pitch,
 ) -> Result<Vec<VersionPickerEntry>, AppError> {
-    let rows = pitch_version_store::list_for_picker(&state.db, &pitch.id).await?;
+    let rows = pitch_version_store::list_for_picker(&state.pool, &pitch.id).await?;
     let current = pitch.current_version_id.as_deref();
     Ok(rows
         .into_iter()
@@ -124,14 +124,7 @@ pub(super) async fn regenerate_version(
 ) -> Result<Response, AppError> {
     let pitch = super::load_pitch(&state, &slug).await?;
     let _existing = load_version(&state, &slug, &vid).await?;
-    pitch_lockin::regenerate_version(
-        &state.db,
-        &state.pool,
-        state.openrouter.as_ref(),
-        &pitch,
-        &vid,
-    )
-    .await?;
+    pitch_lockin::regenerate_version(&state.pool, state.openrouter.as_ref(), &pitch, &vid).await?;
     Ok(Redirect::to(&format!("/pitches/{slug}/versions/{vid}")).into_response())
 }
 
@@ -140,7 +133,7 @@ async fn load_version(
     pitch_id: &str,
     version_id: &str,
 ) -> Result<PitchVersion, AppError> {
-    pitch_version_store::find_by_pitch_and_id(&state.db, pitch_id, version_id)
+    pitch_version_store::find_by_pitch_and_id(&state.pool, pitch_id, version_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("pitch version {version_id}")))
 }

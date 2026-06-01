@@ -1,18 +1,21 @@
 //! Pitches — canonical answers to intro/narrative interview questions.
 //!
 //! A `Pitch` is the persistent shell for one intro-question type (e.g.
-//! "Tell me about yourself"). Catalog data (question_text, blurb,
-//! sort_order) is system-seeded; user state (status, chat, current version)
-//! lives on the same row because the app is single-user — re-seed uses
-//! `$setOnInsert` so it never clobbers state. When per-company variants
-//! (#3) land, state will split into a separate collection keyed by
-//! `(pitch_id, company_id)`.
+//! "Tell me about yourself"). Catalog data (`question_text`, `blurb`,
+//! `sort_order`) lives on the `pitches` row (global, slug-id, seeded);
+//! per-user state (`status`, `current_version_id`, `chat`) lives on
+//! `pitch_user_state` keyed by `(owner_id, pitch_id)` — see migration
+//! 0004. Reads do a LEFT JOIN so the in-memory `Pitch` keeps the unified
+//! shape callers expect, while writes target each side independently
+//! (catalog stays read-only; state UPSERTs into `pitch_user_state`).
 //!
 //! `PitchVersion` is an immutable snapshot of the locked-in spoken answer.
 //! No bullets layer — intro answers are narrative, not structured incident
 //! proofs, so the prose IS the artifact (short ≈ 90s, long ≈ 3min).
 
 use serde::{Deserialize, Serialize};
+
+use crate::services::id_gen::{self, Kind};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -23,14 +26,25 @@ pub enum PitchStatus {
 }
 
 impl PitchStatus {
-    /// String form that mirrors the serde `rename_all = "snake_case"` mapping.
-    /// Use this for raw bson update docs so the literal can never drift from
-    /// the on-disk representation.
+    /// String form that mirrors the serde `rename_all = "snake_case"`
+    /// mapping. Use this for Postgres CHECK literals
+    /// (`pitch_user_state.status`) so the on-disk representation can never
+    /// drift from the enum.
     pub fn as_str(self) -> &'static str {
         match self {
             PitchStatus::NotStarted => "not_started",
             PitchStatus::InProgress => "in_progress",
             PitchStatus::Locked => "locked",
+        }
+    }
+
+    /// Inverse of [`as_str`]. Mirrors the CHECK in migration 0004.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "not_started" => Some(Self::NotStarted),
+            "in_progress" => Some(Self::InProgress),
+            "locked" => Some(Self::Locked),
+            _ => None,
         }
     }
 }
@@ -62,6 +76,8 @@ pub struct Pitch {
 }
 
 impl Pitch {
+    /// Legacy Mongo collection name. Retained for the one-shot importer
+    /// until the mongodb/bson deps are dropped.
     pub const COLLECTION: &'static str = "pitches";
 }
 
@@ -83,5 +99,12 @@ pub struct PitchVersion {
 }
 
 impl PitchVersion {
+    /// Legacy Mongo collection name. Retained for the one-shot importer
+    /// until the mongodb/bson deps are dropped.
     pub const COLLECTION: &'static str = "pitch_versions";
+
+    /// Mint a fresh pitch-version id via the shared minter.
+    pub fn new_id() -> String {
+        id_gen::new(Kind::PitchVersion)
+    }
 }

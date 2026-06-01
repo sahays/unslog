@@ -24,7 +24,7 @@ pub struct PitchTile {
 }
 
 pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let pitches = pitch_store::list_all(&state.db).await?;
+    let pitches = pitch_store::list_all(&state.pool).await?;
     let tiles: Vec<PitchTile> = pitches.into_iter().map(tile_from).collect();
     crate::error::render_html(IndexTemplate { tiles })
 }

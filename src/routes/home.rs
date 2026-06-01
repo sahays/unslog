@@ -84,7 +84,7 @@ async fn load_in_progress(state: &AppState) -> Result<Vec<InProgressRow>, AppErr
     let (active_sessions, in_progress_stories, in_progress_pitches) = futures::try_join!(
         sessions::list_active(&state.pool),
         story_store::list_in_progress(&state.pool),
-        pitch_store::list_in_progress(&state.db),
+        pitch_store::list_in_progress(&state.pool),
     )?;
 
     let company_by_id = if active_sessions.is_empty() {

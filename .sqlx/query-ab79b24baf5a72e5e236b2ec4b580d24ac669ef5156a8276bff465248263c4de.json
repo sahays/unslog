@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT p.id AS slug, p.question_text, s.updated_at\n           FROM pitch_user_state s\n           JOIN pitches p ON p.id = s.pitch_id\n           WHERE s.owner_id = $1 AND s.status = 'in_progress'\n           ORDER BY s.updated_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "question_text",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ab79b24baf5a72e5e236b2ec4b580d24ac669ef5156a8276bff465248263c4de"
+}

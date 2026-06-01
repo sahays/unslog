@@ -1,27 +1,33 @@
-//! Canonical pitch catalog — seeded on first run, state preserved across
-//! restarts.
+//! Canonical pitch catalog (`pitches`) + per-user state
+//! (`pitch_user_state`). The catalog is seeded on first boot; per-user
+//! state is created lazily by the first chat turn / lock-in.
 //!
-//! Each seed row inserts only when the row is missing (`$setOnInsert`), so a
-//! deployed app gets new pitch types when the seed list grows without
-//! clobbering any chat the user has already accumulated on existing rows.
+//! All reads do a LEFT JOIN so callers see a unified [`Pitch`] (catalog
+//! cols + state cols, with `not_started` defaults when no state row
+//! exists). All writes target `pitch_user_state` via UPSERT — the catalog
+//! is read-only at runtime. Seed code lives in [`seed`] so this file stays
+//! within the per-file LOC budget.
 
-use futures::TryStreamExt;
-use mongodb::options::FindOptions;
-use mongodb::Database;
+use chrono::{DateTime, Utc};
+use sqlx::types::Json;
 use sqlx::PgPool;
 
 use crate::error::AppError;
-use crate::models::{ChatTurn, Pitch, PitchStatus, Role};
+use crate::models::{ChatTurn, Pitch, PitchStatus};
 use crate::services::current_owner::TEMP_OWNER_ID;
 
-/// Hard ceiling on the embedded chat array. Mirrors `story_store` — the
-/// UX assumes a ~50-turn working set, the cap blocks pathological loops
-/// well before the 16 MB Mongo doc limit. Hitting the cap surfaces a
-/// 400 telling the user to lock in and continue from there.
+#[path = "pitch_store_seed.rs"]
+mod seed;
+pub use seed::{pitch_question_id, seed_defaults};
+
+/// Hard ceiling on the embedded chat array. The UX assumes a ~50-turn
+/// working set; the cap blocks pathological loops well below the JSONB
+/// document limit. Hitting the cap surfaces a 400 telling the user to
+/// lock in and refine from there.
 const MAX_CHAT_TURNS: usize = 100;
 
 /// Pure capacity guard for [`push_turn`]. Split out for unit testing
-/// without a live `&Database` handle.
+/// without a live `&PgPool` handle.
 fn check_chat_capacity(current_len: usize) -> Result<(), AppError> {
     if current_len >= MAX_CHAT_TURNS {
         return Err(AppError::BadRequest(format!(
@@ -31,222 +37,116 @@ fn check_chat_capacity(current_len: usize) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Seven canonical intro/narrative questions. Slug = `_id`. Tuple is
-/// `(slug, question_text, blurb)`. Index drives `sort_order`, so the order
-/// here is the order shown on the tile grid.
-const SEED: &[(&str, &str, &str)] = &[
-    (
-        "tell-me-about-yourself",
-        "Tell me about yourself.",
-        "The opening pitch — who you are, how you got here, why this matters now.",
-    ),
-    (
-        "why-this-role",
-        "Why this role?",
-        "What about this role fits where you're going next, beyond the company.",
-    ),
-    (
-        "why-this-company",
-        "Why this company?",
-        "What pulled you specifically here, in this candidate's voice — not the careers page.",
-    ),
-    (
-        "walk-through-resume",
-        "Walk me through your resume.",
-        "The narrative arc of your career — why each move, what the throughline is.",
-    ),
-    (
-        "five-year-plan",
-        "Where do you see yourself in five years?",
-        "Direction, not destination. What you want to be doing and learning.",
-    ),
-    (
-        "key-strength",
-        "What is your greatest strength?",
-        "A real strength with one concrete moment that proves it, not a buzzword.",
-    ),
-    (
-        "key-weakness",
-        "What is your greatest weakness?",
-        "A real weakness — what you've done about it, what's still in progress.",
-    ),
-];
+// ── Row adapters ─────────────────────────────────────────────────────────
 
-/// On startup, idempotently upsert each canonical pitch row (Mongo) and a
-/// matching role-only Question for the bank (Postgres after Phase A.6).
-/// Existing user state — Mongo pitch row's status / chat /
-/// current_version_id, and any tags the user added to the mirrored
-/// question — is preserved via `$setOnInsert` / `ON CONFLICT DO NOTHING`.
-pub async fn seed_defaults(db: &Database, pool: &PgPool) -> Result<(), AppError> {
-    let coll = db.collection::<Pitch>(Pitch::COLLECTION);
-    let now = chrono::Utc::now();
-    let now_str = now.to_rfc3339();
-    for (i, (slug, question_text, blurb)) in SEED.iter().enumerate() {
-        coll.update_one(
-            bson::doc! { "_id": *slug },
-            bson::doc! {
-                "$setOnInsert": {
-                    "_id": *slug,
-                    "question_text": *question_text,
-                    "blurb": *blurb,
-                    "sort_order": i as i32,
-                    "status": "not_started",
-                    "current_version_id": bson::Bson::Null,
-                    "chat": bson::Bson::Array(Vec::new()),
-                    "created_at": &now_str,
-                    "updated_at": &now_str,
-                },
-            },
-        )
-        .upsert(true)
-        .await?;
-        seed_pitch_question_row(pool, slug, question_text, now).await?;
+/// JOINed row used by `get` / `list_all`. The state-side columns are
+/// NULL-safe via COALESCE in the SQL, so we can decode them as plain
+/// non-Option fields here.
+#[derive(sqlx::FromRow)]
+struct PitchJoinRow {
+    id: String,
+    question_text: String,
+    blurb: String,
+    sort_order: i32,
+    created_at: DateTime<Utc>,
+    status: String,
+    current_version_id: Option<String>,
+    chat: Json<Vec<ChatTurn>>,
+    updated_at: DateTime<Utc>,
+}
+
+impl PitchJoinRow {
+    fn try_into_pitch(self) -> Result<Pitch, AppError> {
+        Ok(Pitch {
+            id: self.id,
+            question_text: self.question_text,
+            blurb: self.blurb,
+            sort_order: self.sort_order,
+            status: parse_status(&self.status)?,
+            current_version_id: self.current_version_id,
+            chat: self.chat.0,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        })
     }
-    tracing::info!(count = SEED.len(), "seeded canonical pitches");
-    Ok(())
 }
 
-/// Mirror one pitch slug into the Postgres `questions` table as a
-/// role-only question. Idempotent via the PK conflict.
-async fn seed_pitch_question_row(
-    pool: &PgPool,
-    slug: &str,
-    text: &str,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Result<(), AppError> {
-    sqlx::query(
-        r#"INSERT INTO questions
-           (id, owner_id, text, source, role, categories, company_id, added_at)
-           VALUES ($1, $2, $3, 'pitch', $4, '[]'::jsonb, NULL, $5)
-           ON CONFLICT (id) DO NOTHING"#,
-    )
-    .bind(pitch_question_id(slug))
-    .bind(TEMP_OWNER_ID)
-    .bind(text)
-    .bind(Role::SolutionsArchitect.as_str())
-    .bind(now)
-    .execute(pool)
-    .await?;
-    Ok(())
+fn parse_status(s: &str) -> Result<PitchStatus, AppError> {
+    PitchStatus::parse(s).ok_or_else(|| {
+        AppError::Other(anyhow::anyhow!(
+            "pitch_user_state.status {s:?} not in CHECK set"
+        ))
+    })
 }
 
-/// Deterministic Question id for a pitch — `qstpitchN` where N is the
-/// 1-based slot in [`SEED`]. Satisfies the Postgres CHECK
-/// `^qst[a-z0-9]{6}$` (3-char prefix + 6 alphanum). Append-only growth
-/// of SEED keeps ids stable across boots.
-pub fn pitch_question_id(slug: &str) -> String {
-    let slot = SEED
-        .iter()
-        .position(|(s, _, _)| *s == slug)
-        .map_or(0, |i| i + 1);
-    format!("qstpitch{slot}")
-}
+/// Columns selected by every catalog+state JOIN read. Centralized so a
+/// schema add only edits one place.
+const JOIN_COLS: &str = r#"p.id, p.question_text, p.blurb, p.sort_order, p.created_at,
+    COALESCE(s.status, 'not_started') AS status,
+    s.current_version_id,
+    COALESCE(s.chat, '[]'::jsonb) AS "chat: Json<Vec<ChatTurn>>",
+    COALESCE(s.updated_at, p.created_at) AS updated_at"#;
 
-pub async fn list_all(db: &Database) -> Result<Vec<Pitch>, AppError> {
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "sort_order": 1 })
-        .build();
-    let cursor = db
-        .collection::<Pitch>(Pitch::COLLECTION)
-        .find(bson::doc! {})
-        .with_options(opts)
+// ── Reads ────────────────────────────────────────────────────────────────
+
+pub async fn get(pool: &PgPool, slug: &str) -> Result<Option<Pitch>, AppError> {
+    let sql = format!(
+        "SELECT {JOIN_COLS} FROM pitches p \
+         LEFT JOIN pitch_user_state s \
+         ON s.pitch_id = p.id AND s.owner_id = $1 \
+         WHERE p.id = $2"
+    );
+    let row: Option<PitchJoinRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .bind(slug)
+        .fetch_optional(pool)
         .await?;
-    Ok(cursor.try_collect().await?)
+    row.map(PitchJoinRow::try_into_pitch).transpose()
+}
+
+pub async fn list_all(pool: &PgPool) -> Result<Vec<Pitch>, AppError> {
+    let sql = format!(
+        "SELECT {JOIN_COLS} FROM pitches p \
+         LEFT JOIN pitch_user_state s \
+         ON s.pitch_id = p.id AND s.owner_id = $1 \
+         ORDER BY p.sort_order"
+    );
+    let rows: Vec<PitchJoinRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .fetch_all(pool)
+        .await?;
+    rows.into_iter().map(PitchJoinRow::try_into_pitch).collect()
 }
 
 /// Tight projection for the home page's "In progress" feed — never need
 /// the embedded chat or version pointer to render the row.
-#[derive(serde::Deserialize)]
 pub struct InProgressRow {
-    #[serde(rename = "_id")]
     pub slug: String,
     pub question_text: String,
-    #[serde(with = "crate::models::datetime_compat::required")]
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
-/// In-progress pitches only, newest-touched-first.
-pub async fn list_in_progress(db: &Database) -> Result<Vec<InProgressRow>, AppError> {
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "updated_at": -1 })
-        .projection(bson::doc! { "_id": 1, "question_text": 1, "updated_at": 1 })
-        .build();
-    let cursor = db
-        .collection::<InProgressRow>(Pitch::COLLECTION)
-        .find(bson::doc! { "status": PitchStatus::InProgress.as_str() })
-        .with_options(opts)
-        .await?;
-    Ok(cursor.try_collect().await?)
-}
-
-pub async fn get(db: &Database, slug: &str) -> Result<Option<Pitch>, AppError> {
-    Ok(db
-        .collection::<Pitch>(Pitch::COLLECTION)
-        .find_one(bson::doc! { "_id": slug })
-        .await?)
-}
-
-/// Append a chat turn and bump `updated_at`. Mirrors the helper in
-/// `services::story_store::push_turn`. Refuses to grow the embedded
-/// `chat[]` past [`MAX_CHAT_TURNS`] turns — the caller should lock in
-/// a version and start a refine chat from a clean slate.
-pub async fn push_turn(db: &Database, pitch: &mut Pitch, turn: ChatTurn) -> Result<(), AppError> {
-    check_chat_capacity(pitch.chat.len())?;
-    let now = chrono::Utc::now();
-    let turn_doc = bson::to_bson(&turn)?;
-    db.collection::<Pitch>(Pitch::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": &pitch.id },
-            bson::doc! {
-                "$push": { "chat": turn_doc },
-                "$set":  {
-                    "updated_at": now.to_rfc3339(),
-                    "status": PitchStatus::InProgress.as_str(),
-                },
-            },
-        )
-        .await?;
-    pitch.chat.push(turn);
-    pitch.updated_at = now;
-    if matches!(pitch.status, PitchStatus::NotStarted) {
-        pitch.status = PitchStatus::InProgress;
-    }
-    Ok(())
-}
-
-/// Update `current_version_id` and flip status to Locked. Called by
-/// `pitch_lockin::generate_and_save` after a new version is inserted.
-pub async fn set_current_version(
-    db: &Database,
-    pitch_id: &str,
-    version_id: &str,
-) -> Result<(), AppError> {
-    db.collection::<Pitch>(Pitch::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": pitch_id },
-            bson::doc! { "$set": {
-                "current_version_id": version_id,
-                "status": PitchStatus::Locked.as_str(),
-                "updated_at": chrono::Utc::now().to_rfc3339(),
-            } },
-        )
-        .await?;
-    Ok(())
-}
-
-/// Reopen a locked pitch for refinement — flips status back to InProgress
-/// so the next lock-in creates vN+1.
-pub async fn reopen(db: &Database, pitch_id: &str) -> Result<(), AppError> {
-    db.collection::<Pitch>(Pitch::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": pitch_id },
-            bson::doc! { "$set": {
-                "status": PitchStatus::InProgress.as_str(),
-                "updated_at": chrono::Utc::now().to_rfc3339(),
-            } },
-        )
-        .await?;
-    Ok(())
+/// In-progress pitches only, newest-touched-first. Inner-joined — only
+/// pitches the user has touched count for this feed.
+pub async fn list_in_progress(pool: &PgPool) -> Result<Vec<InProgressRow>, AppError> {
+    let rows = sqlx::query!(
+        r#"SELECT p.id AS slug, p.question_text, s.updated_at
+           FROM pitch_user_state s
+           JOIN pitches p ON p.id = s.pitch_id
+           WHERE s.owner_id = $1 AND s.status = 'in_progress'
+           ORDER BY s.updated_at DESC"#,
+        TEMP_OWNER_ID,
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| InProgressRow {
+            slug: r.slug,
+            question_text: r.question_text,
+            updated_at: r.updated_at,
+        })
+        .collect())
 }
 
 /// Sibling-pitch projection used by the show-page sidebar quick-jump panel.
@@ -257,50 +157,123 @@ pub struct SiblingRow {
     pub status: PitchStatus,
 }
 
-/// All other pitches (everything except `pitch_id`), sorted by `sort_order`.
-/// Drives the sidebar on `/pitches/:slug`.
-pub async fn list_siblings(db: &Database, pitch_id: &str) -> Result<Vec<SiblingRow>, AppError> {
-    #[derive(serde::Deserialize)]
-    struct Row {
-        #[serde(rename = "_id")]
-        id: String,
-        question_text: String,
-        status: PitchStatus,
-    }
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "sort_order": 1 })
-        .projection(bson::doc! { "_id": 1, "question_text": 1, "status": 1 })
-        .build();
-    let cursor = db
-        .collection::<Row>(Pitch::COLLECTION)
-        .find(bson::doc! { "_id": { "$ne": pitch_id } })
-        .with_options(opts)
-        .await?;
-    let rows: Vec<Row> = cursor.try_collect().await?;
-    Ok(rows
-        .into_iter()
-        .map(|r| SiblingRow {
-            slug: r.id,
-            question_text: r.question_text,
-            status: r.status,
+/// All other pitches (everything except `pitch_id`), sorted by `sort_order`,
+/// each carrying its per-user status (or `not_started` when absent).
+pub async fn list_siblings(pool: &PgPool, pitch_id: &str) -> Result<Vec<SiblingRow>, AppError> {
+    let rows = sqlx::query!(
+        r#"SELECT p.id AS slug, p.question_text,
+                  COALESCE(s.status, 'not_started') AS "status!"
+           FROM pitches p
+           LEFT JOIN pitch_user_state s
+             ON s.pitch_id = p.id AND s.owner_id = $1
+           WHERE p.id <> $2
+           ORDER BY p.sort_order"#,
+        TEMP_OWNER_ID,
+        pitch_id,
+    )
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|r| {
+            Ok(SiblingRow {
+                slug: r.slug,
+                question_text: r.question_text,
+                status: parse_status(&r.status)?,
+            })
         })
-        .collect())
+        .collect()
 }
 
-/// Wipe chat and version pointer, return status to not_started. Used by
-/// the delete-and-restart action on the show page.
-pub async fn reset(db: &Database, pitch_id: &str) -> Result<(), AppError> {
-    db.collection::<Pitch>(Pitch::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": pitch_id },
-            bson::doc! { "$set": {
-                "status": PitchStatus::NotStarted.as_str(),
-                "current_version_id": bson::Bson::Null,
-                "chat": bson::Bson::Array(Vec::new()),
-                "updated_at": chrono::Utc::now().to_rfc3339(),
-            } },
-        )
+// ── Writes (target `pitch_user_state`) ───────────────────────────────────
+
+/// Append a chat turn and bump `updated_at`. UPSERTs the user-state row,
+/// flipping `status` to `in_progress` (preserves `locked` to avoid
+/// stomping a lock-in mid-refine). Refuses to grow `chat[]` past
+/// [`MAX_CHAT_TURNS`].
+pub async fn push_turn(pool: &PgPool, pitch: &mut Pitch, turn: ChatTurn) -> Result<(), AppError> {
+    check_chat_capacity(pitch.chat.len())?;
+    let now = chrono::Utc::now();
+    let turn_json = serde_json::to_value(&turn).map_err(|e| AppError::Other(e.into()))?;
+    // TODO(phase-1): use request-bound owner.
+    sqlx::query(
+        r#"INSERT INTO pitch_user_state
+               (owner_id, pitch_id, status, chat, updated_at)
+           VALUES ($1, $2, 'in_progress', jsonb_build_array($3::jsonb), $4)
+           ON CONFLICT (owner_id, pitch_id) DO UPDATE
+             SET chat = pitch_user_state.chat || $3::jsonb,
+                 status = CASE WHEN pitch_user_state.status = 'locked'
+                               THEN 'locked' ELSE 'in_progress' END,
+                 updated_at = $4"#,
+    )
+    .bind(TEMP_OWNER_ID)
+    .bind(&pitch.id)
+    .bind(turn_json)
+    .bind(now)
+    .execute(pool)
+    .await?;
+    pitch.chat.push(turn);
+    pitch.updated_at = now;
+    if matches!(pitch.status, PitchStatus::NotStarted) {
+        pitch.status = PitchStatus::InProgress;
+    }
+    Ok(())
+}
+
+/// Update `current_version_id` and flip status to Locked. UPSERTs the
+/// state row so a lock-in can land on a pitch that has no state row yet
+/// (defensive — `push_turn` will have created one in normal flow).
+pub async fn set_current_version(
+    pool: &PgPool,
+    pitch_id: &str,
+    version_id: &str,
+) -> Result<(), AppError> {
+    upsert_state_status(pool, pitch_id, PitchStatus::Locked, Some(version_id)).await
+}
+
+/// Reopen a locked pitch for refinement — flips status back to InProgress
+/// so the next lock-in creates vN+1. Preserves `current_version_id`.
+pub async fn reopen(pool: &PgPool, pitch_id: &str) -> Result<(), AppError> {
+    upsert_state_status(pool, pitch_id, PitchStatus::InProgress, None).await
+}
+
+/// Wipe per-user state — DELETE returns the pitch to the implicit
+/// "not_started" view (COALESCE in the JOIN reads). Past versions stay in
+/// `pitch_versions` (immutable history) but no longer point to a current.
+pub async fn reset(pool: &PgPool, pitch_id: &str) -> Result<(), AppError> {
+    sqlx::query("DELETE FROM pitch_user_state WHERE owner_id = $1 AND pitch_id = $2")
+        .bind(TEMP_OWNER_ID)
+        .bind(pitch_id)
+        .execute(pool)
         .await?;
+    Ok(())
+}
+
+/// Shared UPSERT body for `set_current_version` (Locked + version) and
+/// `reopen` (InProgress, keep existing version). The `version_id`
+/// argument, when `Some`, overrides the existing pointer; when `None`,
+/// existing pointer is preserved on UPDATE.
+async fn upsert_state_status(
+    pool: &PgPool,
+    pitch_id: &str,
+    status: PitchStatus,
+    version_id: Option<&str>,
+) -> Result<(), AppError> {
+    sqlx::query(
+        r#"INSERT INTO pitch_user_state
+               (owner_id, pitch_id, status, current_version_id, chat, updated_at)
+           VALUES ($1, $2, $3, $4, '[]'::jsonb, NOW())
+           ON CONFLICT (owner_id, pitch_id) DO UPDATE
+             SET status = EXCLUDED.status,
+                 current_version_id =
+                     COALESCE(EXCLUDED.current_version_id, pitch_user_state.current_version_id),
+                 updated_at = NOW()"#,
+    )
+    .bind(TEMP_OWNER_ID)
+    .bind(pitch_id)
+    .bind(status.as_str())
+    .bind(version_id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

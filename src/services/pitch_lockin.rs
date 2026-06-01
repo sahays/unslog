@@ -4,7 +4,6 @@
 //! so the prose IS the artifact (parallel to `story_spoken`, but without
 //! the intermediate StoryBody).
 
-use mongodb::Database;
 use serde::Deserialize;
 use sqlx::PgPool;
 
@@ -26,10 +25,9 @@ struct LockinPayload {
 }
 
 /// Lock the current chat into a new `PitchVersion`. Inserts a new
-/// version row, repoints `pitches.current_version_id`, flips status to
-/// Locked.
+/// version row, repoints `pitch_user_state.current_version_id`, flips
+/// status to Locked.
 pub async fn generate_and_save(
-    db: &Database,
     pool: &PgPool,
     or: &dyn LlmClient,
     pitch: &Pitch,
@@ -49,21 +47,12 @@ pub async fn generate_and_save(
     }
 
     let payload = call_lockin_model(pool, or, pitch).await?;
-    let pitch_id = pitch.id.clone();
-    let short = payload.short.trim().to_string();
-    let long = payload.long.trim().to_string();
+    let short = payload.short.trim();
+    let long = payload.long.trim();
     // The unique `(pitch_id, version_n)` index protects against the
     // double-submit race; the helper retries once on duplicate-key.
-    let version = pitch_version_store::insert_with_next_n(db, &pitch_id, |n| PitchVersion {
-        id: uuid::Uuid::now_v7().to_string(),
-        pitch_id: pitch_id.clone(),
-        version_n: n,
-        short: short.clone(),
-        long: long.clone(),
-        created_at: chrono::Utc::now(),
-    })
-    .await?;
-    pitch_store::set_current_version(db, &pitch.id, &version.id).await?;
+    let version = pitch_version_store::insert_with_next_n(pool, &pitch.id, short, long).await?;
+    pitch_store::set_current_version(pool, &pitch.id, &version.id).await?;
 
     tracing::info!(
         event = "pitch.lockin",
@@ -81,7 +70,6 @@ pub async fn generate_and_save(
 /// the same id and version_n). Used by the regenerate button on the
 /// version page when the user wants a different draft from the same chat.
 pub async fn regenerate_version(
-    db: &Database,
     pool: &PgPool,
     or: &dyn LlmClient,
     pitch: &Pitch,
@@ -102,7 +90,7 @@ pub async fn regenerate_version(
 
     let payload = call_lockin_model(pool, or, pitch).await?;
     pitch_version_store::replace_in_place(
-        db,
+        pool,
         version_id,
         &pitch.id,
         payload.short.trim(),

@@ -42,7 +42,7 @@ pub fn routes() -> Router<AppState> {
 // ── Helpers shared by landing + show + chat ──────────────────────────────
 
 async fn load_pitch(state: &AppState, slug: &str) -> Result<Pitch, AppError> {
-    pitch_store::get(&state.db, slug)
+    pitch_store::get(&state.pool, slug)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("pitch {slug}")))
 }
@@ -106,7 +106,7 @@ async fn reset_pitch(
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> Result<Response, AppError> {
-    pitch_store::reset(&state.db, &slug).await?;
+    pitch_store::reset(&state.pool, &slug).await?;
     tracing::info!(event = "pitch.reset", pitch_id = %slug, "pitch reset to not_started");
     Ok(Redirect::to(&format!("/pitches/{slug}")).into_response())
 }
@@ -118,5 +118,5 @@ pub(crate) async fn push_turn(
     pitch: &mut Pitch,
     turn: ChatTurn,
 ) -> Result<(), AppError> {
-    pitch_store::push_turn(&state.db, pitch, turn).await
+    pitch_store::push_turn(&state.pool, pitch, turn).await
 }

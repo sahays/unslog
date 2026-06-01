@@ -59,8 +59,7 @@ pub(super) async fn post_turn(
     }
 
     if lock_in {
-        pitch_lockin::generate_and_save(&state.db, &state.pool, state.openrouter.as_ref(), &pitch)
-            .await?;
+        pitch_lockin::generate_and_save(&state.pool, state.openrouter.as_ref(), &pitch).await?;
     }
 
     Ok(Redirect::to(&format!("/pitches/{slug}")).into_response())
@@ -80,8 +79,7 @@ pub(super) async fn generate(
             "no chat content yet — answer at least one probe before generating".into(),
         ));
     }
-    pitch_lockin::generate_and_save(&state.db, &state.pool, state.openrouter.as_ref(), &pitch)
-        .await?;
+    pitch_lockin::generate_and_save(&state.pool, state.openrouter.as_ref(), &pitch).await?;
     Ok(Redirect::to(&format!("/pitches/{slug}")).into_response())
 }
 
@@ -103,7 +101,7 @@ pub(super) async fn continue_chat(
         ));
     }
 
-    pitch_store::reopen(&state.db, &pitch.id).await?;
+    pitch_store::reopen(&state.pool, &pitch.id).await?;
 
     let probe = super::run_chat_model(&state, &pitch).await?;
     let turn = ChatTurn {
