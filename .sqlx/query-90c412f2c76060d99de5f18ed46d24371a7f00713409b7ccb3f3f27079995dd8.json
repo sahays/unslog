@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE prompts\n        SET current_version_id = $2,\n            updated_at         = NOW()\n        WHERE name = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "90c412f2c76060d99de5f18ed46d24371a7f00713409b7ccb3f3f27079995dd8"
+}

@@ -7,6 +7,7 @@ use futures::TryStreamExt;
 use mongodb::options::FindOptions;
 use mongodb::{Collection, Database};
 use rand::seq::SliceRandom;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{Company, Question, QuestionSource, Role};
@@ -139,6 +140,7 @@ pub fn pick_random<'a>(pool: &'a [Question], seen: &HashSet<String>) -> Option<&
 /// initial-create path and the refresh-packet path.
 pub async fn append_skipping_existing(
     db: &Database,
+    pool: &PgPool,
     or: &dyn LlmClient,
     company: &Company,
     candidates: Vec<String>,
@@ -157,6 +159,7 @@ pub async fn append_skipping_existing(
     if appended_n > 0 {
         categorize_and_append(
             db,
+            pool,
             or,
             new_questions,
             QuestionSource::Agent,
@@ -174,6 +177,7 @@ pub async fn append_skipping_existing(
 /// shape, so it lives here. Returns the number of questions inserted.
 pub async fn categorize_and_append(
     db: &Database,
+    pool: &PgPool,
     openrouter: &dyn LlmClient,
     texts: Vec<String>,
     source: QuestionSource,
@@ -183,8 +187,8 @@ pub async fn categorize_and_append(
     if texts.is_empty() {
         return Ok(0);
     }
-    let settings = settings_store::load(db).await?;
-    let canonical = category_store::list_all(db).await?;
+    let settings = settings_store::load(pool).await?;
+    let canonical = category_store::list_all(pool).await?;
     let tags =
         categorize::classify_batch(openrouter, &settings.lite_model, &texts, &canonical).await;
     let by_text: std::collections::HashMap<String, Vec<String>> =

@@ -70,7 +70,7 @@ pub async fn create(
 
     // Run research synchronously — single user, expected to wait. Failures
     // become a packet-less company; user can hit "refresh packet" to retry.
-    let research_ctx = ResearchCtx { db: &state.db };
+    let research_ctx = ResearchCtx { pool: &state.pool };
     let agent_questions = match research::run(&research_ctx, &*state.openrouter, &name, &role).await
     {
         Ok(packet) => {
@@ -92,6 +92,7 @@ pub async fn create(
     company_store::insert(&state.db, &company).await?;
     let agent_questions_n = questions::append_skipping_existing(
         &state.db,
+        &state.pool,
         &*state.openrouter,
         &company,
         agent_questions,

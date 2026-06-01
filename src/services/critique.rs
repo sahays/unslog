@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{Attempt, Company, Critique, Session};
@@ -32,15 +33,20 @@ pub trait CritiqueDeps: Send + Sync {
 }
 
 /// Production impl of [`CritiqueDeps`].
+///
+/// Holds a Mongo `Database` reference for the book cache (assets remain on
+/// Mongo this phase) and a Postgres pool for the prompt store (ported to
+/// Postgres in Phase A Step 4).
 pub struct CritiqueCtx<'a> {
     pub db: &'a Database,
+    pub pool: &'a PgPool,
     pub book_cache: &'a BookCache,
 }
 
 #[async_trait]
 impl<'a> CritiqueDeps for CritiqueCtx<'a> {
     async fn get_critique_prompt_body(&self, version_id: &str) -> Result<String, AppError> {
-        let v = prompt_store::get_version(self.db, version_id)
+        let v = prompt_store::get_version(self.pool, version_id)
             .await?
             .ok_or_else(|| AppError::NotFound("critique prompt version".into()))?;
         Ok(v.body)

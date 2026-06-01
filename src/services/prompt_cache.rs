@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use mongodb::Database;
+use sqlx::PgPool;
 use tokio::sync::RwLock;
 
 use crate::error::AppError;
@@ -31,14 +31,14 @@ impl PromptCache {
     /// Return the current body for `name`, loading + caching on first
     /// read. Returns `Arc<String>` so the body can be cloned cheaply
     /// across many concurrent chat sessions.
-    pub async fn get(&self, db: &Database, name: &str) -> Result<Arc<String>, AppError> {
+    pub async fn get(&self, pool: &PgPool, name: &str) -> Result<Arc<String>, AppError> {
         {
             let guard = self.inner.read().await;
             if let Some(body) = guard.get(name) {
                 return Ok(body.clone());
             }
         }
-        let fresh = Arc::new(prompt_store::get_current_body(db, name).await?);
+        let fresh = Arc::new(prompt_store::get_current_body(pool, name).await?);
         let mut guard = self.inner.write().await;
         guard.insert(name.to_string(), fresh.clone());
         Ok(fresh)
@@ -49,8 +49,8 @@ impl PromptCache {
     /// cache stores the raw body and we append the schema per-call; the
     /// schema is `&'static str` so the append cost is negligible and we
     /// don't have to cache two variants per name.
-    pub async fn get_with_schema(&self, db: &Database, name: &str) -> Result<String, AppError> {
-        let body = self.get(db, name).await?;
+    pub async fn get_with_schema(&self, pool: &PgPool, name: &str) -> Result<String, AppError> {
+        let body = self.get(pool, name).await?;
         Ok(prompt_store::with_schema(name, body.as_ref().clone()))
     }
 

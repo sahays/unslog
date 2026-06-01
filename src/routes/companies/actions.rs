@@ -16,7 +16,7 @@ pub async fn refresh_packet(
 ) -> Result<Response, AppError> {
     let company = super::load_company(&state, &id).await?;
 
-    let research_ctx = ResearchCtx { db: &state.db };
+    let research_ctx = ResearchCtx { pool: &state.pool };
     let packet = research::run(
         &research_ctx,
         &*state.openrouter,
@@ -32,6 +32,7 @@ pub async fn refresh_packet(
 
     let appended_n = questions::append_skipping_existing(
         &state.db,
+        &state.pool,
         &*state.openrouter,
         &company,
         sample_questions,

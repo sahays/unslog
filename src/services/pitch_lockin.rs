@@ -6,6 +6,7 @@
 
 use mongodb::Database;
 use serde::Deserialize;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{Pitch, PitchVersion};
@@ -29,6 +30,7 @@ struct LockinPayload {
 /// Locked.
 pub async fn generate_and_save(
     db: &Database,
+    pool: &PgPool,
     or: &dyn LlmClient,
     pitch: &Pitch,
 ) -> Result<PitchVersion, AppError> {
@@ -46,7 +48,7 @@ pub async fn generate_and_save(
         ));
     }
 
-    let payload = call_lockin_model(db, or, pitch).await?;
+    let payload = call_lockin_model(pool, or, pitch).await?;
     let pitch_id = pitch.id.clone();
     let short = payload.short.trim().to_string();
     let long = payload.long.trim().to_string();
@@ -80,6 +82,7 @@ pub async fn generate_and_save(
 /// version page when the user wants a different draft from the same chat.
 pub async fn regenerate_version(
     db: &Database,
+    pool: &PgPool,
     or: &dyn LlmClient,
     pitch: &Pitch,
     version_id: &str,
@@ -97,7 +100,7 @@ pub async fn regenerate_version(
         ));
     }
 
-    let payload = call_lockin_model(db, or, pitch).await?;
+    let payload = call_lockin_model(pool, or, pitch).await?;
     pitch_version_store::replace_in_place(
         db,
         version_id,
@@ -116,12 +119,12 @@ pub async fn regenerate_version(
 }
 
 async fn call_lockin_model(
-    db: &Database,
+    pool: &PgPool,
     or: &dyn LlmClient,
     pitch: &Pitch,
 ) -> Result<LockinPayload, AppError> {
-    let settings = settings_store::load(db).await?;
-    let system = prompt_store::get_current_body_with_schema(db, PROMPT_NAME).await?;
+    let settings = settings_store::load(pool).await?;
+    let system = prompt_store::get_current_body_with_schema(pool, PROMPT_NAME).await?;
     let user = render_user_message(pitch);
 
     let raw = or

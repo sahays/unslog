@@ -12,6 +12,7 @@ use mongodb::options::FindOptions;
 use mongodb::Database;
 use rand::seq::SliceRandom;
 use serde::Deserialize;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{Category, Question, Role, Session, SessionStatus, Summary};
@@ -44,6 +45,7 @@ struct CuratorJson {
 pub async fn curate(
     or: &dyn LlmClient,
     db: &Database,
+    pg: &PgPool,
     lite_model: &str,
     role: Role,
     selected_company_ids: &[String],
@@ -67,7 +69,7 @@ pub async fn curate(
 
     let recent_summaries = recent_summaries(db, selected_company_ids).await?;
     let recently_asked = recently_asked_ids(db, selected_company_ids, role).await?;
-    let canonical = category_store::list_all(db).await?;
+    let canonical = category_store::list_all(pg).await?;
 
     let llm_attempt = try_llm_curate(
         or,

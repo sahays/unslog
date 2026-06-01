@@ -53,16 +53,16 @@ async fn render_edit(
     if !is_valid_prompt_name(name) {
         return Err(AppError::NotFound(format!("prompt {name}")));
     }
-    let prompt = store::get_prompt(&state.db, name)
+    let prompt = store::get_prompt(&state.pool, name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("prompt {name}")))?;
-    let versions = store::list_versions(&state.db, name).await?;
+    let versions = store::list_versions(&state.pool, name).await?;
     let total_n = versions.len() as u32;
     let active_n = active_version_number(&versions, &prompt.current_version_id);
     let body = if is_blank {
         String::new()
     } else {
-        store::get_current_body(&state.db, name).await?
+        store::get_current_body(&state.pool, name).await?
     };
     crate::error::render_html(EditTemplate {
         name: name.to_string(),
@@ -90,7 +90,7 @@ pub(super) async fn save(
     }
     let body = text_validation::sanitize_long(&form.body, MAX_PROMPT_BODY, "prompt body")?;
     let body_chars = body.chars().count();
-    let version = store::save_version(&state.db, &name, body, None).await?;
+    let version = store::save_version(&state.pool, &name, body, None).await?;
     state.prompt_cache.invalidate(&name).await;
     tracing::info!(
         event = "prompt.save",

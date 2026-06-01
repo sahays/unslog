@@ -37,7 +37,7 @@ pub(super) async fn post_turn(
 ) -> Result<Response, AppError> {
     let content = text_validation::sanitize_long(&form.content, MAX_CHAT_TURN_CHARS, "message")?;
     let mut story = super::load_story(&state, &id).await?;
-    let competency = category_store::get(&state.db, &story.competency_id)
+    let competency = category_store::get(&state.pool, &story.competency_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("competency {}", story.competency_id)))?;
 
@@ -66,7 +66,8 @@ pub(super) async fn post_turn(
     }
 
     if lock_in {
-        story_lockin::generate_and_save(&state.db, state.openrouter.as_ref(), &story).await?;
+        story_lockin::generate_and_save(&state.db, &state.pool, state.openrouter.as_ref(), &story)
+            .await?;
     }
 
     Ok(Redirect::to(&format!("/stories/{id}")).into_response())
@@ -79,7 +80,8 @@ pub(super) async fn generate(
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     let story = super::load_story(&state, &id).await?;
-    story_lockin::generate_and_save(&state.db, state.openrouter.as_ref(), &story).await?;
+    story_lockin::generate_and_save(&state.db, &state.pool, state.openrouter.as_ref(), &story)
+        .await?;
     Ok(Redirect::to(&format!("/stories/{id}")).into_response())
 }
 
@@ -100,7 +102,7 @@ pub(super) async fn continue_chat(
         .ok_or_else(|| AppError::NotFound(format!("story version {vid}")))?;
 
     let probe =
-        story_refine::kickoff(&state.db, state.openrouter.as_ref(), &story, &version).await?;
+        story_refine::kickoff(&state.pool, state.openrouter.as_ref(), &story, &version).await?;
 
     let turn = ChatTurn {
         role: ChatRole::Assistant,

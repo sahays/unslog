@@ -5,7 +5,7 @@
 //! Both are baked into the binary via `include_str!`.
 //!
 //! On first boot, missing `prompts` rows get a seed `prompt_versions` row
-//! from the embedded `prompt.md`. The schema is **not** stored in Mongo
+//! from the embedded `prompt.md`. The schema is **not** stored in Postgres
 //! (it's code-coupled — must match the Rust deserialization struct) and
 //! is appended at LLM-request time by [`get_current_body_with_schema`].
 //!
@@ -13,7 +13,7 @@
 //! and flip `prompts.current_version_id`. "Restore version X" is the
 //! same path, seeded from an older body.
 
-use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{Prompt, PromptVersion, PROMPT_NAMES};
@@ -58,29 +58,70 @@ pub fn schema_for(name: &str) -> Option<&'static str> {
 /// are fully-expanded Markdown, so the `/agents/<name>` edit flow never
 /// sees markers. Existing installs (already-seeded rows) are unaffected;
 /// the seed only writes when the row is missing.
-pub async fn seed_defaults(db: &Database) -> Result<(), AppError> {
-    let prompts = db.collection::<Prompt>(Prompt::COLLECTION);
-    let versions = db.collection::<PromptVersion>(PromptVersion::COLLECTION);
-
+pub async fn seed_defaults(pool: &PgPool) -> Result<(), AppError> {
+    let existing = list_existing_prompt_names(pool).await?;
+    let mut seeded = 0_usize;
     for name in PROMPT_NAMES {
-        let existing = prompts.find_one(bson::doc! { "_id": *name }).await?;
-        if existing.is_some() {
+        if existing.contains(*name) {
             continue;
         }
         let Some(seed) = seed_for(name) else { continue };
         let body = resolve_includes(seed);
-
-        let version = PromptVersion::new((*name).to_string(), body, None);
-        versions.insert_one(&version).await?;
-
-        let prompt = Prompt {
-            name: (*name).to_string(),
-            current_version_id: version.id.clone(),
-            updated_at: chrono::Utc::now(),
-        };
-        prompts.insert_one(&prompt).await?;
-        tracing::info!(prompt = name, "seeded default prompt");
+        seed_one(pool, name, body).await?;
+        seeded += 1;
+        tracing::info!(
+            event = "store.prompts.seed",
+            prompt = name,
+            "seeded default prompt"
+        );
     }
+    if seeded > 0 {
+        tracing::info!(
+            event = "store.prompts.seed.done",
+            seeded,
+            "prompt seeds applied"
+        );
+    }
+    Ok(())
+}
+
+async fn list_existing_prompt_names(
+    pool: &PgPool,
+) -> Result<std::collections::HashSet<String>, AppError> {
+    let rows = sqlx::query!("SELECT name FROM prompts")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(|r| r.name).collect())
+}
+
+/// Insert the initial version + prompts row for a single prompt name.
+/// Wrapped in a transaction so the FK from prompts.current_version_id to
+/// prompt_versions.id is satisfied atomically.
+async fn seed_one(pool: &PgPool, name: &str, body: String) -> Result<(), AppError> {
+    let version = PromptVersion::new(name.to_string(), body, None);
+    let mut tx = pool.begin().await?;
+    sqlx::query!(
+        r#"
+        INSERT INTO prompt_versions (id, prompt_name, body, restored_from)
+        VALUES ($1, $2, $3, NULL)
+        "#,
+        version.id,
+        version.prompt_name,
+        version.body,
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query!(
+        r#"
+        INSERT INTO prompts (name, current_version_id)
+        VALUES ($1, $2)
+        "#,
+        name,
+        version.id,
+    )
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
     Ok(())
 }
 
@@ -123,63 +164,106 @@ pub(crate) const SHARED_SNIPPETS: &[(&str, &str)] = &[
     ),
 ];
 
-/// Save a new version (append-only) and set it current.
+/// Save a new version (append-only) and set it current. Wrapped in a
+/// transaction — the prompts pointer must flip atomically with the new
+/// version row, or a parallel reader could see the old version after the
+/// new one's id is in `prompts.current_version_id`.
 pub async fn save_version(
-    db: &Database,
+    pool: &PgPool,
     name: &str,
     body: String,
     restored_from: Option<String>,
 ) -> Result<PromptVersion, AppError> {
-    let versions = db.collection::<PromptVersion>(PromptVersion::COLLECTION);
-    let prompts = db.collection::<Prompt>(Prompt::COLLECTION);
-
     let version = PromptVersion::new(name.to_string(), body, restored_from);
-    versions.insert_one(&version).await?;
-
-    prompts
-        .update_one(
-            bson::doc! { "_id": name },
-            bson::doc! { "$set": {
-                "current_version_id": &version.id,
-                "updated_at": chrono::Utc::now().to_rfc3339(),
-            } },
-        )
-        .await?;
-
+    let mut tx = pool.begin().await?;
+    sqlx::query!(
+        r#"
+        INSERT INTO prompt_versions (id, prompt_name, body, restored_from)
+        VALUES ($1, $2, $3, $4)
+        "#,
+        version.id,
+        version.prompt_name,
+        version.body,
+        version.restored_from,
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query!(
+        r#"
+        UPDATE prompts
+        SET current_version_id = $2,
+            updated_at         = NOW()
+        WHERE name = $1
+        "#,
+        name,
+        version.id,
+    )
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    tracing::info!(
+        event = "store.prompts.save_version",
+        prompt = name,
+        version_id = %version.id,
+        "prompt new version persisted",
+    );
     Ok(version)
 }
 
-pub async fn get_prompt(db: &Database, name: &str) -> Result<Option<Prompt>, AppError> {
-    let prompts = db.collection::<Prompt>(Prompt::COLLECTION);
-    Ok(prompts.find_one(bson::doc! { "_id": name }).await?)
+pub async fn get_prompt(pool: &PgPool, name: &str) -> Result<Option<Prompt>, AppError> {
+    let row = sqlx::query_as!(
+        Prompt,
+        r#"
+        SELECT name, current_version_id, updated_at
+        FROM prompts
+        WHERE name = $1
+        "#,
+        name,
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
 }
 
 pub async fn get_version(
-    db: &Database,
+    pool: &PgPool,
     version_id: &str,
 ) -> Result<Option<PromptVersion>, AppError> {
-    let versions = db.collection::<PromptVersion>(PromptVersion::COLLECTION);
-    Ok(versions.find_one(bson::doc! { "_id": version_id }).await?)
+    let row = sqlx::query_as!(
+        PromptVersion,
+        r#"
+        SELECT id, prompt_name, body, created_at, restored_from
+        FROM prompt_versions
+        WHERE id = $1
+        "#,
+        version_id,
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
 }
 
-pub async fn get_current_body(db: &Database, name: &str) -> Result<String, AppError> {
-    let Some(p) = get_prompt(db, name).await? else {
-        return Err(AppError::NotFound(format!("prompt {name}")));
-    };
-    let Some(v) = get_version(db, &p.current_version_id).await? else {
-        return Err(AppError::NotFound(format!(
-            "prompt version {} for {name}",
-            p.current_version_id
-        )));
-    };
-    Ok(v.body)
+pub async fn get_current_body(pool: &PgPool, name: &str) -> Result<String, AppError> {
+    let row = sqlx::query!(
+        r#"
+        SELECT pv.body
+        FROM prompts p
+        JOIN prompt_versions pv ON pv.id = p.current_version_id
+        WHERE p.name = $1
+        "#,
+        name,
+    )
+    .fetch_optional(pool)
+    .await?;
+    row.map(|r| r.body)
+        .ok_or_else(|| AppError::NotFound(format!("prompt {name}")))
 }
 
 /// `get_current_body` + `with_schema`. Use for any LLM call that sets
 /// `force_json=true` so the model sees the field shape without the body
 /// needing to embed it. Chat-only prompts (no schema) are unchanged.
-pub async fn get_current_body_with_schema(db: &Database, name: &str) -> Result<String, AppError> {
-    let body = get_current_body(db, name).await?;
+pub async fn get_current_body_with_schema(pool: &PgPool, name: &str) -> Result<String, AppError> {
+    let body = get_current_body(pool, name).await?;
     Ok(with_schema(name, body))
 }
 
@@ -192,18 +276,20 @@ pub fn with_schema(name: &str, body: String) -> String {
     }
 }
 
-pub async fn list_versions(db: &Database, name: &str) -> Result<Vec<PromptVersion>, AppError> {
-    use futures::TryStreamExt;
-    use mongodb::options::FindOptions;
-    let versions = db.collection::<PromptVersion>(PromptVersion::COLLECTION);
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "created_at": -1 })
-        .build();
-    let cursor = versions
-        .find(bson::doc! { "prompt_name": name })
-        .with_options(opts)
-        .await?;
-    Ok(cursor.try_collect().await?)
+pub async fn list_versions(pool: &PgPool, name: &str) -> Result<Vec<PromptVersion>, AppError> {
+    let rows = sqlx::query_as!(
+        PromptVersion,
+        r#"
+        SELECT id, prompt_name, body, created_at, restored_from
+        FROM prompt_versions
+        WHERE prompt_name = $1
+        ORDER BY created_at DESC
+        "#,
+        name,
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
 }
 
 // `PromptCache` lives in `crate::services::prompt_cache`.

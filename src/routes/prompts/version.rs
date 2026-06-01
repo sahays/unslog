@@ -29,7 +29,7 @@ pub(super) async fn view(
     if !is_valid_prompt_name(&name) {
         return Err(AppError::NotFound(format!("prompt {name}")));
     }
-    let version = store::get_version(&state.db, &version_id)
+    let version = store::get_version(&state.pool, &version_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("version {version_id}")))?;
     if version.prompt_name != name {
@@ -37,10 +37,10 @@ pub(super) async fn view(
             "version does not belong to this prompt".into(),
         ));
     }
-    let prompt = store::get_prompt(&state.db, &name)
+    let prompt = store::get_prompt(&state.pool, &name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("prompt {name}")))?;
-    let versions = store::list_versions(&state.db, &name).await?;
+    let versions = store::list_versions(&state.pool, &name).await?;
     let total_n = versions.len() as u32;
     let n = active_version_number(&versions, &version.id);
     let is_active = prompt.current_version_id == version.id;

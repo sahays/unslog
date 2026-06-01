@@ -161,6 +161,7 @@ async fn start(
 
     let session = crate::services::session::start(
         &state.db,
+        &state.pool,
         &*state.openrouter,
         crate::services::session::StartInput {
             role,

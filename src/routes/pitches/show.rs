@@ -124,7 +124,14 @@ pub(super) async fn regenerate_version(
 ) -> Result<Response, AppError> {
     let pitch = super::load_pitch(&state, &slug).await?;
     let _existing = load_version(&state, &slug, &vid).await?;
-    pitch_lockin::regenerate_version(&state.db, state.openrouter.as_ref(), &pitch, &vid).await?;
+    pitch_lockin::regenerate_version(
+        &state.db,
+        &state.pool,
+        state.openrouter.as_ref(),
+        &pitch,
+        &vid,
+    )
+    .await?;
     Ok(Redirect::to(&format!("/pitches/{slug}/versions/{vid}")).into_response())
 }
 

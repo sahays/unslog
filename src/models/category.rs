@@ -3,7 +3,11 @@ use serde::{Deserialize, Serialize};
 /// A canonical behavioral-interview competency category. Single global pool
 /// (not per-company) — Amazon's "Ownership" and Meta's equivalent map to the
 /// same row here. Cultural nuance lives in the company's research packet.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Backed by Postgres `categories` table after Phase A. Serde derives stay
+/// for now so any cross-resource serializer that re-emits a Category as part
+/// of a larger blob (none today, but the model is `pub`) continues to work.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Category {
     #[serde(rename = "_id")]
     pub id: String,
@@ -17,5 +21,8 @@ pub struct Category {
 }
 
 impl Category {
+    /// Legacy Mongo collection name. Retained only so any stragglers still
+    /// referencing it compile; new code reads/writes through `category_store`
+    /// which targets the Postgres `categories` table directly.
     pub const COLLECTION: &'static str = "categories";
 }

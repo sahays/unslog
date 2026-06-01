@@ -39,7 +39,7 @@ pub(super) async fn show(
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
     let story = super::load_story(&state, &id).await?;
-    let competency = category_store::get(&state.db, &story.competency_id)
+    let competency = category_store::get(&state.pool, &story.competency_id)
         .await?
         .unwrap_or_else(|| super::unknown_competency(&story.competency_id));
 
@@ -103,7 +103,7 @@ pub(super) async fn show_version(
 ) -> Result<Html<String>, AppError> {
     let story = super::load_story(&state, &id).await?;
     let version = load_version(&state, &id, &vid).await?;
-    let competency = category_store::get(&state.db, &story.competency_id)
+    let competency = category_store::get(&state.pool, &story.competency_id)
         .await?
         .unwrap_or_else(|| super::unknown_competency(&story.competency_id));
     let is_current = story.current_version_id.as_deref() == Some(version.id.as_str());
@@ -125,7 +125,8 @@ pub(super) async fn generate_spoken(
     Path((id, vid)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
     let version = load_version(&state, &id, &vid).await?;
-    story_spoken::generate_and_save(&state.db, state.openrouter.as_ref(), &version).await?;
+    story_spoken::generate_and_save(&state.db, &state.pool, state.openrouter.as_ref(), &version)
+        .await?;
     Ok(Redirect::to(&format!("/stories/{id}/versions/{vid}")).into_response())
 }
 

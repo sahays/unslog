@@ -10,6 +10,7 @@
 
 use anyhow::Result;
 use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::evals::adversarial;
 use crate::evals::gold;
@@ -25,7 +26,8 @@ pub struct ScoreOptions {
 }
 
 pub async fn score_all(
-    db: &Database,
+    _db: &Database,
+    pool: &PgPool,
     data_dir: &str,
     targets: &[Target],
     client: Option<&dyn LlmClient>,
@@ -37,7 +39,7 @@ pub async fn score_all(
             Target::StorySummary => score_story_summary(data_dir, client, opts).await?,
             Target::StoryChat => score_story_chat(data_dir, client, opts).await?,
             Target::Company => score_company(data_dir, client, opts).await?,
-            Target::Adversarial => adversarial::score_adversarial(db, client, data_dir).await?,
+            Target::Adversarial => adversarial::score_adversarial(pool, client, data_dir).await?,
         };
         reports.push(report);
     }

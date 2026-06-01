@@ -51,8 +51,8 @@ async fn load_pitch(state: &AppState, slug: &str) -> Result<Pitch, AppError> {
 /// is `pitch_chat`; the `<pitch>` block tells the coach which intro
 /// question is in play (parallel to the `<competency>` block on Stories).
 async fn run_chat_model(state: &AppState, pitch: &Pitch) -> Result<String, AppError> {
-    let settings = state.settings_cache.get(&state.db).await?;
-    let system_body = state.prompt_cache.get(&state.db, "pitch_chat").await?;
+    let settings = state.settings_cache.get(&state.pool).await?;
+    let system_body = state.prompt_cache.get(&state.pool, "pitch_chat").await?;
     // Pitch catalog fields are seeded but editable in principle — escape
     // every interpolation so a stray `</pitch>` can't break out and
     // re-direct the coach prompt.

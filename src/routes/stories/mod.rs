@@ -68,10 +68,10 @@ async fn run_chat_model(
     story: &Story,
     competency: &Category,
 ) -> Result<String, AppError> {
-    let settings = state.settings_cache.get(&state.db).await?;
+    let settings = state.settings_cache.get(&state.pool).await?;
     let system_body = state
         .prompt_cache
-        .get(&state.db, story.mode.prompt_name())
+        .get(&state.pool, story.mode.prompt_name())
         .await?;
     // Competency catalog rows are user-editable via `/categories`; escape
     // each field so a stray `</competency>` can't break out of the wrapper.

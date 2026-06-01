@@ -39,10 +39,10 @@ pub(super) async fn history(
     if !is_valid_prompt_name(&name) {
         return Err(AppError::NotFound(format!("prompt {name}")));
     }
-    let prompt = store::get_prompt(&state.db, &name)
+    let prompt = store::get_prompt(&state.pool, &name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("prompt {name}")))?;
-    let versions = store::list_versions(&state.db, &name).await?;
+    let versions = store::list_versions(&state.pool, &name).await?;
     let rows = build_version_rows(&versions, &prompt.current_version_id);
     crate::error::render_html(HistoryTemplate {
         name: name.clone(),

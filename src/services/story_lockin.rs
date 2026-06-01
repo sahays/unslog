@@ -4,6 +4,7 @@
 //! the bullets layer (`StoryBody`) instead of spoken prose.
 
 use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{Story, StoryBody, StoryVersion};
@@ -20,6 +21,7 @@ const PROMPT_NAME: &str = "story_summarize";
 /// `post_turn`.
 pub async fn generate_and_save(
     db: &Database,
+    pool: &PgPool,
     or: &dyn LlmClient,
     story: &Story,
 ) -> Result<StoryVersion, AppError> {
@@ -36,7 +38,7 @@ pub async fn generate_and_save(
     let _enter = span.enter();
     let start = std::time::Instant::now();
 
-    let body = call_summarize_model(db, or, story).await?;
+    let body = call_summarize_model(pool, or, story).await?;
     // The unique `(story_id, version_n)` index protects against the
     // double-submit race; the helper retries once on duplicate-key.
     let story_id = story.id.clone();
@@ -65,12 +67,12 @@ pub async fn generate_and_save(
 /// One LLM call that returns the `StoryBody` payload. Kept private — the
 /// public entry point is [`generate_and_save`].
 async fn call_summarize_model(
-    db: &Database,
+    pool: &PgPool,
     or: &dyn LlmClient,
     story: &Story,
 ) -> Result<StoryBody, AppError> {
-    let settings = settings_store::load(db).await?;
-    let system = prompt_store::get_current_body_with_schema(db, PROMPT_NAME).await?;
+    let settings = settings_store::load(pool).await?;
+    let system = prompt_store::get_current_body_with_schema(pool, PROMPT_NAME).await?;
     let transcript = chat_transcript::render(&story.chat);
     let user = format!("<chat_transcript>\n{transcript}\n</chat_transcript>");
 

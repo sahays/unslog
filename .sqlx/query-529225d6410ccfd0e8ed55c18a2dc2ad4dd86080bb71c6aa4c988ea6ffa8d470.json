@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO prompt_versions (id, prompt_name, body, restored_from)\n        VALUES ($1, $2, $3, NULL)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "529225d6410ccfd0e8ed55c18a2dc2ad4dd86080bb71c6aa4c988ea6ffa8d470"
+}

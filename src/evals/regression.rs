@@ -9,7 +9,7 @@
 //! orchestration or multi-turn replay, neither of which is in this slice.
 
 use anyhow::{Context, Result};
-use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::evals::gold;
@@ -50,7 +50,7 @@ pub struct RegressionOptions {
 }
 
 pub async fn run(
-    db: &Database,
+    pool: &PgPool,
     client: &dyn LlmClient,
     data_dir: &str,
     opts: RegressionOptions,
@@ -63,9 +63,9 @@ pub async fn run(
         );
     }
 
-    let baseline = load_prompt_body(db, &opts.baseline_version_id).await?;
-    let candidate = load_prompt_body(db, &opts.candidate_version_id).await?;
-    let settings = settings_store::load(db).await?;
+    let baseline = load_prompt_body(pool, &opts.baseline_version_id).await?;
+    let candidate = load_prompt_body(pool, &opts.candidate_version_id).await?;
+    let settings = settings_store::load(pool).await?;
     let model = settings.critique_model.clone();
 
     let stories = gold::load_stories(data_dir)?;
@@ -108,8 +108,8 @@ pub async fn run(
     })
 }
 
-async fn load_prompt_body(db: &Database, version_id: &str) -> Result<String> {
-    let v = prompt_store::get_version(db, version_id)
+async fn load_prompt_body(pool: &PgPool, version_id: &str) -> Result<String> {
+    let v = prompt_store::get_version(pool, version_id)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?
         .with_context(|| format!("prompt version {version_id} not found"))?;

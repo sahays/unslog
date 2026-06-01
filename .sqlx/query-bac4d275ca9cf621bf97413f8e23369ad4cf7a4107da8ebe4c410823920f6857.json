@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO settings (\n            id, critique_model, research_model, stt_model, tts_model,\n            tts_voice, tts_language, tts_speed, lite_model\n        )\n        VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8)\n        ON CONFLICT (id) DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bac4d275ca9cf621bf97413f8e23369ad4cf7a4107da8ebe4c410823920f6857"
+}

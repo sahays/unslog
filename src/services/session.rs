@@ -6,6 +6,7 @@
 //! `advance_to_next` call.
 
 use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{ModelSnapshot, PromptSnapshot, Role, Session, SessionStatus, Settings};
@@ -28,20 +29,22 @@ pub struct StartInput {
 /// Routes layer their own logging on top.
 pub async fn start(
     db: &Database,
+    pool: &PgPool,
     or: &dyn LlmClient,
     input: StartInput,
 ) -> Result<Session, AppError> {
-    let critique_prompt = prompt_store::get_prompt(db, "critique")
+    let critique_prompt = prompt_store::get_prompt(pool, "critique")
         .await?
         .ok_or_else(|| AppError::NotFound("critique prompt".into()))?;
-    let summary_prompt = prompt_store::get_prompt(db, "summary")
+    let summary_prompt = prompt_store::get_prompt(pool, "summary")
         .await?
         .ok_or_else(|| AppError::NotFound("summary prompt".into()))?;
-    let settings = settings_store::load(db).await?;
+    let settings = settings_store::load(pool).await?;
 
     let curated = curator::curate(
         or,
         db,
+        pool,
         &settings.lite_model,
         input.role,
         &input.selected_company_ids,

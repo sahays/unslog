@@ -9,6 +9,7 @@
 
 use mongodb::Database;
 use serde::Deserialize;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{SpokenStory, StoryVersion};
@@ -30,6 +31,7 @@ struct SpokenPayload {
 /// rerun replaces whatever was there.
 pub async fn generate_and_save(
     db: &Database,
+    pool: &PgPool,
     or: &dyn LlmClient,
     version: &StoryVersion,
 ) -> Result<SpokenStory, AppError> {
@@ -42,8 +44,8 @@ pub async fn generate_and_save(
     let _enter = span.enter();
     let start = std::time::Instant::now();
 
-    let settings = settings_store::load(db).await?;
-    let system = prompt_store::get_current_body_with_schema(db, PROMPT_NAME).await?;
+    let settings = settings_store::load(pool).await?;
+    let system = prompt_store::get_current_body_with_schema(pool, PROMPT_NAME).await?;
     let user = render_user_message(version);
 
     let raw = or

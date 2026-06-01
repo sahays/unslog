@@ -43,6 +43,7 @@ pub(super) async fn start(
     // Single-company entry: scope = just this company.
     let session = crate::services::session::start(
         &state.db,
+        &state.pool,
         &*state.openrouter,
         crate::services::session::StartInput {
             role: company.canonical_role,
@@ -218,7 +219,10 @@ async fn load_question_by_id(
 async fn end_inline(state: &AppState, session: &Session) -> Result<Response, AppError> {
     let session_id = session.id.clone();
     let company = super::load_company(state, &session.company_id).await?;
-    let summary_ctx = summary::SummaryCtx { db: &state.db };
+    let summary_ctx = summary::SummaryCtx {
+        db: &state.db,
+        pool: &state.pool,
+    };
     if let Err(e) =
         summary::generate_and_save(&summary_ctx, &*state.openrouter, session, &company).await
     {

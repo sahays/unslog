@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-/// Singleton settings document. `_id` is always `"default"`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Singleton settings document. Backed by Postgres `settings` table after
+/// Phase A; `id` is pinned to `Settings::SINGLETON_ID` (`"singleton"`) so a
+/// stray INSERT can never create a second row.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Settings {
     #[serde(rename = "_id")]
     pub id: String,
@@ -32,6 +34,8 @@ fn default_lite_model() -> String {
 }
 
 impl Settings {
+    /// Legacy Mongo collection name. Retained for symmetry / docs only.
     pub const COLLECTION: &'static str = "settings";
-    pub const SINGLETON_ID: &'static str = "default";
+    /// The one and only row's id. Pinned by a CHECK on the Postgres table.
+    pub const SINGLETON_ID: &'static str = "singleton";
 }

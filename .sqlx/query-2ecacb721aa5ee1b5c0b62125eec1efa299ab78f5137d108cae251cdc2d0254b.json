@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO categories (id, name, description, sort_order)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (id) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2ecacb721aa5ee1b5c0b62125eec1efa299ab78f5137d108cae251cdc2d0254b"
+}

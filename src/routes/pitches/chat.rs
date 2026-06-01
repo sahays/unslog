@@ -59,7 +59,8 @@ pub(super) async fn post_turn(
     }
 
     if lock_in {
-        pitch_lockin::generate_and_save(&state.db, state.openrouter.as_ref(), &pitch).await?;
+        pitch_lockin::generate_and_save(&state.db, &state.pool, state.openrouter.as_ref(), &pitch)
+            .await?;
     }
 
     Ok(Redirect::to(&format!("/pitches/{slug}")).into_response())
@@ -79,7 +80,8 @@ pub(super) async fn generate(
             "no chat content yet — answer at least one probe before generating".into(),
         ));
     }
-    pitch_lockin::generate_and_save(&state.db, state.openrouter.as_ref(), &pitch).await?;
+    pitch_lockin::generate_and_save(&state.db, &state.pool, state.openrouter.as_ref(), &pitch)
+        .await?;
     Ok(Redirect::to(&format!("/pitches/{slug}")).into_response())
 }
 

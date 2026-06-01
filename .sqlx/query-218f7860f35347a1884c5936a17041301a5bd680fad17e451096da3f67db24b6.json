@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT pv.body\n        FROM prompts p\n        JOIN prompt_versions pv ON pv.id = p.current_version_id\n        WHERE p.name = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "body",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "218f7860f35347a1884c5936a17041301a5bd680fad17e451096da3f67db24b6"
+}

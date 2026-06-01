@@ -32,6 +32,7 @@ pub async fn add_questions(
     let appended_n = lines.len();
     questions::categorize_and_append(
         &state.db,
+        &state.pool,
         &*state.openrouter,
         lines,
         QuestionSource::Uploaded,
@@ -83,7 +84,7 @@ pub async fn edit_question(
         .ok_or_else(|| AppError::BadRequest(format!("unknown role {}", form.role)))?;
 
     // Filter categories to known IDs only.
-    let canonical = category_store::list_all(&state.db).await?;
+    let canonical = category_store::list_all(&state.pool).await?;
     let valid: std::collections::HashSet<String> = canonical.iter().map(|c| c.id.clone()).collect();
     let categories: Vec<String> = form
         .categories

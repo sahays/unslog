@@ -85,7 +85,7 @@ fn is_preferred(id: &str) -> bool {
 }
 
 async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let settings = state.settings_cache.get(&state.db).await?;
+    let settings = state.settings_cache.get(&state.pool).await?;
 
     let (mut chat_models, mut audio_in_models, mut audio_out_models, models_error) =
         if state.openrouter.configured() {
@@ -231,7 +231,7 @@ async fn save(
         lite_model,
         updated_at: chrono::Utc::now(),
     };
-    settings_store::save(&state.db, &next).await?;
+    settings_store::save(&state.pool, &next).await?;
     state.settings_cache.invalidate().await;
     tracing::info!(
         event = "settings.save",

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO settings (\n            id, critique_model, research_model, stt_model, tts_model,\n            tts_voice, tts_language, tts_speed, lite_model, updated_at\n        )\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n        ON CONFLICT (id) DO UPDATE\n            SET critique_model = EXCLUDED.critique_model,\n                research_model = EXCLUDED.research_model,\n                stt_model      = EXCLUDED.stt_model,\n                tts_model      = EXCLUDED.tts_model,\n                tts_voice      = EXCLUDED.tts_voice,\n                tts_language   = EXCLUDED.tts_language,\n                tts_speed      = EXCLUDED.tts_speed,\n                lite_model     = EXCLUDED.lite_model,\n                updated_at     = EXCLUDED.updated_at\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Float4",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ad94b32f7380c14bc5f7a0709fe74c05ed939c041d8399d7a02c8e3170ce18cd"
+}

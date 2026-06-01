@@ -41,7 +41,7 @@ pub async fn show(
     let company = super::load_company(&state, &id).await?;
     let questions_list = questions::list_for_company(&state.db, &id).await?;
     let sessions = load_session_rows(&state, &id).await?;
-    let canonical_categories = category_store::list_all(&state.db).await?;
+    let canonical_categories = category_store::list_all(&state.pool).await?;
 
     crate::error::render_html(ShowTemplate {
         company,

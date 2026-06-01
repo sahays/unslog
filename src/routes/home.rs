@@ -100,7 +100,7 @@ async fn load_in_progress(state: &AppState) -> Result<Vec<InProgressRow>, AppErr
     let competency_by_id: HashMap<String, String> = if in_progress_stories.is_empty() {
         HashMap::new()
     } else {
-        category_store::list_all(&state.db)
+        category_store::list_all(&state.pool)
             .await?
             .into_iter()
             .map(|c| (c.id, c.name))

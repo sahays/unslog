@@ -118,7 +118,10 @@ async fn end(State(state): State<AppState>, Path(id): Path<String>) -> Result<Re
         );
         // Best-effort: if the LLM call fails (no key, model down), still let
         // the session end so the user isn't stuck with an unkillable session.
-        let summary_ctx = summary::SummaryCtx { db: &state.db };
+        let summary_ctx = summary::SummaryCtx {
+            db: &state.db,
+            pool: &state.pool,
+        };
         if let Err(e) =
             summary::generate_and_save(&summary_ctx, &*state.openrouter, &session, &company).await
         {

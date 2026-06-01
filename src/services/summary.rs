@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use futures::TryStreamExt;
 use mongodb::options::FindOptions;
 use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{Company, Evaluation, Session, Summary, SummaryPayload};
@@ -53,9 +54,12 @@ pub trait SummaryDeps: Send + Sync {
     async fn insert_summary(&self, summary: &Summary) -> Result<(), AppError>;
 }
 
-/// Production impl backed by a mongo `Database` reference.
+/// Production impl backed by a mongo `Database` reference plus a Postgres
+/// pool for the ported prompt store. Summaries themselves still live in
+/// Mongo this phase.
 pub struct SummaryCtx<'a> {
     pub db: &'a Database,
+    pub pool: &'a PgPool,
 }
 
 #[async_trait]
@@ -69,7 +73,7 @@ impl<'a> SummaryDeps for SummaryCtx<'a> {
     }
 
     async fn get_summary_prompt_body(&self, version_id: &str) -> Result<String, AppError> {
-        let v = prompt_store::get_version(self.db, version_id)
+        let v = prompt_store::get_version(self.pool, version_id)
             .await?
             .ok_or_else(|| AppError::NotFound("summary prompt version".into()))?;
         Ok(v.body)

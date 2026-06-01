@@ -18,7 +18,7 @@ pub(super) async fn restore(
     if !is_valid_prompt_name(&name) {
         return Err(AppError::NotFound(format!("prompt {name}")));
     }
-    let target = store::get_version(&state.db, &version_id)
+    let target = store::get_version(&state.pool, &version_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("version {version_id}")))?;
     if target.prompt_name != name {
@@ -27,7 +27,7 @@ pub(super) async fn restore(
         ));
     }
     let restored =
-        store::save_version(&state.db, &name, target.body, Some(target.id.clone())).await?;
+        store::save_version(&state.pool, &name, target.body, Some(target.id.clone())).await?;
     state.prompt_cache.invalidate(&name).await;
     tracing::info!(
         event = "prompt.restore",

@@ -3,7 +3,7 @@
 //! handler is responsible for appending the turn and reopening the story
 //! (so the boundary between LLM orchestration and persistence stays clean).
 
-use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{ChatTurn, Story, StoryVersion};
@@ -18,13 +18,13 @@ const RECENT_CHAT_TURNS: usize = 8;
 /// flips the story status back to `InProgress` so the next Generate
 /// produces vN+1 instead of being a no-op.
 pub async fn kickoff(
-    db: &Database,
+    pool: &PgPool,
     or: &dyn LlmClient,
     story: &Story,
     version: &StoryVersion,
 ) -> Result<String, AppError> {
-    let settings = settings_store::load(db).await?;
-    let system = prompt_store::get_current_body(db, PROMPT_NAME).await?;
+    let settings = settings_store::load(pool).await?;
+    let system = prompt_store::get_current_body(pool, PROMPT_NAME).await?;
 
     let recent_str = chat_transcript::render(last_n_in_order(&story.chat, RECENT_CHAT_TURNS));
     let bullets = story_format::bullets(&version.body);

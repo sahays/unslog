@@ -23,6 +23,7 @@ use unslog::evals::regression::{self, RegressionOptions};
 use unslog::evals::report;
 use unslog::evals::score::{self, ScoreOptions};
 use unslog::evals::Target;
+use unslog::services::db as pgdb;
 use unslog::services::openrouter::{LlmClient, OpenRouter};
 
 #[derive(Parser, Debug)]
@@ -88,6 +89,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = AppConfig::from_env().context("load env")?;
     let database = db::connect(&config.mongo_uri, &config.mongo_db).await?;
+    // Postgres now backs the ported bootstrap-class stores (settings,
+    // prompts, categories); the eval harness needs both connections.
+    let pool = pgdb::connect_postgres(&config.database_url)
+        .await
+        .map_err(|e| anyhow::anyhow!("postgres: {e}"))?;
 
     match cli.cmd {
         Cmd::Extract => {
@@ -116,8 +122,15 @@ async fn main() -> Result<()> {
             let opts = ScoreOptions { run_judge };
             let client_ref: Option<&dyn LlmClient> =
                 client.as_ref().map(|c| c.as_ref() as &dyn LlmClient);
-            let reports =
-                score::score_all(&database, &config.data_dir, &targets, client_ref, opts).await?;
+            let reports = score::score_all(
+                &database,
+                &pool,
+                &config.data_dir,
+                &targets,
+                client_ref,
+                opts,
+            )
+            .await?;
             let dir = report::open_report_dir(&config.data_dir)?;
             for r in &reports {
                 report::write_target_report(&dir, r)?;
@@ -142,7 +155,7 @@ async fn main() -> Result<()> {
                 candidate_version_id: candidate,
                 run_judge: judge,
             };
-            let rep = regression::run(&database, client.as_ref(), &config.data_dir, opts).await?;
+            let rep = regression::run(&pool, client.as_ref(), &config.data_dir, opts).await?;
             let dir = report::open_report_dir(&config.data_dir)?;
             let path = regression::write_report(&dir, &rep)?;
             println!(

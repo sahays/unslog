@@ -1,8 +1,8 @@
 //! Research agent — produces a per-company packet.
 
 use async_trait::async_trait;
-use mongodb::Database;
 use serde::Deserialize;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::company::{ResearchPacket, ResearchSource};
@@ -46,22 +46,23 @@ pub struct ResearchPromptSnapshot {
     pub current_version_id: String,
 }
 
-/// Production impl backed by a mongo `Database` reference.
+/// Production impl backed by a Postgres pool — both settings and prompts
+/// live in Postgres after Phase A Step 4.
 pub struct ResearchCtx<'a> {
-    pub db: &'a Database,
+    pub pool: &'a PgPool,
 }
 
 #[async_trait]
 impl<'a> ResearchDeps for ResearchCtx<'a> {
     async fn load_settings(&self) -> Result<Settings, AppError> {
-        settings_store::load(self.db).await
+        settings_store::load(self.pool).await
     }
 
     async fn load_research_prompt(&self) -> Result<ResearchPromptSnapshot, AppError> {
-        let prompt = prompt_store::get_prompt(self.db, "research")
+        let prompt = prompt_store::get_prompt(self.pool, "research")
             .await?
             .ok_or_else(|| AppError::NotFound("research prompt".into()))?;
-        let body = prompt_store::get_current_body_with_schema(self.db, "research").await?;
+        let body = prompt_store::get_current_body_with_schema(self.pool, "research").await?;
         Ok(ResearchPromptSnapshot {
             body,
             current_version_id: prompt.current_version_id,

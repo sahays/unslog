@@ -36,7 +36,7 @@ struct PromptCard {
 
 pub(super) async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let names = PROMPT_NAMES.to_vec();
-    let rows = store::list_for_index(&state.db, &names).await?;
+    let rows = store::list_for_index(&state.pool, &names).await?;
     let items: Vec<PromptCard> = PROMPT_NAMES
         .iter()
         .map(|name| card_for(name, &rows))

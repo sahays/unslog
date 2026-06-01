@@ -46,7 +46,7 @@ pub struct CompletedCard {
 }
 
 pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let categories = category_store::list_all(&state.db).await?;
+    let categories = category_store::list_all(&state.pool).await?;
     let stories = story_store::list_for_landing(&state.db).await?;
 
     let mut latest_by_comp: HashMap<String, String> = HashMap::new();
@@ -136,7 +136,7 @@ pub(super) async fn create(
     if competency_id.is_empty() {
         return Err(AppError::BadRequest("competency_id is required".into()));
     }
-    let cat = category_store::get(&state.db, &competency_id)
+    let cat = category_store::get(&state.pool, &competency_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("competency {competency_id}")))?;
 

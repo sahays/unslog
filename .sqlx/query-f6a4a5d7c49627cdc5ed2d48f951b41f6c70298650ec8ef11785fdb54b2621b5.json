@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id,\n               critique_model,\n               research_model,\n               stt_model,\n               tts_model,\n               tts_voice,\n               tts_language,\n               tts_speed,\n               lite_model,\n               updated_at\n        FROM settings\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "critique_model",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "research_model",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "stt_model",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "tts_model",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "tts_voice",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "tts_language",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "tts_speed",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 8,
+        "name": "lite_model",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "f6a4a5d7c49627cdc5ed2d48f951b41f6c70298650ec8ef11785fdb54b2621b5"
+}

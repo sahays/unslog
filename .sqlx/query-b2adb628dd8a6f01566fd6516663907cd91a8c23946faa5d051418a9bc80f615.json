@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO categories (id, name, description, sort_order, created_at)\n        VALUES ($1, $2, $3, $4, $5)\n        ON CONFLICT (id) DO UPDATE\n            SET name = EXCLUDED.name,\n                description = EXCLUDED.description,\n                sort_order = EXCLUDED.sort_order\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b2adb628dd8a6f01566fd6516663907cd91a8c23946faa5d051418a9bc80f615"
+}

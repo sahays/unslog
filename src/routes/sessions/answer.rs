@@ -71,6 +71,7 @@ pub(super) async fn submit_answer(
 
     let critique_ctx = critique::CritiqueCtx {
         db: &state.db,
+        pool: &state.pool,
         book_cache: &state.book_cache,
     };
     let critique = critique::run(

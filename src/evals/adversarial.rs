@@ -14,7 +14,7 @@
 //! planted input, scrub, check markers.
 
 use anyhow::Result;
-use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::evals::gold::{self, AdversarialGold, ChatTurnGold};
 use crate::evals::judge::JudgeResult;
@@ -26,7 +26,7 @@ use crate::services::openrouter::{self, ChatMessage, LlmClient};
 use crate::services::{llm_safety, prompt_store, settings_store};
 
 pub async fn score_adversarial(
-    db: &Database,
+    pool: &PgPool,
     client: Option<&dyn LlmClient>,
     data_dir: &str,
 ) -> Result<TargetReport> {
@@ -53,8 +53,8 @@ pub async fn score_adversarial(
     };
 
     // Resolve the current story_summarize prompt + model once, reuse per case.
-    let settings = settings_store::load(db).await?;
-    let prompt = prompt_store::get_current_body_with_schema(db, "story_summarize").await?;
+    let settings = settings_store::load(pool).await?;
+    let prompt = prompt_store::get_current_body_with_schema(pool, "story_summarize").await?;
 
     for case in &cases {
         let rubric = run_one(client, &prompt, &settings.critique_model, case).await;

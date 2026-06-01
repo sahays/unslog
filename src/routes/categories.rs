@@ -26,7 +26,7 @@ struct ListTemplate {
 }
 
 async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let categories = category_store::list_all(&state.db).await?;
+    let categories = category_store::list_all(&state.pool).await?;
     crate::error::render_html(ListTemplate { categories })
 }
 
@@ -58,7 +58,7 @@ async fn create(
             "id must be snake_case (lowercase letters, digits, underscores)".into(),
         ));
     }
-    if category_store::get(&state.db, &id).await?.is_some() {
+    if category_store::get(&state.pool, &id).await?.is_some() {
         return Err(AppError::BadRequest(format!(
             "category with id `{id}` already exists"
         )));
@@ -70,7 +70,7 @@ async fn create(
         sort_order: form.sort_order.unwrap_or(99),
         created_at: chrono::Utc::now(),
     };
-    category_store::save(&state.db, &cat).await?;
+    category_store::save(&state.pool, &cat).await?;
     tracing::info!(
         event = "category.create",
         id = %cat.id,
@@ -94,7 +94,7 @@ async fn edit(
     Path(id): Path<String>,
     Form(form): Form<EditForm>,
 ) -> Result<Response, AppError> {
-    let mut cat = category_store::get(&state.db, &id)
+    let mut cat = category_store::get(&state.pool, &id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("category {id}")))?;
     let name = form.name.trim().to_string();
@@ -106,7 +106,7 @@ async fn edit(
     if let Some(order) = form.sort_order {
         cat.sort_order = order;
     }
-    category_store::save(&state.db, &cat).await?;
+    category_store::save(&state.pool, &cat).await?;
     tracing::info!(event = "category.edit", id = %cat.id, "category edited");
     Ok(Redirect::to("/categories").into_response())
 }
@@ -115,7 +115,7 @@ async fn delete(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    category_store::delete(&state.db, &id).await?;
+    category_store::delete(&state.pool, &id).await?;
     tracing::info!(event = "category.delete", id = %id, "category deleted");
     Ok(Redirect::to("/categories").into_response())
 }
