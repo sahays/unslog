@@ -2,8 +2,7 @@ use mongodb::error::{ErrorKind, WriteFailure};
 use mongodb::{Client, Collection, Database};
 
 use crate::models::{
-    Category, Company, Evaluation, PitchVersion, PromptVersion, Question, Session, Story,
-    StoryVersion, Summary,
+    Category, Evaluation, PitchVersion, PromptVersion, Session, Story, StoryVersion, Summary,
 };
 
 /// MongoDB error code for a duplicate-key violation against a unique index.
@@ -50,42 +49,9 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         .build();
     versions.create_index(pname_idx).await?;
 
-    let companies: Collection<Company> = db.collection(Company::COLLECTION);
-    let name_idx = IndexModel::builder()
-        .keys(bson::doc! { "name": 1 })
-        .options(
-            IndexOptions::builder()
-                .unique(true)
-                .name("name_unique".to_string())
-                .build(),
-        )
-        .build();
-    companies.create_index(name_idx).await?;
-
-    let questions: Collection<Question> = db.collection(Question::COLLECTION);
-    let q_company_idx = IndexModel::builder()
-        .keys(bson::doc! { "company_id": 1, "added_at": 1 })
-        .options(
-            IndexOptions::builder()
-                .name("company_id_added_at".to_string())
-                .build(),
-        )
-        .build();
-    questions.create_index(q_company_idx).await?;
-    // Compound `(role, company_id)` covers `questions::list_for_pool`, which
-    // filters by `{role, $or:[{company_id:null},{company_id:{$in:...}}]}`.
-    // Subsumes the prior single-field `role` index (now deprecated — Mongo
-    // doesn't drop indexes at runtime, so existing installs keep the stray
-    // `role` index until manually dropped).
-    let q_role_company_idx = IndexModel::builder()
-        .keys(bson::doc! { "role": 1, "company_id": 1 })
-        .options(
-            IndexOptions::builder()
-                .name("role_company".to_string())
-                .build(),
-        )
-        .build();
-    questions.create_index(q_role_company_idx).await?;
+    // Companies + questions indexes moved to Postgres in Phase A Step 6 —
+    // see migration 0001 (`questions_company_id_idx`) and 0003
+    // (`companies_owner_id_idx`).
 
     let sessions: Collection<Session> = db.collection(Session::COLLECTION);
     let s_idx = IndexModel::builder()

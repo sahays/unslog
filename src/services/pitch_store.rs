@@ -8,9 +8,11 @@
 use futures::TryStreamExt;
 use mongodb::options::FindOptions;
 use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::error::AppError;
-use crate::models::{ChatTurn, Pitch, PitchStatus, Question, Role};
+use crate::models::{ChatTurn, Pitch, PitchStatus, Role};
+use crate::services::current_owner::TEMP_OWNER_ID;
 
 /// Hard ceiling on the embedded chat array. Mirrors `story_store` — the
 /// UX assumes a ~50-turn working set, the cap blocks pathological loops
@@ -70,13 +72,13 @@ const SEED: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// On startup, idempotently upsert each canonical pitch row and a matching
-/// role-only Question for the bank. Existing user state (status, chat,
-/// current_version_id, question category tags) is preserved via
-/// `$setOnInsert` — only catalog fields are written when a row is missing.
-pub async fn seed_defaults(db: &Database) -> Result<(), AppError> {
+/// On startup, idempotently upsert each canonical pitch row (Mongo) and a
+/// matching role-only Question for the bank (Postgres after Phase A.6).
+/// Existing user state — Mongo pitch row's status / chat /
+/// current_version_id, and any tags the user added to the mirrored
+/// question — is preserved via `$setOnInsert` / `ON CONFLICT DO NOTHING`.
+pub async fn seed_defaults(db: &Database, pool: &PgPool) -> Result<(), AppError> {
     let coll = db.collection::<Pitch>(Pitch::COLLECTION);
-    let questions = db.collection::<Question>(Question::COLLECTION);
     let now = chrono::Utc::now();
     let now_str = now.to_rfc3339();
     for (i, (slug, question_text, blurb)) in SEED.iter().enumerate() {
@@ -98,37 +100,46 @@ pub async fn seed_defaults(db: &Database) -> Result<(), AppError> {
         )
         .upsert(true)
         .await?;
-
-        // Mirror into the questions bank as a role-only Question with a
-        // deterministic id so re-seeds are idempotent and a delete from the
-        // /companies/.../questions UI is recoverable on next boot.
-        let qid = pitch_question_id(slug);
-        questions
-            .update_one(
-                bson::doc! { "_id": &qid },
-                bson::doc! {
-                    "$setOnInsert": {
-                        "_id": &qid,
-                        "text": *question_text,
-                        "source": "pitch",
-                        "role": Role::SolutionsArchitect.as_str(),
-                        "categories": bson::Bson::Array(Vec::new()),
-                        "company_id": bson::Bson::Null,
-                        "added_at": &now_str,
-                    },
-                },
-            )
-            .upsert(true)
-            .await?;
+        seed_pitch_question_row(pool, slug, question_text, now).await?;
     }
     tracing::info!(count = SEED.len(), "seeded canonical pitches");
     Ok(())
 }
 
-/// Deterministic Question `_id` for a pitch — `"pitch-{slug}"`. Keeps the
-/// seed idempotent and the question recoverable across boots.
+/// Mirror one pitch slug into the Postgres `questions` table as a
+/// role-only question. Idempotent via the PK conflict.
+async fn seed_pitch_question_row(
+    pool: &PgPool,
+    slug: &str,
+    text: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), AppError> {
+    sqlx::query(
+        r#"INSERT INTO questions
+           (id, owner_id, text, source, role, categories, company_id, added_at)
+           VALUES ($1, $2, $3, 'pitch', $4, '[]'::jsonb, NULL, $5)
+           ON CONFLICT (id) DO NOTHING"#,
+    )
+    .bind(pitch_question_id(slug))
+    .bind(TEMP_OWNER_ID)
+    .bind(text)
+    .bind(Role::SolutionsArchitect.as_str())
+    .bind(now)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Deterministic Question id for a pitch — `qstpitchN` where N is the
+/// 1-based slot in [`SEED`]. Satisfies the Postgres CHECK
+/// `^qst[a-z0-9]{6}$` (3-char prefix + 6 alphanum). Append-only growth
+/// of SEED keeps ids stable across boots.
 pub fn pitch_question_id(slug: &str) -> String {
-    format!("pitch-{slug}")
+    let slot = SEED
+        .iter()
+        .position(|(s, _, _)| *s == slug)
+        .map_or(0, |i| i + 1);
+    format!("qstpitch{slot}")
 }
 
 pub async fn list_all(db: &Database) -> Result<Vec<Pitch>, AppError> {

@@ -16,9 +16,11 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use futures::TryStreamExt;
 use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::evals::gold::{self, ChatTurnGold, CompanyGold, StoryGold};
-use crate::models::{Category, Company, Story, StoryStatus, StoryVersion};
+use crate::models::{Category, Story, StoryStatus, StoryVersion};
+use crate::services::company_store;
 
 pub struct ExtractReport {
     pub stories_written: usize,
@@ -26,9 +28,9 @@ pub struct ExtractReport {
     pub companies_written: usize,
 }
 
-pub async fn extract_all(db: &Database, data_dir: &str) -> Result<ExtractReport> {
+pub async fn extract_all(db: &Database, pool: &PgPool, data_dir: &str) -> Result<ExtractReport> {
     let stories = extract_stories(db, data_dir).await?;
-    let companies_written = extract_companies(db, data_dir).await?;
+    let companies_written = extract_companies(pool, data_dir).await?;
     Ok(ExtractReport {
         stories_written: stories.0,
         stories_skipped_no_version: stories.1,
@@ -120,15 +122,13 @@ async fn extract_stories(db: &Database, data_dir: &str) -> Result<(usize, usize)
     Ok((written, skipped))
 }
 
-async fn extract_companies(db: &Database, data_dir: &str) -> Result<usize> {
-    let companies: Vec<Company> = db
-        .collection::<Company>(Company::COLLECTION)
-        .find(bson::doc! { "research_packet": { "$ne": null } })
-        .await?
-        .try_collect()
+/// Pull every owner-scoped company with a research packet from Postgres.
+/// `list_by_name` returns the full row including the packet; filter
+/// client-side since the eval bin has no need for a partial-index query.
+async fn extract_companies(pool: &PgPool, data_dir: &str) -> Result<usize> {
+    let companies = company_store::list_by_name(pool)
         .await
         .context("query companies with packets")?;
-
     let mut written = 0;
     for company in companies {
         let Some(packet) = company.research_packet else {

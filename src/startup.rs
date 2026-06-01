@@ -39,7 +39,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     let pool = crate::services::db::connect_postgres(&config.database_url).await?;
     crate::services::prompt_store::seed_defaults(&pool).await?;
     crate::services::category_store::seed_defaults(&pool).await?;
-    crate::services::pitch_store::seed_defaults(&db).await?;
+    crate::services::pitch_store::seed_defaults(&db, &pool).await?;
 
     tokio::fs::create_dir_all(&config.data_dir).await.ok();
     tokio::fs::create_dir_all(format!("{}/recordings", config.data_dir))

@@ -1,70 +1,99 @@
-//! Top-level Question CRUD. Replaces the old per-company embedded-array
-//! `QuestionBank.questions[]`. Each question is its own document.
+//! Top-level Question CRUD on Postgres. Each question is its own row in
+//! the `questions` table; replaces the old per-company embedded array.
+//!
+//! Every read/write is owner-scoped through
+//! [`crate::services::current_owner::TEMP_OWNER_ID`] until Phase 1 lands
+//! a real current-user extractor. `categories` is JSONB on the column
+//! side; `source` and `role` are TEXT + CHECK and round-trip through
+//! `as_str` / `parse`.
+//!
+//! The two helpers `answered_question_ids` (in `services::evaluations`)
+//! and the curator's `recent_summaries` / `recently_asked_ids` queries
+//! still read from Mongo — `evaluations` and `summaries` haven't been
+//! ported yet. They will be re-targeted in Phase A.7.
 
 use std::collections::HashSet;
 
-use futures::TryStreamExt;
-use mongodb::options::FindOptions;
-use mongodb::{Collection, Database};
+use mongodb::Database;
 use rand::seq::SliceRandom;
+use sqlx::types::Json;
 use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{Company, Question, QuestionSource, Role};
 use crate::services::categorize;
 use crate::services::category_store;
+use crate::services::current_owner::TEMP_OWNER_ID;
 use crate::services::openrouter::LlmClient;
 use crate::services::settings_store;
 
-fn coll(db: &Database) -> Collection<Question> {
-    db.collection(Question::COLLECTION)
-}
+#[path = "questions_row.rs"]
+mod row;
+use row::{source_str, QuestionRow, QUESTION_COLS};
 
-/// All questions tagged for a company, sorted oldest-first (so the agent's
-/// initial picks stay at the top).
-pub async fn list_for_company(db: &Database, company_id: &str) -> Result<Vec<Question>, AppError> {
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "added_at": 1 })
-        .build();
-    let cursor = coll(db)
-        .find(bson::doc! { "company_id": company_id })
-        .with_options(opts)
+// ── Reads ────────────────────────────────────────────────────────────────
+
+/// All questions tagged for a company, sorted oldest-first.
+pub async fn list_for_company(pool: &PgPool, company_id: &str) -> Result<Vec<Question>, AppError> {
+    let sql = format!(
+        "SELECT {QUESTION_COLS} FROM questions
+         WHERE owner_id = $1 AND company_id = $2
+         ORDER BY added_at ASC"
+    );
+    let rows: Vec<QuestionRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .bind(company_id)
+        .fetch_all(pool)
         .await?;
-    Ok(cursor.try_collect().await?)
+    rows.into_iter()
+        .map(QuestionRow::try_into_question)
+        .collect()
 }
 
 /// All questions for a role across the given company set + role-only
-/// questions (`company_id = null`). Used by the curator.
-///
-/// If `company_ids` is empty, returns only role-only questions for `role`.
+/// questions (`company_id IS NULL`). Used by the curator.
 pub async fn list_for_pool(
-    db: &Database,
+    pool: &PgPool,
     role: Role,
     company_ids: &[String],
 ) -> Result<Vec<Question>, AppError> {
-    let mut or_clauses = vec![bson::doc! { "company_id": { "$eq": null } }];
-    if !company_ids.is_empty() {
-        or_clauses.push(bson::doc! { "company_id": { "$in": company_ids } });
-    }
-    let filter = bson::doc! {
-        "role": role.as_str(),
-        "$or": or_clauses,
-    };
-    let cursor = coll(db).find(filter).await?;
-    Ok(cursor.try_collect().await?)
+    let sql = format!(
+        "SELECT {QUESTION_COLS} FROM questions
+         WHERE owner_id = $1
+           AND role = $2
+           AND (company_id IS NULL OR company_id = ANY($3))"
+    );
+    let rows: Vec<QuestionRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .bind(role.as_str())
+        .bind(company_ids)
+        .fetch_all(pool)
+        .await?;
+    rows.into_iter()
+        .map(QuestionRow::try_into_question)
+        .collect()
 }
 
-pub async fn get(db: &Database, id: &str) -> Result<Option<Question>, AppError> {
-    Ok(coll(db).find_one(bson::doc! { "_id": id }).await?)
+pub async fn get(pool: &PgPool, id: &str) -> Result<Option<Question>, AppError> {
+    let sql = format!(
+        "SELECT {QUESTION_COLS} FROM questions
+         WHERE owner_id = $1 AND id = $2"
+    );
+    let row: Option<QuestionRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    row.map(QuestionRow::try_into_question).transpose()
 }
 
-/// Create one or more questions in bulk.
-///
-/// `categories_for(text)` returns the category tags to apply to each input
-/// — used so the caller can do per-text classification (via `services::categorize`)
-/// before insertion. Pass a closure returning `Vec::new()` for untagged.
+// ── Writes ───────────────────────────────────────────────────────────────
+
+/// Insert one or more questions in a single multi-row INSERT. `categories_for`
+/// returns the category tag list for each input text (callers run the lite
+/// classifier upstream and capture it in a closure).
 pub async fn append<F>(
-    db: &Database,
+    pool: &PgPool,
     texts: impl IntoIterator<Item = String>,
     source: QuestionSource,
     role: Role,
@@ -80,51 +109,93 @@ where
         .filter(|t| !t.is_empty())
         .map(|t| {
             let cats = categories_for(&t);
-            Question::new(t, source, role, cats, company_id.clone())
+            Question::new(
+                TEMP_OWNER_ID.to_string(),
+                t,
+                source,
+                role,
+                cats,
+                company_id.clone(),
+            )
         })
         .collect();
     if new_questions.is_empty() {
         return Ok(0);
     }
     let count = new_questions.len();
-    coll(db).insert_many(&new_questions).await?;
+    insert_many(pool, &new_questions).await?;
     Ok(count)
 }
 
+/// Bulk insert via `UNNEST` so N questions ship in one round-trip.
+async fn insert_many(pool: &PgPool, rows: &[Question]) -> Result<(), AppError> {
+    let ids: Vec<&str> = rows.iter().map(|q| q.id.as_str()).collect();
+    let owners: Vec<&str> = rows.iter().map(|q| q.owner_id.as_str()).collect();
+    let texts: Vec<&str> = rows.iter().map(|q| q.text.as_str()).collect();
+    let sources: Vec<&str> = rows.iter().map(|q| source_str(q.source)).collect();
+    let roles: Vec<&str> = rows.iter().map(|q| q.role.as_str()).collect();
+    let cats: Vec<Json<&Vec<String>>> = rows.iter().map(|q| Json(&q.categories)).collect();
+    let company_ids: Vec<Option<&str>> = rows.iter().map(|q| q.company_id.as_deref()).collect();
+    let added: Vec<chrono::DateTime<chrono::Utc>> = rows.iter().map(|q| q.added_at).collect();
+    sqlx::query(
+        r#"INSERT INTO questions
+           (id, owner_id, text, source, role, categories, company_id, added_at)
+           SELECT * FROM UNNEST(
+               $1::text[],   $2::text[],   $3::text[],   $4::text[],
+               $5::text[],   $6::jsonb[],  $7::text[],   $8::timestamptz[]
+           )"#,
+    )
+    .bind(&ids)
+    .bind(&owners)
+    .bind(&texts)
+    .bind(&sources)
+    .bind(&roles)
+    .bind(&cats)
+    .bind(&company_ids)
+    .bind(&added)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn update(
-    db: &Database,
+    pool: &PgPool,
     id: &str,
     text: &str,
     role: Role,
     categories: &[String],
 ) -> Result<(), AppError> {
-    coll(db)
-        .update_one(
-            bson::doc! { "_id": id },
-            bson::doc! { "$set": {
-                "text": text,
-                "role": role.as_str(),
-                "categories": categories,
-            } },
-        )
+    sqlx::query(
+        r#"UPDATE questions
+           SET text = $3, role = $4, categories = $5
+           WHERE owner_id = $1 AND id = $2"#,
+    )
+    .bind(TEMP_OWNER_ID)
+    .bind(id)
+    .bind(text)
+    .bind(role.as_str())
+    .bind(Json(categories.to_vec()))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn delete(pool: &PgPool, id: &str) -> Result<(), AppError> {
+    sqlx::query("DELETE FROM questions WHERE owner_id = $1 AND id = $2")
+        .bind(TEMP_OWNER_ID)
+        .bind(id)
+        .execute(pool)
         .await?;
     Ok(())
 }
 
-pub async fn delete(db: &Database, id: &str) -> Result<(), AppError> {
-    coll(db).delete_one(bson::doc! { "_id": id }).await?;
-    Ok(())
-}
-
-/// When a company is deleted, decide what to do with its questions. We
-/// **delete** them (cascade) — they were created in that company's context
-/// and don't transfer cleanly. Role-only questions (company_id is null) are
-/// untouched.
-pub async fn delete_for_company(db: &Database, company_id: &str) -> Result<u64, AppError> {
-    let res = coll(db)
-        .delete_many(bson::doc! { "company_id": company_id })
-        .await?;
-    Ok(res.deleted_count)
+/// Compatibility shim. Postgres FK CASCADE in migration 0001 handles
+/// `questions.company_id → companies(id) ON DELETE CASCADE`, so by the
+/// time `companies::delete` returns the questions are already gone.
+/// Kept (returning 0) so route handlers don't need to be rewritten in
+/// this sub-phase — callers should drop their invocations next round.
+pub async fn delete_for_company(_pool: &PgPool, _company_id: &str) -> Result<u64, AppError> {
+    Ok(0)
 }
 
 /// Pick one random unanswered question from a list. Used as the curator
@@ -134,10 +205,11 @@ pub fn pick_random<'a>(pool: &'a [Question], seen: &HashSet<String>) -> Option<&
     candidates.choose(&mut rand::thread_rng()).copied()
 }
 
-/// Categorize + persist agent-suggested questions for a company, skipping any
-/// whose text already exists (so user edits + tags survive re-runs). Returns
-/// the number of *new* questions actually appended. Shared between the
-/// initial-create path and the refresh-packet path.
+// ── Compositions: classify + append ──────────────────────────────────────
+
+/// Categorize + persist agent-suggested questions for a company, skipping
+/// any whose text already exists. Returns the number of *new* questions
+/// actually appended.
 pub async fn append_skipping_existing(
     db: &Database,
     pool: &PgPool,
@@ -149,7 +221,7 @@ pub async fn append_skipping_existing(
     if candidates.is_empty() {
         return Ok(0);
     }
-    let existing = list_for_company(db, &company.id).await?;
+    let existing = list_for_company(pool, &company.id).await?;
     let existing_texts: HashSet<String> = existing.iter().map(|q| q.text.clone()).collect();
     let new_questions: Vec<String> = candidates
         .into_iter()
@@ -172,11 +244,11 @@ pub async fn append_skipping_existing(
 }
 
 /// Tag a batch of question texts via the lite_model classifier and persist
-/// them. Three callers (manual paste, agent-suggested, packet-refresh) share
-/// this exact "load settings → load canonical → classify → zip → append"
-/// shape, so it lives here. Returns the number of questions inserted.
+/// them. `db` is still needed because the classifier is shared infra; the
+/// classifier itself doesn't touch Mongo, but the function keeps the
+/// argument so callers don't need to be re-threaded in this sub-phase.
 pub async fn categorize_and_append(
-    db: &Database,
+    _db: &Database,
     pool: &PgPool,
     openrouter: &dyn LlmClient,
     texts: Vec<String>,
@@ -193,7 +265,7 @@ pub async fn categorize_and_append(
         categorize::classify_batch(openrouter, &settings.lite_model, &texts, &canonical).await;
     let by_text: std::collections::HashMap<String, Vec<String>> =
         texts.iter().cloned().zip(tags.into_iter()).collect();
-    append(db, texts, source, role, company_id, |t| {
+    append(pool, texts, source, role, company_id, |t| {
         by_text.get(t).cloned().unwrap_or_default()
     })
     .await

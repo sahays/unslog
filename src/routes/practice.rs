@@ -42,7 +42,7 @@ pub struct InProgress {
 }
 
 async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let companies = company_store::list_by_name(&state.db).await?;
+    let companies = company_store::list_by_name(&state.pool).await?;
     let company_by_id: HashMap<String, &Company> =
         companies.iter().map(|c| (c.id.clone(), c)).collect();
 
@@ -128,7 +128,7 @@ async fn start(
     // existence + role in app code. Avoids N round-trips for N selected
     // companies (no big-O improvement for tiny N, but the contract is the
     // same and the index hit is cheaper).
-    let rows = company_store::find_by_ids(&state.db, &selected).await?;
+    let rows = company_store::find_by_ids(&state.pool, &selected).await?;
     let mut by_id: HashMap<String, Company> = rows.into_iter().map(|c| (c.id.clone(), c)).collect();
     let mut matched: Vec<Company> = Vec::with_capacity(selected.len());
     for cid in &selected {

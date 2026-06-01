@@ -62,5 +62,5 @@ fn role_options() -> Vec<(&'static str, &'static str)> {
 }
 
 async fn load_company(state: &AppState, id: &str) -> Result<Company, AppError> {
-    company_store::find_or_404(&state.db, id).await
+    company_store::find_or_404(&state.pool, id).await
 }

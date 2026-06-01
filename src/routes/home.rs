@@ -46,7 +46,7 @@ struct HomeTemplate {
 }
 
 async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let company_count = company_store::count(&state.db).await?;
+    let company_count = company_store::count(&state.pool).await?;
     // Critique flow requires a primary *book*. A resume alone doesn't
     // unblock it; scope the presence check to AssetKind::Book.
     let primary_asset_present =
@@ -94,7 +94,7 @@ async fn load_in_progress(state: &AppState) -> Result<Vec<InProgressRow>, AppErr
             .iter()
             .map(|s| s.company_id.as_str())
             .collect();
-        company_store::names_by_ids(&state.db, &ids).await?
+        company_store::names_by_ids(&state.pool, &ids).await?
     };
 
     let competency_by_id: HashMap<String, String> = if in_progress_stories.is_empty() {

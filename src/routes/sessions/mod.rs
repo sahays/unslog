@@ -53,7 +53,7 @@ async fn load_session(state: &AppState, id: &str) -> Result<Session, AppError> {
 }
 
 async fn load_company(state: &AppState, id: &str) -> Result<Company, AppError> {
-    company_store::find_or_404(&state.db, id).await
+    company_store::find_or_404(&state.pool, id).await
 }
 
 /// Synthesize `text` to MP3 in this session's recording dir at `filename`,

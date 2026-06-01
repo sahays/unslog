@@ -9,6 +9,7 @@ use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::Company;
 use crate::services::company_store::CompanyListRow;
+use crate::services::current_owner::TEMP_OWNER_ID;
 use crate::services::{
     company_store, questions, redact,
     research::{self, ResearchCtx},
@@ -46,7 +47,7 @@ pub struct NewCompanyForm {
 }
 
 pub async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let companies = company_store::list_sorted(&state.db).await?;
+    let companies = company_store::list_sorted(&state.pool).await?;
     crate::error::render_html(ListTemplate { companies })
 }
 
@@ -66,7 +67,12 @@ pub async fn create(
     let canonical_role = crate::models::Role::parse(form.canonical_role.trim())
         .unwrap_or(crate::models::Role::SolutionsArchitect);
 
-    let mut company = Company::new(name.clone(), role.clone(), canonical_role);
+    let mut company = Company::new(
+        TEMP_OWNER_ID.to_string(),
+        name.clone(),
+        role.clone(),
+        canonical_role,
+    );
 
     // Run research synchronously — single user, expected to wait. Failures
     // become a packet-less company; user can hit "refresh packet" to retry.
@@ -89,7 +95,7 @@ pub async fn create(
         }
     };
 
-    company_store::insert(&state.db, &company).await?;
+    company_store::insert(&state.pool, &company).await?;
     let agent_questions_n = questions::append_skipping_existing(
         &state.db,
         &state.pool,

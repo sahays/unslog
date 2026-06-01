@@ -39,10 +39,12 @@ fn fixture_company() -> Company {
     let now = chrono::Utc::now();
     Company {
         id: "co-1".into(),
+        owner_id: "usrmaster".into(),
         name: "Acme".into(),
         role: "PM".into(),
         canonical_role: Role::ProductManager,
         research_packet: None,
+        is_public: false,
         created_at: now,
         updated_at: now,
     }

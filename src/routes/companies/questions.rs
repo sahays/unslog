@@ -27,7 +27,7 @@ pub async fn add_questions(
     Form(form): Form<AddQuestionsForm>,
 ) -> Result<Response, AppError> {
     let lines = parse_bulk_questions(&form.text)?;
-    let company = company_store::find_or_404(&state.db, &id).await?;
+    let company = company_store::find_or_404(&state.pool, &id).await?;
 
     let appended_n = lines.len();
     questions::categorize_and_append(
@@ -54,7 +54,7 @@ pub async fn delete_question(
     State(state): State<AppState>,
     Path((id, qid)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    questions::delete(&state.db, &qid).await?;
+    questions::delete(&state.pool, &qid).await?;
     tracing::info!(
         event = "question.delete",
         company_id = %id,
@@ -93,7 +93,7 @@ pub async fn edit_question(
         .filter(|c| valid.contains(c))
         .collect();
 
-    questions::update(&state.db, &qid, &text, role, &categories).await?;
+    questions::update(&state.pool, &qid, &text, role, &categories).await?;
     tracing::info!(
         event = "question.edit",
         company_id = %id,

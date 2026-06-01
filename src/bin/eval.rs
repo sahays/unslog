@@ -97,7 +97,7 @@ async fn main() -> Result<()> {
 
     match cli.cmd {
         Cmd::Extract => {
-            let rep = evals::extract::extract_all(&database, &config.data_dir).await?;
+            let rep = evals::extract::extract_all(&database, &pool, &config.data_dir).await?;
             println!(
                 "Extracted {} stories ({} skipped no-version), {} companies → {}",
                 rep.stories_written,

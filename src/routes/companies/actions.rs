@@ -28,7 +28,7 @@ pub async fn refresh_packet(
     // Capture sample questions for tagging before the packet gets moved into BSON.
     let sample_questions = packet.sample_questions.clone();
 
-    company_store::update_packet(&state.db, &id, &packet).await?;
+    company_store::update_packet(&state.pool, &id, &packet).await?;
 
     let appended_n = questions::append_skipping_existing(
         &state.db,
@@ -53,8 +53,11 @@ pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    company_store::delete(&state.db, &id).await?;
-    let removed = questions::delete_for_company(&state.db, &id).await?;
+    // Postgres FK CASCADE on `questions.company_id` (migration 0001) drops
+    // the question rows automatically; the legacy `delete_for_company` call
+    // is kept as a no-op wrapper for one transition cycle.
+    company_store::delete(&state.pool, &id).await?;
+    let removed = questions::delete_for_company(&state.pool, &id).await?;
     tracing::info!(
         event = "company.delete",
         company_id = %id,

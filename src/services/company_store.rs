@@ -1,189 +1,263 @@
-//! Store for the `companies` collection — target-company packets.
+//! Store for the Postgres `companies` table — target-company packets.
+//!
+//! Every read is owner-scoped. Until Phase 1 lands a real `current_user`
+//! extractor, every call site reads through
+//! [`crate::services::current_owner::TEMP_OWNER_ID`] (the master user
+//! seeded by migration 0002 + import bootstrap).
+//!
+//! `research_packet` is JSONB on the Postgres side and serializes through
+//! [`sqlx::types::Json`]. Owner-scoped DELETE cascades through the FK in
+//! migration 0001 (questions, sessions, etc.).
 //!
 //! Read/write surface:
-//! * `get` / `find_or_404` — lookups.
-//! * `list_sorted` — newest-first list for the index page.
-//! * `insert` — persist a freshly-built company row.
-//! * `update_packet` — refresh the research packet (and bump updated_at).
-//! * `delete` — drop the row (caller handles question cascade via
-//!   `services::questions::delete_for_company`).
-//! * `names_by_ids` — bulk-load `_id → name` for the home page recent list.
+//! * `get` / `find_or_404` — single-row lookups.
+//! * `list_sorted` — projected list page (no packet body shipped).
+//! * `list_by_name` — picker dropdown.
+//! * `find_by_ids` — bulk fetch by id set.
+//! * `insert` / `update_packet` / `delete` — write paths.
+//! * `count` / `names_by_ids` — home page summary.
 
 use std::collections::HashMap;
 
-use futures::TryStreamExt;
-use mongodb::options::FindOptions;
-use mongodb::Database;
+use chrono::{DateTime, Utc};
+use sqlx::types::Json;
+use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::company::ResearchPacket;
-use crate::models::Company;
+use crate::models::{Company, Role};
+use crate::services::current_owner::TEMP_OWNER_ID;
 
-pub async fn get(db: &Database, id: &str) -> Result<Option<Company>, AppError> {
-    Ok(db
-        .collection::<Company>(Company::COLLECTION)
-        .find_one(bson::doc! { "_id": id })
-        .await?)
+/// Columns shared by every full-row read. Centralized so a schema add only
+/// edits one place. `research_packet` returns as JSONB → `Option<Json<...>>`.
+const COMPANY_COLS: &str = r#"id, owner_id, name, role, canonical_role,
+    research_packet AS "research_packet: Json<ResearchPacket>",
+    is_public, created_at, updated_at"#;
+
+#[derive(sqlx::FromRow)]
+struct CompanyRow {
+    id: String,
+    owner_id: String,
+    name: String,
+    role: String,
+    canonical_role: String,
+    research_packet: Option<Json<ResearchPacket>>,
+    is_public: bool,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
 }
 
-pub async fn find_or_404(db: &Database, id: &str) -> Result<Company, AppError> {
-    get(db, id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("company {id}")))
+impl CompanyRow {
+    fn try_into_company(self) -> Result<Company, AppError> {
+        let canonical_role = Role::parse(&self.canonical_role).ok_or_else(|| {
+            AppError::Other(anyhow::anyhow!(
+                "companies.canonical_role {:?} not in CHECK set",
+                self.canonical_role
+            ))
+        })?;
+        Ok(Company {
+            id: self.id,
+            owner_id: self.owner_id,
+            name: self.name,
+            role: self.role,
+            canonical_role,
+            research_packet: self.research_packet.map(|j| j.0),
+            is_public: self.is_public,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        })
+    }
 }
 
 /// Projected row for the `/companies` list page. The full
-/// `research_packet` ships multi-KB per row and the list view only
-/// renders name / role / dates / a "packet ready" badge — so we project
-/// to a tight row type and replace the packet with a boolean.
+/// `research_packet` is multi-KB per row and the list view only renders
+/// name / role / dates / a "packet ready" badge — so we project to a
+/// tight row type and replace the packet with a boolean.
 pub struct CompanyListRow {
     pub id: String,
     pub name: String,
     pub role: String,
-    pub canonical_role: crate::models::Role,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub canonical_role: Role,
+    pub created_at: DateTime<Utc>,
     pub has_packet: bool,
 }
 
+// ── Single-row reads ─────────────────────────────────────────────────────
+
+pub async fn get(pool: &PgPool, id: &str) -> Result<Option<Company>, AppError> {
+    let sql = format!("SELECT {COMPANY_COLS} FROM companies WHERE owner_id = $1 AND id = $2");
+    let row: Option<CompanyRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    row.map(CompanyRow::try_into_company).transpose()
+}
+
+pub async fn find_or_404(pool: &PgPool, id: &str) -> Result<Company, AppError> {
+    get(pool, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("company {id}")))
+}
+
+// ── List / projection reads ──────────────────────────────────────────────
+
 /// All companies, newest-first. Projected for the list page — no
-/// research packet body. Aggregation pipeline so `has_packet` is
-/// derived server-side; the packet itself (multi-KB per row) never
-/// ships back over the wire.
-pub async fn list_sorted(db: &Database) -> Result<Vec<CompanyListRow>, AppError> {
-    #[derive(serde::Deserialize)]
-    struct Row {
-        #[serde(rename = "_id")]
-        id: String,
-        name: String,
-        role: String,
-        #[serde(default)]
-        canonical_role: Option<crate::models::Role>,
-        #[serde(with = "crate::models::datetime_compat::required")]
-        created_at: chrono::DateTime<chrono::Utc>,
-        #[serde(default)]
-        has_packet: bool,
+/// research-packet body. `has_packet` is derived server-side via the
+/// `research_packet IS NOT NULL` check so the multi-KB JSONB stays on
+/// the database side.
+pub async fn list_sorted(pool: &PgPool) -> Result<Vec<CompanyListRow>, AppError> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, name, role, canonical_role, created_at,
+               (research_packet IS NOT NULL) AS "has_packet!"
+        FROM companies
+        WHERE owner_id = $1
+        ORDER BY updated_at DESC
+        "#,
+        TEMP_OWNER_ID,
+    )
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|r| {
+            let canonical_role = Role::parse(&r.canonical_role).ok_or_else(|| {
+                AppError::Other(anyhow::anyhow!(
+                    "companies.canonical_role {:?} not in CHECK set",
+                    r.canonical_role
+                ))
+            })?;
+            Ok(CompanyListRow {
+                id: r.id,
+                name: r.name,
+                role: r.role,
+                canonical_role,
+                created_at: r.created_at,
+                has_packet: r.has_packet,
+            })
+        })
+        .collect()
+}
+
+/// All companies for the owner, sorted by name. Drives the `/practice`
+/// picker (full Company rows including the packet, since the picker
+/// needs canonical_role for filtering).
+pub async fn list_by_name(pool: &PgPool) -> Result<Vec<Company>, AppError> {
+    let sql = format!(
+        "SELECT {COMPANY_COLS} FROM companies
+         WHERE owner_id = $1
+         ORDER BY name ASC"
+    );
+    let rows: Vec<CompanyRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .fetch_all(pool)
+        .await?;
+    rows.into_iter().map(CompanyRow::try_into_company).collect()
+}
+
+/// Bulk fetch full company rows for a set of ids in one query.
+pub async fn find_by_ids(pool: &PgPool, ids: &[String]) -> Result<Vec<Company>, AppError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
     }
-    let pipeline = vec![
-        bson::doc! { "$sort": { "created_at": -1 } },
-        bson::doc! { "$project": {
-            "_id": 1,
-            "name": 1,
-            "role": 1,
-            "canonical_role": 1,
-            "created_at": 1,
-            "has_packet": { "$cond": [ { "$ifNull": ["$research_packet", false] }, true, false ] },
-        } },
-    ];
-    let cursor = db
-        .collection::<bson::Document>(Company::COLLECTION)
-        .aggregate(pipeline)
+    let sql = format!(
+        "SELECT {COMPANY_COLS} FROM companies
+         WHERE owner_id = $1 AND id = ANY($2)"
+    );
+    let rows: Vec<CompanyRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .bind(ids)
+        .fetch_all(pool)
         .await?;
-    let docs: Vec<bson::Document> = cursor.try_collect().await?;
-    let mut out: Vec<CompanyListRow> = Vec::with_capacity(docs.len());
-    for d in docs {
-        let r: Row = bson::from_document(d)?;
-        out.push(CompanyListRow {
-            id: r.id,
-            name: r.name,
-            role: r.role,
-            canonical_role: r
-                .canonical_role
-                .unwrap_or(crate::models::Role::SolutionsArchitect),
-            created_at: r.created_at,
-            has_packet: r.has_packet,
-        });
-    }
-    Ok(out)
+    rows.into_iter().map(CompanyRow::try_into_company).collect()
 }
 
-/// All companies, sorted by name. Drives the `/practice` picker.
-pub async fn list_by_name(db: &Database) -> Result<Vec<Company>, AppError> {
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "name": 1 })
-        .build();
-    let cursor = db
-        .collection::<Company>(Company::COLLECTION)
-        .find(bson::doc! {})
-        .with_options(opts)
-        .await?;
-    Ok(cursor.try_collect().await?)
-}
-
-pub async fn insert(db: &Database, company: &Company) -> Result<(), AppError> {
-    db.collection::<Company>(Company::COLLECTION)
-        .insert_one(company)
-        .await?;
-    Ok(())
-}
-
-/// Refresh a company's research packet. Bumps `updated_at` so the index
-/// page reflects the change.
-pub async fn update_packet(
-    db: &Database,
-    company_id: &str,
-    packet: &ResearchPacket,
-) -> Result<(), AppError> {
-    db.collection::<Company>(Company::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": company_id },
-            bson::doc! {
-                "$set": {
-                    "research_packet": bson::to_bson(packet)?,
-                    // Match the datetime_compat serializer (RFC 3339 string).
-                    "updated_at": chrono::Utc::now().to_rfc3339(),
-                }
-            },
-        )
-        .await?;
-    Ok(())
-}
-
-/// Delete a company row. Callers are responsible for cascading the
-/// question rows (via `services::questions::delete_for_company`); we keep
-/// that cascade out of this store so the boundary is clean.
-pub async fn delete(db: &Database, company_id: &str) -> Result<(), AppError> {
-    db.collection::<Company>(Company::COLLECTION)
-        .delete_one(bson::doc! { "_id": company_id })
-        .await?;
-    Ok(())
-}
-
-pub async fn count(db: &Database) -> Result<u64, AppError> {
-    Ok(db
-        .collection::<Company>(Company::COLLECTION)
-        .count_documents(bson::doc! {})
-        .await?)
-}
-
-/// Bulk-load company names for a set of ids. Returns `_id → name`. Used by
-/// the home page to render "Company · Role" rows for recent sessions in
-/// one query instead of N per row.
+/// Bulk-load company names for a set of ids. Returns `id → name`.
 pub async fn names_by_ids(
-    db: &Database,
+    pool: &PgPool,
     ids: &[&str],
 ) -> Result<HashMap<String, String>, AppError> {
     if ids.is_empty() {
         return Ok(HashMap::new());
     }
-    let cursor = db
-        .collection::<Company>(Company::COLLECTION)
-        .find(bson::doc! { "_id": { "$in": ids } })
-        .await?;
-    let rows: Vec<Company> = cursor.try_collect().await?;
-    Ok(rows.into_iter().map(|c| (c.id, c.name)).collect())
+    let ids_owned: Vec<String> = ids.iter().map(|s| (*s).to_string()).collect();
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, name FROM companies
+        WHERE owner_id = $1 AND id = ANY($2)
+        "#,
+        TEMP_OWNER_ID,
+        &ids_owned,
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|r| (r.id, r.name)).collect())
 }
 
-/// Bulk fetch full company rows for a set of ids in one `$in` query.
-/// Used by `/practice` to validate the selected company set without N
-/// per-id round-trips. Returns rows in arbitrary order — callers re-key
-/// via their own input vector if order matters.
-pub async fn find_by_ids(db: &Database, ids: &[String]) -> Result<Vec<Company>, AppError> {
-    if ids.is_empty() {
-        return Ok(Vec::new());
-    }
-    let cursor = db
-        .collection::<Company>(Company::COLLECTION)
-        .find(bson::doc! { "_id": { "$in": ids } })
+pub async fn count(pool: &PgPool) -> Result<u64, AppError> {
+    let n: i64 = sqlx::query_scalar!(
+        "SELECT COUNT(*) AS \"count!\" FROM companies WHERE owner_id = $1",
+        TEMP_OWNER_ID,
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(n as u64)
+}
+
+// ── Writes ───────────────────────────────────────────────────────────────
+
+/// Persist a freshly-built company row. The caller mints `company.id`
+/// via `models::Company::new` (which uses `id_gen::new(Kind::Company)`)
+/// and sets `company.owner_id` to the current owner.
+pub async fn insert(pool: &PgPool, company: &Company) -> Result<(), AppError> {
+    let packet = company.research_packet.as_ref().map(|p| Json(p.clone()));
+    sqlx::query(
+        r#"INSERT INTO companies
+           (id, owner_id, name, role, canonical_role, research_packet,
+            is_public, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#,
+    )
+    .bind(&company.id)
+    .bind(&company.owner_id)
+    .bind(&company.name)
+    .bind(&company.role)
+    .bind(company.canonical_role.as_str())
+    .bind(packet)
+    .bind(company.is_public)
+    .bind(company.created_at)
+    .bind(company.updated_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Refresh a company's research packet. Owner-scoped; bumps `updated_at`.
+pub async fn update_packet(
+    pool: &PgPool,
+    company_id: &str,
+    packet: &ResearchPacket,
+) -> Result<(), AppError> {
+    sqlx::query(
+        r#"UPDATE companies
+           SET research_packet = $3,
+               updated_at      = NOW()
+           WHERE owner_id = $1 AND id = $2"#,
+    )
+    .bind(TEMP_OWNER_ID)
+    .bind(company_id)
+    .bind(Json(packet.clone()))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Delete a company row. The Postgres FK CASCADE drops dependent
+/// questions / sessions / evaluations / summaries (see migration 0001).
+pub async fn delete(pool: &PgPool, company_id: &str) -> Result<(), AppError> {
+    sqlx::query("DELETE FROM companies WHERE owner_id = $1 AND id = $2")
+        .bind(TEMP_OWNER_ID)
+        .bind(company_id)
+        .execute(pool)
         .await?;
-    Ok(cursor.try_collect().await?)
+    Ok(())
 }

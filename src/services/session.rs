@@ -50,6 +50,8 @@ pub async fn start(
         &input.selected_company_ids,
     )
     .await?;
+    // `db` is still required for sessions/evaluations/summaries (not yet
+    // ported). `pool` covers companies/questions in this sub-phase.
 
     let session = build_session(
         input,

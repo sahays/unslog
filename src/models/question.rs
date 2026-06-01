@@ -15,19 +15,25 @@ pub enum QuestionSource {
     Pitch,
 }
 
-/// A single behavioral-interview question. Top-level MongoDB document
-/// (collection: `questions`). Optional `company_id` lets role-only questions
-/// exist alongside company-tagged ones — the curator pools across both.
+/// A single behavioral-interview question. Backed by the Postgres
+/// `questions` table after Phase A Step 6; the importer still
+/// deserializes legacy Mongo docs via the `_id` rename. Optional
+/// `company_id` lets role-only questions exist alongside company-tagged
+/// ones — the curator pools across both.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Question {
     #[serde(rename = "_id")]
     pub id: String,
+    /// Master-bound for now (TEMP_OWNER_ID); per-user once Phase 1 lands.
+    #[serde(default)]
+    pub owner_id: String,
     pub text: String,
     pub source: QuestionSource,
     /// Canonical role this question belongs to. Always present.
     #[serde(default = "default_role")]
     pub role: Role,
     /// Canonical category IDs (from `Category::COLLECTION`). 0–N OK.
+    /// JSONB on the Postgres side; a GIN index supports `@>` filters.
     #[serde(default)]
     pub categories: Vec<String>,
     /// Source company. `None` = role-only question, applies to any company
@@ -44,9 +50,12 @@ fn default_role() -> Role {
 }
 
 impl Question {
+    /// Legacy Mongo collection name. Still referenced by the one-shot
+    /// importer — removed in the final sub-phase that drops `mongodb`.
     pub const COLLECTION: &'static str = "questions";
 
     pub fn new(
+        owner_id: String,
         text: String,
         source: QuestionSource,
         role: Role,
@@ -54,7 +63,8 @@ impl Question {
         company_id: Option<String>,
     ) -> Self {
         Self {
-            id: uuid::Uuid::now_v7().to_string(),
+            id: crate::services::id_gen::new(crate::services::id_gen::Kind::Question),
+            owner_id,
             text,
             source,
             role,

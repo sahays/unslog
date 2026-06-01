@@ -38,7 +38,7 @@ pub(super) async fn start(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let company = company_store::find_or_404(&state.db, &id).await?;
+    let company = company_store::find_or_404(&state.pool, &id).await?;
 
     // Single-company entry: scope = just this company.
     let session = crate::services::session::start(
@@ -174,8 +174,8 @@ pub(crate) async fn advance_to_next(
         load_question_by_id(state, session, &next_id).await?
     } else if session.curated_question_ids.is_empty() {
         // Legacy fallback: random from the company's questions.
-        let pool = questions::list_for_company(&state.db, &session.company_id).await?;
-        questions::pick_random(&pool, &answered).map(|q| (q.id.clone(), q.text.clone()))
+        let q_pool = questions::list_for_company(&state.pool, &session.company_id).await?;
+        questions::pick_random(&q_pool, &answered).map(|q| (q.id.clone(), q.text.clone()))
     } else {
         return Ok(None);
     };
@@ -211,7 +211,7 @@ async fn load_question_by_id(
     _session: &Session,
     qid: &str,
 ) -> Result<Option<(String, String)>, AppError> {
-    let q = questions::get(&state.db, qid).await?;
+    let q = questions::get(&state.pool, qid).await?;
     Ok(q.map(|q| (q.id, q.text)))
 }
 

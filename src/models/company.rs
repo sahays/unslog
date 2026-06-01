@@ -36,10 +36,20 @@ pub struct ResearchPacket {
     pub last_refreshed_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Target company. After Phase A Step 6 the canonical store is Postgres
+/// (`companies` table); the importer still deserializes legacy Mongo
+/// docs via the `_id` rename and the datetime_compat helpers.
+///
+/// `research_packet` is JSONB on the Postgres side. `owner_id` and
+/// `is_public` were added in migrations 0003 and 0006; old Mongo docs
+/// default them so the import path still deserializes cleanly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Company {
     #[serde(rename = "_id")]
     pub id: String,
+    /// Master-bound for now (TEMP_OWNER_ID); per-user once Phase 1 lands.
+    #[serde(default)]
+    pub owner_id: String,
     pub name: String,
     /// Company-specific role title — kept verbatim so research/critique prompts
     /// can use the actual phrase the company uses (e.g. "Customer Engineer at
@@ -52,6 +62,8 @@ pub struct Company {
     pub canonical_role: Role,
     #[serde(default)]
     pub research_packet: Option<ResearchPacket>,
+    #[serde(default)]
+    pub is_public: bool,
     #[serde(with = "crate::models::datetime_compat::required")]
     pub created_at: chrono::DateTime<chrono::Utc>,
     #[serde(with = "crate::models::datetime_compat::required")]
@@ -63,16 +75,21 @@ fn default_canonical_role() -> Role {
 }
 
 impl Company {
+    /// Legacy Mongo collection name. Still referenced by the one-shot
+    /// importer (`services::mongo_import::read`) — removed in the final
+    /// sub-phase that drops `mongodb`.
     pub const COLLECTION: &'static str = "companies";
 
-    pub fn new(name: String, role: String, canonical_role: Role) -> Self {
+    pub fn new(owner_id: String, name: String, role: String, canonical_role: Role) -> Self {
         let now = chrono::Utc::now();
         Self {
-            id: uuid::Uuid::now_v7().to_string(),
+            id: crate::services::id_gen::new(crate::services::id_gen::Kind::Company),
+            owner_id,
             name,
             role,
             canonical_role,
             research_packet: None,
+            is_public: false,
             created_at: now,
             updated_at: now,
         }

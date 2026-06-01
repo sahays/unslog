@@ -59,7 +59,7 @@ pub async fn curate(
     let _enter = span.enter();
     let start = std::time::Instant::now();
 
-    let pool = load_pool(db, role, selected_company_ids).await?;
+    let pool = load_pool(pg, role, selected_company_ids).await?;
     if pool.is_empty() {
         return Err(AppError::BadRequest(format!(
             "no {} questions in the selected companies — add some first",
@@ -67,6 +67,9 @@ pub async fn curate(
         )));
     }
 
+    // TODO(phase-A.7): re-target to Postgres summaries/evaluations once
+    // those tables are ported. Until then `db` still serves recent
+    // summaries and the recently-asked-questions exclusion set.
     let recent_summaries = recent_summaries(db, selected_company_ids).await?;
     let recently_asked = recently_asked_ids(db, selected_company_ids, role).await?;
     let canonical = category_store::list_all(pg).await?;
@@ -140,11 +143,11 @@ pub struct PoolItem {
 }
 
 async fn load_pool(
-    db: &Database,
+    pg: &PgPool,
     role: Role,
     selected_company_ids: &[String],
 ) -> Result<Vec<PoolItem>, AppError> {
-    let pool: Vec<Question> = questions::list_for_pool(db, role, selected_company_ids).await?;
+    let pool: Vec<Question> = questions::list_for_pool(pg, role, selected_company_ids).await?;
     Ok(pool
         .into_iter()
         .map(|q| PoolItem {
