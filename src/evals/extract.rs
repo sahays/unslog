@@ -1,4 +1,4 @@
-//! Gold-set extraction — Mongo → JSON files under `data/evals/gold/`.
+//! Gold-set extraction — Postgres → JSON files under `data/evals/gold/`.
 //!
 //! Pulls:
 //!   * Every `Story` with `status = "complete"`, joined with its current
@@ -14,13 +14,11 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use futures::TryStreamExt;
-use mongodb::Database;
 use sqlx::PgPool;
 
 use crate::evals::gold::{self, ChatTurnGold, CompanyGold, StoryGold};
-use crate::models::{Category, Story, StoryStatus, StoryVersion};
-use crate::services::company_store;
+use crate::models::{Category, StoryStatus};
+use crate::services::{category_store, company_store, story_store, story_version_store};
 
 pub struct ExtractReport {
     pub stories_written: usize,
@@ -28,8 +26,8 @@ pub struct ExtractReport {
     pub companies_written: usize,
 }
 
-pub async fn extract_all(db: &Database, pool: &PgPool, data_dir: &str) -> Result<ExtractReport> {
-    let stories = extract_stories(db, data_dir).await?;
+pub async fn extract_all(pool: &PgPool, data_dir: &str) -> Result<ExtractReport> {
+    let stories = extract_stories(pool, data_dir).await?;
     let companies_written = extract_companies(pool, data_dir).await?;
     Ok(ExtractReport {
         stories_written: stories.0,
@@ -38,53 +36,26 @@ pub async fn extract_all(db: &Database, pool: &PgPool, data_dir: &str) -> Result
     })
 }
 
-async fn extract_stories(db: &Database, data_dir: &str) -> Result<(usize, usize)> {
-    let stories: Vec<Story> = db
-        .collection::<Story>(Story::COLLECTION)
-        .find(bson::doc! { "status": "complete" })
-        .await?
-        .try_collect()
+async fn extract_stories(pool: &PgPool, data_dir: &str) -> Result<(usize, usize)> {
+    let stories = story_store::list_completed(pool)
         .await
         .context("query completed stories")?;
 
-    // Bulk-load the current StoryVersion docs and the competency names so we
-    // don't fan out to N+1 lookups.
-    let version_ids: Vec<&str> = stories
+    let version_ids: Vec<String> = stories
         .iter()
-        .filter_map(|s| s.current_version_id.as_deref())
+        .filter_map(|s| s.current_version_id.clone())
         .collect();
-    let versions_by_id = if version_ids.is_empty() {
-        HashMap::new()
-    } else {
-        let raw: Vec<StoryVersion> = db
-            .collection::<StoryVersion>(StoryVersion::COLLECTION)
-            .find(bson::doc! { "_id": { "$in": &version_ids } })
-            .await?
-            .try_collect()
-            .await
-            .context("query story versions")?;
-        raw.into_iter().map(|v| (v.id.clone(), v)).collect()
-    };
+    let versions_by_id = story_version_store::list_by_ids(pool, &version_ids)
+        .await
+        .context("query story versions")?;
 
-    let competency_ids: Vec<&str> = stories.iter().map(|s| s.competency_id.as_str()).collect();
-    let competencies_by_id = if competency_ids.is_empty() {
-        HashMap::new()
-    } else {
-        let raw: Vec<Category> = db
-            .collection::<Category>(Category::COLLECTION)
-            .find(bson::doc! { "_id": { "$in": &competency_ids } })
-            .await?
-            .try_collect()
-            .await
-            .context("query competencies")?;
-        raw.into_iter().map(|c| (c.id.clone(), c)).collect()
-    };
+    let competencies_by_id = load_competencies_by_id(pool).await?;
 
     let mut written = 0;
     let mut skipped = 0;
     for story in stories {
-        // status == Complete is the Mongo filter; double-check the enum in
-        // case old data has a mismatched encoding.
+        // Defensive: list_completed already filters by status = complete,
+        // but double-check in case the row was racy at read time.
         if !matches!(story.status, StoryStatus::Complete) {
             continue;
         }
@@ -120,6 +91,15 @@ async fn extract_stories(db: &Database, data_dir: &str) -> Result<(usize, usize)
         written += 1;
     }
     Ok((written, skipped))
+}
+
+/// Snapshot the full category list keyed by id so each story can look up
+/// its competency display name without an N+1 fan-out.
+async fn load_competencies_by_id(pool: &PgPool) -> Result<HashMap<String, Category>> {
+    let all = category_store::list_all(pool)
+        .await
+        .context("query competencies")?;
+    Ok(all.into_iter().map(|c| (c.id.clone(), c)).collect())
 }
 
 /// Pull every owner-scoped company with a research packet from Postgres.

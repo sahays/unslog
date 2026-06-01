@@ -1,7 +1,7 @@
 //! Eval harness — local-only quality + regression tooling for the LLM-driven
 //! features. Three subcommands surface through `src/bin/eval.rs`:
 //!
-//! * `extract` — pull "accepted" outputs from Mongo (completed stories
+//! * `extract` — pull "accepted" outputs from Postgres (completed stories
 //!   with their current StoryVersion; companies with a research packet)
 //!   and write them under `data/evals/gold/` as the reference set.
 //! * `score` — for each gold entry, run the cheap rubric checks

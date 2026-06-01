@@ -6,15 +6,9 @@
 //! a real current-user extractor. `categories` is JSONB on the column
 //! side; `source` and `role` are TEXT + CHECK and round-trip through
 //! `as_str` / `parse`.
-//!
-//! The two helpers `answered_question_ids` (in `services::evaluations`)
-//! and the curator's `recent_summaries` / `recently_asked_ids` queries
-//! still read from Mongo — `evaluations` and `summaries` haven't been
-//! ported yet. They will be re-targeted in Phase A.7.
 
 use std::collections::HashSet;
 
-use mongodb::Database;
 use rand::seq::SliceRandom;
 use sqlx::types::Json;
 use sqlx::PgPool;
@@ -211,7 +205,6 @@ pub fn pick_random<'a>(pool: &'a [Question], seen: &HashSet<String>) -> Option<&
 /// any whose text already exists. Returns the number of *new* questions
 /// actually appended.
 pub async fn append_skipping_existing(
-    db: &Database,
     pool: &PgPool,
     or: &dyn LlmClient,
     company: &Company,
@@ -230,7 +223,6 @@ pub async fn append_skipping_existing(
     let appended_n = new_questions.len();
     if appended_n > 0 {
         categorize_and_append(
-            db,
             pool,
             or,
             new_questions,
@@ -244,11 +236,8 @@ pub async fn append_skipping_existing(
 }
 
 /// Tag a batch of question texts via the lite_model classifier and persist
-/// them. `db` is still needed because the classifier is shared infra; the
-/// classifier itself doesn't touch Mongo, but the function keeps the
-/// argument so callers don't need to be re-threaded in this sub-phase.
+/// them.
 pub async fn categorize_and_append(
-    _db: &Database,
     pool: &PgPool,
     openrouter: &dyn LlmClient,
     texts: Vec<String>,

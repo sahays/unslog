@@ -9,7 +9,6 @@
 //! dimensions surfaces a weak reference the user should consider pruning.
 
 use anyhow::Result;
-use mongodb::Database;
 use sqlx::PgPool;
 
 use crate::evals::adversarial;
@@ -26,7 +25,6 @@ pub struct ScoreOptions {
 }
 
 pub async fn score_all(
-    _db: &Database,
     pool: &PgPool,
     data_dir: &str,
     targets: &[Target],

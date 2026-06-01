@@ -21,8 +21,7 @@ pub struct Category {
 }
 
 impl Category {
-    /// Legacy Mongo collection name. Retained only so any stragglers still
-    /// referencing it compile; new code reads/writes through `category_store`
-    /// which targets the Postgres `categories` table directly.
+    /// Legacy Mongo collection name. Retained for `import_from_mongo`;
+    /// remove after one-shot import.
     pub const COLLECTION: &'static str = "categories";
 }

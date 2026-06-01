@@ -94,6 +94,7 @@ pub struct Asset {
 }
 
 impl Asset {
+    /// Retained for `import_from_mongo`; remove after one-shot import.
     pub const COLLECTION: &'static str = "assets";
 
     pub fn new(

@@ -31,7 +31,6 @@ pub async fn add_questions(
 
     let appended_n = lines.len();
     questions::categorize_and_append(
-        &state.db,
         &state.pool,
         &*state.openrouter,
         lines,

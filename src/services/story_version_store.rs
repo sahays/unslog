@@ -87,6 +87,34 @@ pub async fn find_by_story_and_id(
     Ok(row.map(StoryVersionRow::into_version))
 }
 
+/// Bulk-load full `StoryVersion` rows by id and return them keyed by id.
+/// Used by the eval gold-set extractor to look up each completed story's
+/// current version body in one query. Owner-scoped.
+pub async fn list_by_ids(
+    pool: &PgPool,
+    ids: &[String],
+) -> Result<HashMap<String, StoryVersion>, AppError> {
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let sql = format!(
+        "SELECT {VERSION_COLS} FROM story_versions \
+         WHERE owner_id = $1 AND id = ANY($2)"
+    );
+    let rows: Vec<StoryVersionRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .bind(ids)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let v = r.into_version();
+            (v.id.clone(), v)
+        })
+        .collect())
+}
+
 pub async fn list_for_picker(
     pool: &PgPool,
     story_id: &str,
@@ -157,7 +185,7 @@ pub async fn insert_with_next_n(
 /// match is readable.
 fn is_dup_key(e: &AppError) -> bool {
     if let AppError::Sqlx(err) = e {
-        return crate::db::is_pg_duplicate_key(err);
+        return crate::services::db::is_pg_duplicate_key(err);
     }
     false
 }

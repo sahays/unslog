@@ -3,21 +3,20 @@
 //!
 //! Subcommands:
 //!
-//! * `extract` — Mongo → gold JSON files under data/evals/gold/
+//! * `extract` — Postgres → gold JSON files under data/evals/gold/
 //! * `score` — rubric + LLM-judge → Markdown report
 //! * `regression` — replay a baseline vs candidate prompt version on the
 //!   gold set, diff outputs, optionally judge winners
 //!
 //! See `src/evals/mod.rs` for architecture. All commands run locally, read
-//! the same env (`MONGO_URI`, `MONGO_DB`, `DATA_DIR`, `OPENROUTER_API_KEY`)
-//! as the main app, and write reports under `<data_dir>/evals/reports/`.
+//! the same env (`DATABASE_URL`, `DATA_DIR`, `OPENROUTER_API_KEY`) as the
+//! main app, and write reports under `<data_dir>/evals/reports/`.
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::sync::Arc;
 
 use unslog::config::AppConfig;
-use unslog::db;
 use unslog::evals;
 use unslog::evals::regression::{self, RegressionOptions};
 use unslog::evals::report;
@@ -38,8 +37,9 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Cmd {
-    /// Pull completed stories and packet-bearing companies from Mongo into
-    /// data/evals/gold/. Idempotent — re-running overwrites the same files.
+    /// Pull completed stories and packet-bearing companies from Postgres
+    /// into data/evals/gold/. Idempotent — re-running overwrites the same
+    /// files.
     Extract,
 
     /// Run rubric (always) and optionally the LLM-judge on each gold entry,
@@ -88,16 +88,13 @@ async fn main() -> Result<()> {
     init_tracing();
     let cli = Cli::parse();
     let config = AppConfig::from_env().context("load env")?;
-    let database = db::connect(&config.mongo_uri, &config.mongo_db).await?;
-    // Postgres now backs the ported bootstrap-class stores (settings,
-    // prompts, categories); the eval harness needs both connections.
     let pool = pgdb::connect_postgres(&config.database_url)
         .await
         .map_err(|e| anyhow::anyhow!("postgres: {e}"))?;
 
     match cli.cmd {
         Cmd::Extract => {
-            let rep = evals::extract::extract_all(&database, &pool, &config.data_dir).await?;
+            let rep = evals::extract::extract_all(&pool, &config.data_dir).await?;
             println!(
                 "Extracted {} stories ({} skipped no-version), {} companies → {}",
                 rep.stories_written,
@@ -122,15 +119,8 @@ async fn main() -> Result<()> {
             let opts = ScoreOptions { run_judge };
             let client_ref: Option<&dyn LlmClient> =
                 client.as_ref().map(|c| c.as_ref() as &dyn LlmClient);
-            let reports = score::score_all(
-                &database,
-                &pool,
-                &config.data_dir,
-                &targets,
-                client_ref,
-                opts,
-            )
-            .await?;
+            let reports =
+                score::score_all(&pool, &config.data_dir, &targets, client_ref, opts).await?;
             let dir = report::open_report_dir(&config.data_dir)?;
             for r in &reports {
                 report::write_target_report(&dir, r)?;

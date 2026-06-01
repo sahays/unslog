@@ -28,16 +28,15 @@ echo "Docker:"
 if command -v docker &>/dev/null && docker info &>/dev/null; then
   pass "docker is installed and running"
 else
-  fail "docker is not running (MongoDB container needs it)"
+  fail "docker is not running (Postgres container needs it)"
   ERRORS=$((ERRORS+1))
 fi
 
-echo "MongoDB container:"
+echo "MongoDB container (only needed to run import_from_mongo):"
 if docker ps --format '{{.Image}}' 2>/dev/null | grep -q '^mongo'; then
   pass "MongoDB container is running on $(docker ps --format '{{.Ports}}' --filter ancestor=mongo | head -1)"
 else
-  warn "no running mongo:* container detected"
-  warn "start one with: docker run -d -p 27017:27017 --name mongo mongo:latest"
+  warn "Mongo: not running (only needed to run import_from_mongo)"
 fi
 
 echo "Postgres (localhost:5432):"

@@ -30,6 +30,7 @@ pub struct Prompt {
 }
 
 impl Prompt {
+    /// Retained for `import_from_mongo`; remove after one-shot import.
     pub const COLLECTION: &'static str = "prompts";
 }
 
@@ -49,6 +50,7 @@ pub struct PromptVersion {
 }
 
 impl PromptVersion {
+    /// Retained for `import_from_mongo`; remove after one-shot import.
     pub const COLLECTION: &'static str = "prompt_versions";
 
     /// Build a fresh `PromptVersion` with a freshly-minted prefixed id.

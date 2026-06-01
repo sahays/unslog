@@ -131,7 +131,7 @@ pub async fn insert_with_next_n(
 /// for [`insert_with_next_n`].
 fn is_dup_key(e: &AppError) -> bool {
     if let AppError::Sqlx(err) = e {
-        return crate::db::is_pg_duplicate_key(err);
+        return crate::services::db::is_pg_duplicate_key(err);
     }
     false
 }

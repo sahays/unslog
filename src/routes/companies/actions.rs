@@ -31,7 +31,6 @@ pub async fn refresh_packet(
     company_store::update_packet(&state.pool, &id, &packet).await?;
 
     let appended_n = questions::append_skipping_existing(
-        &state.db,
         &state.pool,
         &*state.openrouter,
         &company,

@@ -11,6 +11,16 @@ use sqlx::PgPool;
 /// `max_connections=100` defaults — leaves headroom for psql + ad-hoc tools.
 const MAX_CONNECTIONS: u32 = 20;
 
+/// Postgres SQLSTATE for `unique_violation`. Surfaces on inserts that
+/// collide with a UNIQUE / PRIMARY KEY index.
+const PG_UNIQUE_VIOLATION: &str = "23505";
+
+/// `true` when `err` is a `23505 unique_violation`. Used by stores that
+/// wrap a "compute monotonic version_n + insert" in a retry-once guard.
+pub fn is_pg_duplicate_key(err: &sqlx::Error) -> bool {
+    matches!(err.as_database_error().and_then(|e| e.code()), Some(c) if c == PG_UNIQUE_VIOLATION)
+}
+
 /// Build a `PgPool` against `database_url` and run any pending sqlx
 /// migrations under `./migrations`. Returns a clear `AppError` on
 /// connect/migrate failure so the operator sees the "start Postgres"

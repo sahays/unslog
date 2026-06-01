@@ -7,6 +7,8 @@
 //!
 //! Writes always emit an RFC 3339 string so the format is stable going
 //! forward; once a row is re-saved it round-trips cleanly.
+//!
+//! Retained for `import_from_mongo`; remove after one-shot import.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

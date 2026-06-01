@@ -98,6 +98,22 @@ async fn fetch_landing(
         .collect()
 }
 
+/// Every story whose status is `complete`. Used by the eval gold-set
+/// extractor; small N (≤ a few hundred) so a full scan is fine.
+pub async fn list_completed(pool: &PgPool) -> Result<Vec<Story>, AppError> {
+    let sql = format!(
+        "SELECT {STORY_COLS} FROM stories \
+         WHERE owner_id = $1 AND status = $2 \
+         ORDER BY updated_at DESC"
+    );
+    let rows: Vec<StoryRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .bind(StoryStatus::Complete.as_str())
+        .fetch_all(pool)
+        .await?;
+    rows.into_iter().map(StoryRow::try_into_story).collect()
+}
+
 /// Other stories for the same competency, excluding `story_id`. Sorted by
 /// most-recently-updated. Powers the side panel on the show page.
 pub async fn list_siblings(

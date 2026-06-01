@@ -2,7 +2,7 @@
 
 ## Architecture
 
-Single Axum web server, server-rendered Askama templates, HTMX for interactivity, a small JS module for mic capture and playback. Mongo for state, filesystem for audio. All AI providers fronted by OpenRouter through a single client module.
+Single Axum web server, server-rendered Askama templates, HTMX for interactivity, a small JS module for mic capture and playback. Postgres for state (via sqlx), filesystem for audio. All AI providers fronted by OpenRouter through a single client module.
 
 ```
 Browser
@@ -10,7 +10,7 @@ Browser
   └─ JS island: MediaRecorder → POST /sessions/:id/answers
                        ↓
                   Axum server
-                       ├─ Mongo (state)
+                       ├─ Postgres (state, via sqlx)
                        ├─ data/recordings/ (audio files)
                        └─ OpenRouter
                             ├─ STT (chat with input_audio)
@@ -35,7 +35,7 @@ unslog/
 │  ├─ config.rs                    # env loading
 │  ├─ error.rs
 │  ├─ startup.rs                   # axum app builder
-│  ├─ db/                          # mongo client + collection accessors
+│  ├─ services/db.rs               # postgres pool + sqlx migrations + helpers
 │  ├─ models/                      # serde structs (Company, Session, Evaluation, Summary, Settings, Asset, Prompt, PromptVersion)
 │  ├─ routes/
 │  │  ├─ mod.rs
@@ -79,9 +79,13 @@ unslog/
 └─ tests/
 ```
 
-## Data Model (Mongo)
+## Data Model (Postgres)
 
-Database: `behavioral_coach`.
+Database: `unslog` (project-scoped container `unslog-pg`). Schema lives in
+`migrations/`. The document-style summaries below describe the conceptual
+shape; the actual schema is normalized into Postgres tables with JSONB
+for the embedded sub-documents. The legacy MongoDB shape is preserved
+only in `import_from_mongo`.
 
 ### `companies`
 ```
@@ -327,10 +331,14 @@ API key lives in `.env` only. The settings page shows "key configured ✓" / "mi
 ```
 PORT=3000
 HOST=127.0.0.1
-MONGO_URI=mongodb://localhost:27017
-MONGO_DB=behavioral_coach
+DATABASE_URL=postgres://unslog:unslog@localhost:5432/unslog
+SQLX_OFFLINE=true
 OPENROUTER_API_KEY=
 RUST_LOG=info,unslog=debug
+
+# Only needed if running the one-shot `import_from_mongo` binary:
+MONGO_URI=mongodb://localhost:27017
+MONGO_DB=behavioral_coach
 ```
 
 ## Build Phases
@@ -339,7 +347,7 @@ Order matters — get a working slice end-to-end before polishing.
 
 | Phase | Scope | Est. |
 |---|---|---|
-| 1 | **Skeleton** — crate, Axum boots, Askama renders, Tailwind builds, Mongo connects, `.env` loads, health-check route | 1d |
+| 1 | **Skeleton** — crate, Axum boots, Askama renders, Tailwind builds, Postgres connects + sqlx migrations apply, `.env` loads, health-check route | 1d |
 | 2 | **Assets** — upload PDF (multipart), `pdf-extract` pipeline (with `pdftotext` fallback), save originals + extracted Markdown, mark primary, list/preview UI, re-extract button | 1d |
 | 3 | **Prompts** — embed defaults via `include_str!`, seed-on-boot, edit form (saves a new version), history view, restore | 1d |
 | 4 | **Companies + research** — add company form, research agent (uses current research prompt; records version on packet), refresh button | 1d |

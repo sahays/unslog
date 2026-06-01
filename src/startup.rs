@@ -1,7 +1,6 @@
 use axum::extract::DefaultBodyLimit;
 use axum::middleware::from_fn;
 use axum::Router;
-use mongodb::Database;
 use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -18,11 +17,7 @@ use crate::routes;
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<AppConfig>,
-    pub db: Database,
-    /// Live Postgres pool. Idle until the next sub-phase migrates the
-    /// `*_store` services off MongoDB; kept on `AppState` now so the
-    /// migration runner has a place to live and handlers can opt in
-    /// piecemeal.
+    /// Live Postgres pool — the single backing store for the app.
     pub pool: PgPool,
     pub http: reqwest::Client,
     pub openrouter: Arc<dyn crate::services::openrouter::LlmClient>,
@@ -34,8 +29,6 @@ pub struct AppState {
 }
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
-    let db = crate::db::connect(&config.mongo_uri, &config.mongo_db).await?;
-    crate::db::ensure_indexes(&db).await?;
     let pool = crate::services::db::connect_postgres(&config.database_url).await?;
     crate::services::prompt_store::seed_defaults(&pool).await?;
     crate::services::category_store::seed_defaults(&pool).await?;
@@ -64,7 +57,6 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         ));
     let state = AppState {
         config: Arc::new(config),
-        db,
         pool,
         http,
         openrouter,

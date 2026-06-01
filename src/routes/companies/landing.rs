@@ -97,7 +97,6 @@ pub async fn create(
 
     company_store::insert(&state.pool, &company).await?;
     let agent_questions_n = questions::append_skipping_existing(
-        &state.db,
         &state.pool,
         &*state.openrouter,
         &company,

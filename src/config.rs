@@ -25,11 +25,8 @@ impl LogFormat {
 pub struct AppConfig {
     pub host: String,
     pub port: u16,
-    pub mongo_uri: String,
-    pub mongo_db: String,
-    /// Postgres connection URL. Read at boot but unused until the
-    /// Mongo → Postgres code swap lands in a later sub-phase. No default —
-    /// once Postgres becomes required, `from_env` will fail fast if missing.
+    /// Postgres connection URL — the app's sole datastore. Defaults to the
+    /// project-scoped `unslog-pg` container started by `scripts/dev-up.sh`.
     pub database_url: String,
     pub openrouter_api_key: String,
     pub data_dir: String,
@@ -49,13 +46,9 @@ impl AppConfig {
             port: env::var("PORT")
                 .unwrap_or_else(|_| "3000".to_string())
                 .parse()?,
-            mongo_uri: env::var("MONGO_URI")
-                .unwrap_or_else(|_| "mongodb://localhost:27017".to_string()),
-            mongo_db: env::var("MONGO_DB").unwrap_or_else(|_| "behavioral_coach".to_string()),
             // Soft default mirrors `scripts/dev-up.sh` so a fresh checkout
-            // boots against the project-scoped `unslog-pg` container without
-            // a `.env` change. Will switch to hard-fail when the code swap
-            // lands.
+            // boots against the project-scoped `unslog-pg` container
+            // without a `.env` change.
             database_url: env::var("DATABASE_URL")
                 .unwrap_or_else(|_| "postgres://unslog:unslog@localhost:5432/unslog".to_string()),
             openrouter_api_key: env::var("OPENROUTER_API_KEY").unwrap_or_default(),
