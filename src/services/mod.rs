@@ -11,6 +11,7 @@ pub mod db;
 pub mod evaluations;
 pub mod journal_store;
 pub mod llm_safety;
+pub mod mongo_import;
 pub mod openrouter;
 pub mod openrouter_models;
 pub mod pitch_lockin;

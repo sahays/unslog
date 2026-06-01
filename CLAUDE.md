@@ -42,6 +42,9 @@ cargo test <name_substring>      # single test (filename or fn name)
 # Pre-flight check (cargo / npm / docker / mongo / pdftotext / .env / OPENROUTER_API_KEY)
 ./scripts/check-deps.sh
 ./scripts/dev-up.sh              # runs check-deps then `cargo run`
+
+# One-shot Mongo → Postgres copy (run once after Postgres is up)
+cargo run --bin import_from_mongo -- --force
 ```
 
 The user runs `cargo watch -x run` themselves — don't spawn a parallel `cargo run`. Use `cargo check` / `cargo clippy` / `cargo test` for verification, and rely on their browser to exercise the UI.
