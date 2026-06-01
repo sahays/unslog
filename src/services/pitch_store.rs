@@ -143,6 +143,31 @@ pub async fn list_all(db: &Database) -> Result<Vec<Pitch>, AppError> {
     Ok(cursor.try_collect().await?)
 }
 
+/// Tight projection for the home page's "In progress" feed — never need
+/// the embedded chat or version pointer to render the row.
+#[derive(serde::Deserialize)]
+pub struct InProgressRow {
+    #[serde(rename = "_id")]
+    pub slug: String,
+    pub question_text: String,
+    #[serde(with = "crate::models::datetime_compat::required")]
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// In-progress pitches only, newest-touched-first.
+pub async fn list_in_progress(db: &Database) -> Result<Vec<InProgressRow>, AppError> {
+    let opts = FindOptions::builder()
+        .sort(bson::doc! { "updated_at": -1 })
+        .projection(bson::doc! { "_id": 1, "question_text": 1, "updated_at": 1 })
+        .build();
+    let cursor = db
+        .collection::<InProgressRow>(Pitch::COLLECTION)
+        .find(bson::doc! { "status": PitchStatus::InProgress.as_str() })
+        .with_options(opts)
+        .await?;
+    Ok(cursor.try_collect().await?)
+}
+
 pub async fn get(db: &Database, slug: &str) -> Result<Option<Pitch>, AppError> {
     Ok(db
         .collection::<Pitch>(Pitch::COLLECTION)

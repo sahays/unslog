@@ -224,6 +224,28 @@ pub async fn list_siblings(
         .collect())
 }
 
+/// In-progress stories only, newest-first. Powers the home page's
+/// "In progress" feed. Reuses [`StoryListRow`] because the projection
+/// is identical.
+pub async fn list_in_progress(db: &Database) -> Result<Vec<StoryListRow>, AppError> {
+    let opts = FindOptions::builder()
+        .sort(bson::doc! { "updated_at": -1 })
+        .projection(bson::doc! {
+            "_id": 1,
+            "competency_id": 1,
+            "status": 1,
+            "current_version_id": 1,
+            "updated_at": 1,
+        })
+        .build();
+    let cursor = db
+        .collection::<StoryListRow>(Story::COLLECTION)
+        .find(bson::doc! { "status": StoryStatus::InProgress.as_str() })
+        .with_options(opts)
+        .await?;
+    Ok(cursor.try_collect().await?)
+}
+
 #[cfg(test)]
 #[path = "story_store_tests.rs"]
 mod tests;

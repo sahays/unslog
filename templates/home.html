@@ -19,6 +19,7 @@
     <div class="flex gap-3 flex-wrap">
       {% call ui::link_btn("/companies", "Open companies", "briefcase", "primary") %}
       {% call ui::link_btn("/stories", "Build stories", "book-marked", "secondary") %}
+      {% call ui::link_btn("/pitches", "Rehearse pitches", "mic", "secondary") %}
       {% call ui::link_btn("/practice", "Start practice", "target", "secondary") %}
     </div>
   </header>
@@ -71,13 +72,19 @@
           "/stories", "", "", ""
       ) %}
       {% call ui::feature_card(
-          3, "target", "Practice",
+          3, "mic", "Pitches",
+          "Rehearse the canonical intro/narrative answers — tell me about yourself, why this company, biggest weakness.",
+          "Short, high-leverage answers you'll reuse across every interview. Refine them once here so practice can focus on the STAR+ middle.",
+          "/pitches", "", "", ""
+      ) %}
+      {% call ui::feature_card(
+          4, "target", "Practice",
           "Cross-company mock interview. Pick a role and which question banks to draw from.",
           "The curator picks 4–6 questions tailored to your recent recurring weaknesses. Answer by voice; get a critique per turn.",
           "/practice", "", "", ""
       ) %}
       {% call ui::feature_card(
-          4, "notebook-pen", "Journal",
+          5, "notebook-pen", "Journal",
           "Free-form notes on past experiences. No AI on this side.",
           "Capture raw material here whenever something happens at work — then mine it later when building stories.",
           "/journal", "", "", ""
@@ -88,7 +95,7 @@
   <!-- ── At a glance ─────────────────────────────────────────────── -->
   <section aria-labelledby="status-heading" class="grid gap-3">
     <h2 id="status-heading" class="font-heading text-xl font-semibold m-0">At a glance</h2>
-    <div class="grid gap-3 grid-cols-2 sm:grid-cols-4">
+    <div class="grid gap-3 grid-cols-2 sm:grid-cols-3">
       {% call ui::stat_card("Companies", company_count) %}
       {% call ui::stat_card("Active sessions", active_count) %}
       <div class="card">
@@ -102,47 +109,27 @@
           {% endif %}
         </div>
       </div>
-      <div class="card">
-        <div class="section-label">OpenRouter</div>
-        <div class="mt-2">
-          {% if openrouter_configured %}
-            {% call ui::badge("key set", "good") %}
-          {% else %}
-            {% call ui::badge("no key", "bad") %}
-          {% endif %}
-        </div>
-      </div>
     </div>
   </section>
 
-  <!-- ── Recent sessions ─────────────────────────────────────────── -->
-  {% if !recent.is_empty() %}
-    <section aria-labelledby="recent-heading" class="grid gap-3">
-      <h2 id="recent-heading" class="font-heading text-xl font-semibold m-0">Recent sessions</h2>
+  <!-- ── In progress ─────────────────────────────────────────────── -->
+  {% if !in_progress.is_empty() %}
+    <section aria-labelledby="in-progress-heading" class="grid gap-3">
+      <h2 id="in-progress-heading" class="font-heading text-xl font-semibold m-0">In progress</h2>
       <div class="grid gap-2 stagger-children">
-        {% for row in recent %}
+        {% for row in in_progress %}
           <div class="card flex gap-3 items-center">
-            {% match row.session.status %}
-              {% when crate::models::SessionStatus::Active %}
-                {% call ui::badge("active", "accent") %}
-              {% when crate::models::SessionStatus::Ended %}
-                {% call ui::badge("ended", "default") %}
-            {% endmatch %}
+            <span class="tag tag-accent inline-flex items-center gap-1.5">
+              <i data-lucide="{{ row.icon }}" class="h-3.5 w-3.5"></i>
+              {{ row.kind }}
+            </span>
             <div class="flex-1 min-w-0">
-              <div class="font-medium">{{ row.company_name }}</div>
-              <div class="muted text-sm">
-                started {% call ui::time_ago(row.session.started_at) %}
-                {% if row.has_summary %}<span class="ml-2">• has summary</span>{% endif %}
-              </div>
+              <div class="font-medium truncate">{{ row.title }}</div>
+              <div class="muted text-sm">updated {% call ui::time_ago(row.updated_at) %}</div>
             </div>
-            <a class="btn btn-sm" href="/sessions/{{ row.session.id }}/review" title="Review session" aria-label="Review session">
-              <i data-lucide="clipboard-list" class="h-3.5 w-3.5"></i>
+            <a class="btn btn-primary btn-sm" href="{{ row.href }}" title="Resume" aria-label="Resume">
+              <i data-lucide="play" class="h-3.5 w-3.5"></i>
             </a>
-            {% if row.session.status == crate::models::SessionStatus::Active %}
-              <a class="btn btn-primary btn-sm" href="/sessions/{{ row.session.id }}" title="Resume session" aria-label="Resume session">
-                <i data-lucide="play" class="h-3.5 w-3.5"></i>
-              </a>
-            {% endif %}
           </div>
         {% endfor %}
       </div>

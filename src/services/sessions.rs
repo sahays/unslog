@@ -8,7 +8,7 @@
 //! * `delete_cascade` — wipe session + evaluations + summary in one place.
 //! * `list_active` / `list_for_company` — projected reads for the practice
 //!   page and the company show page.
-//! * `count_active` / `list_recent` — index-page summaries.
+//! * `count_active` — index-page summaries.
 //! * `toggle_voice` — small flip used by the voice toggle handler.
 
 use futures::TryStreamExt;
@@ -138,20 +138,6 @@ pub async fn count_active(db: &Database) -> Result<u64, AppError> {
         .collection::<Session>(Session::COLLECTION)
         .count_documents(bson::doc! { "status": SessionStatus::Active.as_str() })
         .await?)
-}
-
-/// Most-recent N sessions, regardless of status. Used by the home page.
-pub async fn list_recent(db: &Database, limit: i64) -> Result<Vec<Session>, AppError> {
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "started_at": -1 })
-        .limit(limit)
-        .build();
-    let cursor = db
-        .collection::<Session>(Session::COLLECTION)
-        .find(bson::doc! {})
-        .with_options(opts)
-        .await?;
-    Ok(cursor.try_collect().await?)
 }
 
 /// Insert a freshly-built session row.
