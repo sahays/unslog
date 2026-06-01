@@ -136,6 +136,44 @@
   document.body.addEventListener('htmx:beforeRequest', startProgress);
   document.body.addEventListener('htmx:afterRequest', finishProgress);
 
+  /* ── CSRF header for multipart form submits ──────────────────────────
+       The csrf_verify middleware accepts the token from either the
+       form-encoded body or the X-CSRF-Token header. Multipart bodies
+       can't be cheaply scanned server-side, so we intercept any form
+       tagged data-csrf-multipart, attach the header by hand, and POST
+       via fetch. The response is rendered into the document (matching
+       a normal browser submit) and Location-redirects are followed. */
+  function readCsrfCookie() {
+    var raw = document.cookie.split('; ').find(function (r) { return r.startsWith('__Host-csrf='); });
+    return raw ? raw.split('=').slice(1).join('=') : '';
+  }
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if (form.dataset.csrfMultipart === undefined) return;
+    e.preventDefault();
+    var fd = new FormData(form);
+    fetch(form.action, {
+      method: form.method || 'POST',
+      body: fd,
+      headers: { 'X-CSRF-Token': readCsrfCookie() },
+      credentials: 'same-origin',
+      redirect: 'follow',
+    }).then(function (resp) {
+      /* Server typically 303s to /assets; fetch follows it, and the body
+         is the new page HTML. Replace the document content to mirror a
+         classic browser submit. */
+      if (resp.redirected) { window.location.href = resp.url; return; }
+      return resp.text().then(function (html) {
+        document.open();
+        document.write(html);
+        document.close();
+      });
+    }).catch(function () {
+      window.location.reload();
+    });
+  }, true);
+
   /* Page loaded (initial nav or bfcache restore) → finish + clear overlay */
   window.addEventListener('pageshow', function () {
     finishProgress();

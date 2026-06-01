@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}Stories — unslog{% endblock %}
@@ -38,6 +39,7 @@
           {% when None %}
             {# No stories yet → tile is a form-button that creates the first one. #}
             <form method="post" action="/stories" class="m-0 contents">
+              {% call forms::csrf_input() %}
               <input type="hidden" name="competency_id" value="{{ t.id }}" />
               <button type="submit" class="card card-interactive grid gap-2 text-left w-full">
                 <h3 class="font-heading text-base font-semibold m-0 text-[color:var(--color-text-primary)]">{{ t.name }}</h3>

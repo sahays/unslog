@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}{{ company.name }} — unslog{% endblock %}
@@ -25,12 +26,14 @@
       <form method="post" action="/companies/{{ company.id }}/refresh-packet"
             data-loading-title="Refreshing the research packet…"
             data-loading-detail="Re-running the research agent for {{ company.name }}. This usually takes 30–60s.">
+        {% call forms::csrf_input() %}
         <button type="submit" class="btn" title="Refresh research packet" aria-label="Refresh research packet">
           <i data-lucide="refresh-cw" class="h-4 w-4"></i>
         </button>
       </form>
       <form method="post" action="/companies/{{ company.id }}/delete"
             onsubmit="return confirm('Delete company? Sessions and evaluations are kept but orphaned.')">
+        {% call forms::csrf_input() %}
         <button type="submit" class="btn btn-danger" title="Delete company" aria-label="Delete company">
           <i data-lucide="trash-2" class="h-4 w-4"></i>
         </button>
@@ -44,6 +47,7 @@
       <form method="post" action="/companies/{{ company.id }}/sessions"
             data-loading-title="Starting session…"
             data-loading-detail="Snapshotting model + prompt versions and creating your session.">
+        {% call forms::csrf_input() %}
         <button type="submit" class="btn btn-primary" title="Start session" aria-label="Start session">
           <i data-lucide="play" class="h-4 w-4"></i>
         </button>
@@ -52,6 +56,7 @@
     <div class="muted-soft text-xs mb-4">{{ questions.len() }} question{% if questions.len() != 1 %}s{% endif %} loaded</div>
 
     <form method="post" action="/companies/{{ company.id }}/questions" class="grid gap-2 mb-5">
+      {% call forms::csrf_input() %}
       <label for="paste-questions">Paste questions — one per line</label>
       <textarea id="paste-questions" name="text" rows="4" maxlength="50000" placeholder="Tell me about a time you missed a deadline.&#10;Walk me through a project you led end-to-end."></textarea>
       <div class="flex justify-end">
@@ -71,6 +76,7 @@
           <li class="grid gap-2 p-2 px-3 rounded-md border border-[color:var(--color-border)]">
             {% if is_editing %}
               <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/edit" class="grid gap-2">
+                {% call forms::csrf_input() %}
                 <textarea name="text" rows="2" required maxlength="500">{{ q.text }}</textarea>
                 <div class="grid gap-2 grid-cols-1 sm:grid-cols-[max-content_1fr]">
                   <label for="edit_role_{{ q.id }}">Role</label>
@@ -123,6 +129,7 @@
                   <i data-lucide="pencil" class="h-3.5 w-3.5"></i>
                 </a>
                 <form method="post" action="/companies/{{ company.id }}/questions/{{ q.id }}/delete">
+                  {% call forms::csrf_input() %}
                   <button type="submit" class="btn btn-sm btn-ghost" title="Delete">
                     <i data-lucide="x" class="h-3.5 w-3.5"></i>
                   </button>

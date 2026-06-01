@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}{{ name }} v{{ n }} — agents{% endblock %}
@@ -29,6 +30,7 @@
       </a>
       {% if !is_active %}
         <form method="post" action="/agents/{{ name }}/restore/{{ version.id }}">
+          {% call forms::csrf_input() %}
           <button type="submit" class="btn btn-primary" title="Activate this version" aria-label="Activate this version">
             <i data-lucide="check-circle" class="h-4 w-4"></i>
           </button>

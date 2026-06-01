@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}Practice — unslog{% endblock %}
@@ -26,6 +27,7 @@
     <form method="post" action="/practice" class="card grid gap-5"
           data-loading-title="Curating today's session…"
           data-loading-detail="Picking 4–6 questions tailored to past weaknesses across the selected companies. This usually takes 1–3s.">
+      {% call forms::csrf_input() %}
       {% call ui::card_header("target", "Today's session") %}
 
       <section class="grid gap-1.5">
@@ -90,6 +92,7 @@
               {% endif %}
               <form method="post" action="/sessions/{{ s.session_id }}/delete" class="m-0 ml-auto"
                     onsubmit="return confirm('Delete this session and any answers from it? This can’t be undone.');">
+                {% call forms::csrf_input() %}
                 <button type="submit" class="text-xs text-[color:var(--color-error)] bg-transparent border-0 p-0 cursor-pointer">Delete</button>
               </form>
             </div>

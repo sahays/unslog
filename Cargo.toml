@@ -25,6 +25,10 @@ tokio = { version = "1.40", features = ["full"] }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# Already transitive via axum-extra's form feature; declaring it directly so
+# csrf_verify middleware can parse `csrf_token` out of an x-www-form-urlencoded
+# body without pulling a new crate.
+serde_urlencoded = "0.7"
 
 # Database — Postgres via sqlx is the live store. The mongodb + bson
 # crates are retained only for the one-shot `import_from_mongo` binary

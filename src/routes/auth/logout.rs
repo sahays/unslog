@@ -1,8 +1,9 @@
 //! `/logout` — clear cookies + redirect to `/login`.
 //!
-//! CSRF double-submit will be wired in Phase 2; for now we accept the
-//! field but don't reject on mismatch. Even a forged GET → `/logout` is
-//! a low-impact action (the user gets signed out), so the gap is small.
+//! CSRF double-submit is enforced by `middleware::csrf_verify_middleware`
+//! before this handler runs; the form must carry a valid `csrf_token`
+//! that matches the `__Host-csrf` cookie. The field is still bound here
+//! so axum's Form extractor succeeds — it's otherwise unused.
 
 use axum::extract::State;
 use axum::http::{header::HeaderName, HeaderValue};
@@ -19,8 +20,11 @@ const SET_COOKIE: HeaderName = HeaderName::from_static("set-cookie");
 
 #[derive(Deserialize)]
 pub struct LogoutForm {
+    /// The middleware has already verified this against the cookie;
+    /// the field exists so axum's Form extractor parses the body
+    /// without complaining about extra fields.
     #[serde(default)]
-    #[allow(dead_code)] // TODO(phase-2): wire double-submit verify.
+    #[allow(dead_code)]
     pub csrf_token: String,
 }
 

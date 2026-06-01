@@ -1,5 +1,6 @@
 {% import "macros/ui.html" as ui %}
 {% import "macros/assets.html" as assets %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}Assets — unslog{% endblock %}
@@ -16,7 +17,9 @@
       the resume marked <em>primary</em> is auto-injected into the story and pitch coach prompts.
     </p>
 
-    <form method="post" action="/assets" enctype="multipart/form-data" class="grid gap-3">
+    <form method="post" action="/assets" enctype="multipart/form-data" class="grid gap-3"
+          data-csrf-multipart>
+      {% call forms::csrf_input() %}
       <div class="grid gap-1.5">
         <label for="asset_name">Name</label>
         <input type="text" id="asset_name" name="name" placeholder="e.g. Acing Behavioral Interviews 2e" maxlength="200" />

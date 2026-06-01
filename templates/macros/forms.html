@@ -40,8 +40,20 @@
 {%- endmacro %}
 
 {# CSRF double-submit hidden input. The token also lives in the
-   `__Host-csrf` cookie; route handlers compare the two values constant-time. #}
-{% macro csrf_input(token) -%}
+   `__Host-csrf` cookie; the csrf_verify middleware compares the two
+   values constant-time. The `csrf_token` filter (registered in
+   src/filters.rs) reads the per-request token published by
+   auth_middleware, so callers don't need to thread a `csrf_token`
+   field through every template struct.
+
+   Use `csrf_input()` for every signed-in form. The login page
+   (pre-auth, no published task-local) calls `csrf_input_explicit(t)`
+   with the token it minted by hand. #}
+{% macro csrf_input() -%}
+<input type="hidden" name="csrf_token" value="{{ ""|csrf_token }}" />
+{%- endmacro %}
+
+{% macro csrf_input_explicit(token) -%}
 <input type="hidden" name="csrf_token" value="{{ token }}" />
 {%- endmacro %}
 

@@ -1,3 +1,4 @@
+{% import "macros/forms.html" as forms %}
 <!doctype html>
 <html lang="en"
       class="h-full"
@@ -112,7 +113,6 @@
         </nav>
         {% block sidebar_footer %}
         {% let current_label = ""|current_user_label %}
-        {% let current_csrf = ""|csrf_token %}
         {% if current_label|trim != "" %}
         <div class="app-sidebar__user">
           <div class="app-sidebar__user-label" title="Signed in as">
@@ -120,7 +120,7 @@
             <span class="app-sidebar__user-name">{{ current_label }}</span>
           </div>
           <form method="post" action="/logout" class="app-sidebar__signout">
-            <input type="hidden" name="csrf_token" value="{{ current_csrf }}" />
+            {% call forms::csrf_input() %}
             <button type="submit" class="btn btn-ghost btn-sm" aria-label="Sign out">
               <i data-lucide="log-out" class="h-4 w-4"></i>
               <span x-show="!sidebarCollapsed" x-cloak>Sign out</span>

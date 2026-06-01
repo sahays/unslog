@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}Session — {{ company.name }}{% endblock %}
@@ -64,6 +65,7 @@
               onsubmit="return confirm('End session and write a summary?')"
               data-loading-title="Ending session…"
               data-loading-detail="Writing your debrief with <code>{{ session.model_snapshot.critique }}</code>. This usually takes 20–40s.">
+          {% call forms::csrf_input() %}
           <button type="submit" class="btn btn-danger" title="End session and write debrief" aria-label="End session">
             <i data-lucide="square" class="h-4 w-4"></i>
           </button>
@@ -91,6 +93,7 @@
         <div class="flex justify-between items-start gap-3">
           <div class="font-heading text-lg font-semibold flex-1">{{ qtext }}</div>
           <form method="post" action="/sessions/{{ session.id }}/toggle-voice">
+            {% call forms::csrf_input() %}
             <button type="submit" class="btn btn-sm"
                     title="Autoplay critique: {% if session.voice_critique_enabled %}on{% else %}off{% endif %} (click to toggle)"
                     aria-label="Toggle critique autoplay (currently {% if session.voice_critique_enabled %}on{% else %}off{% endif %})">
@@ -116,6 +119,7 @@
               class="grid gap-3 pt-3 border-t border-[color:var(--color-border)]"
               data-loading-title="Critiquing your answer…"
               data-loading-detail="Analysing on <code>{{ session.model_snapshot.critique }}</code> with the book + research context. This usually takes 20–40s.">
+          {% call forms::csrf_input() %}
           <div data-recorder-root data-record-endpoint="/sessions/{{ session.id }}/transcribe"
                class="flex items-center gap-3 flex-wrap">
             <button type="button" class="btn btn-primary btn-icon-spring" data-record-button>
@@ -142,6 +146,7 @@
           <form method="post" action="/sessions/{{ session.id }}/next-question"
                 data-loading-title="Picking the next question…"
                 data-loading-detail="Selecting from your bank and reading it aloud with <code>{{ session.model_snapshot.tts }}</code>.">
+            {% call forms::csrf_input() %}
             <button type="submit" class="btn" title="Next question" aria-label="Next question">
               <i data-lucide="skip-forward" class="h-4 w-4"></i>
             </button>
@@ -154,6 +159,7 @@
               class="flex justify-end"
               data-loading-title="Picking the next question…"
               data-loading-detail="Selecting from your bank and reading it aloud with <code>{{ session.model_snapshot.tts }}</code>.">
+          {% call forms::csrf_input() %}
           <button type="submit" class="btn"
                   title="{% if let Some(eval) = current_eval.as_ref() %}{% if !eval.attempts.is_empty() %}Move on to next question{% else %}Skip to next question{% endif %}{% else %}Skip to next question{% endif %}"
                   aria-label="Next question">
@@ -168,6 +174,7 @@
         <form method="post" action="/sessions/{{ session.id }}/next-question"
               data-loading-title="Picking the next question…"
               data-loading-detail="Selecting from your bank and reading it aloud with <code>{{ session.model_snapshot.tts }}</code>.">
+          {% call forms::csrf_input() %}
           <button type="submit" class="btn btn-primary" title="Pick next question" aria-label="Pick next question">
             <i data-lucide="play" class="h-4 w-4"></i>
           </button>

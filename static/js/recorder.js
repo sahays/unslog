@@ -121,6 +121,15 @@
     else form.submit();
   }
 
+  function readCsrfCookie() {
+    // The csrf cookie is non-HttpOnly precisely so the double-submit
+    // pattern can read it client-side and echo it back as a header on
+    // multipart submissions (where the form-body path can't be cheaply
+    // parsed server-side).
+    const raw = document.cookie.split("; ").find((r) => r.startsWith("__Host-csrf="));
+    return raw ? raw.split("=").slice(1).join("=") : "";
+  }
+
   async function onStop() {
     const blob = new Blob(chunks, { type: chunks[0]?.type || "audio/webm" });
     const fd = new FormData();
@@ -128,7 +137,12 @@
 
     let resp;
     try {
-      resp = await fetch(endpoint, { method: "POST", body: fd });
+      resp = await fetch(endpoint, {
+        method: "POST",
+        body: fd,
+        headers: { "X-CSRF-Token": readCsrfCookie() },
+        credentials: "same-origin",
+      });
     } catch (e) {
       setState("network error — try again");
       return;

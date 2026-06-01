@@ -103,9 +103,17 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         .fallback(crate::error::not_found_handler)
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         // Layers wrap inside-out: the LAST `.layer()` here is the FIRST
-        // middleware a request hits. We want request_context to set the
-        // request-id and is_htmx task-locals before auth_middleware reads
-        // them, so it's layered last.
+        // middleware a request hits. Desired hit order:
+        //   1. request_context_middleware  (sets request_id + is_htmx)
+        //   2. auth_middleware             (attaches CurrentUser + CSRF mint)
+        //   3. csrf_verify_middleware      (rejects state-changing requests
+        //                                   missing a valid double-submit
+        //                                   token; runs after auth so the
+        //                                   rejection can be attributed)
+        .layer(from_fn_with_state(
+            state.clone(),
+            crate::middleware::csrf_verify_middleware,
+        ))
         .layer(from_fn_with_state(
             state.clone(),
             crate::middleware::auth_middleware,

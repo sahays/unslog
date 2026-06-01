@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}Categories — unslog{% endblock %}
@@ -25,6 +26,7 @@
             <code class="font-mono text-sm muted">{{ c.id }}</code>
             <div>
               <form method="post" action="/categories/{{ c.id }}/edit" class="grid gap-2">
+                {% call forms::csrf_input() %}
                 <input type="text" name="name" value="{{ c.name }}" required />
                 <textarea name="description" rows="2">{{ c.description }}</textarea>
                 <div class="flex gap-2 items-center justify-between">
@@ -41,6 +43,7 @@
             </div>
             <form method="post" action="/categories/{{ c.id }}/delete"
                   onsubmit="return confirm('Delete this category? Questions tagged with it will lose the tag.')">
+              {% call forms::csrf_input() %}
               <button type="submit" class="btn btn-sm btn-danger" title="Delete category" aria-label="Delete category">
                 <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
               </button>
@@ -54,6 +57,7 @@
   <div class="card">
     {% call ui::card_header("plus", "Add a category") %}
     <form method="post" action="/categories" class="grid gap-3">
+      {% call forms::csrf_input() %}
       <div class="grid gap-3 grid-cols-1 sm:grid-cols-2">
         <div class="grid gap-1.5">
           <label for="cat_id">ID</label>

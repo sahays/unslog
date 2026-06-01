@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}{{ name }}{% if is_blank %} — new version{% endif %} — agents{% endblock %}
@@ -44,6 +45,7 @@
   </div>
 
   <form method="post" action="/agents/{{ name }}" class="grid gap-3">
+    {% call forms::csrf_input() %}
     <textarea
       name="body"
       spellcheck="false"

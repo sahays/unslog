@@ -1,5 +1,6 @@
 {% import "macros/ui.html" as ui %}
 {% import "macros/chat.html" as chat %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}{{ pitch.question_text }} — Pitch{% endblock %}
@@ -31,6 +32,7 @@
       </a>
       <form method="post" action="/pitches/{{ pitch.id }}/reset" class="m-0"
             onsubmit="return confirm('Reset this pitch? The chat will be wiped, but past versions stay in history.');">
+        {% call forms::csrf_input() %}
         <button type="submit" class="btn btn-ghost text-[color:var(--color-error)]" title="Reset chat" aria-label="Reset pitch chat">
           <i data-lucide="rotate-ccw" class="h-4 w-4"></i>
         </button>
@@ -68,6 +70,7 @@
           <form method="post" action="/pitches/{{ pitch.id }}/continue" class="m-0"
                 data-loading-title="Reopening…"
                 data-loading-detail="The coach is choosing the next probe for a refined version.">
+            {% call forms::csrf_input() %}
             <button type="submit" class="btn btn-sm w-full" title="Continue chatting (refine into a new version)" aria-label="Continue chatting">
               <i data-lucide="message-circle-plus" class="h-3.5 w-3.5"></i>
             </button>
@@ -85,6 +88,7 @@
         <form method="post" action="/pitches/{{ pitch.id }}/generate" class="m-0"
               data-loading-title="Writing your pitch…"
               data-loading-detail="Turning the chat into a ≈90s and ≈3-min spoken version.">
+          {% call forms::csrf_input() %}
           <button type="submit" class="btn btn-primary btn-sm w-full" title="Lock in now" aria-label="Lock in now">
             <i data-lucide="mic" class="h-3.5 w-3.5"></i>
             <span class="ml-1">Lock in now</span>

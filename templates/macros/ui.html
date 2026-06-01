@@ -185,6 +185,7 @@
             class="mt-2"
             data-loading-title="Generating audio…"
             data-loading-detail="Synthesising the critique with <code>{{ session.model_snapshot.tts }}</code>. Usually a few seconds.">
+        <input type="hidden" name="csrf_token" value="{{ ""|csrf_token }}" />
         <button type="submit" class="btn btn-sm">
           <i data-lucide="volume-2" class="h-3.5 w-3.5"></i>
           Generate audio

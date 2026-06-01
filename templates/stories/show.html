@@ -1,5 +1,6 @@
 {% import "macros/ui.html" as ui %}
 {% import "macros/chat.html" as chat %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}{{ competency.name }} — Story{% endblock %}
@@ -30,6 +31,7 @@
       </a>
       <form method="post" action="/stories/{{ story.id }}/delete" class="m-0"
             onsubmit="return confirm('Delete this story and all its versions? This can’t be undone.');">
+        {% call forms::csrf_input() %}
         <button type="submit" class="btn btn-ghost text-[color:var(--color-error)]" title="Discard story" aria-label="Discard story">
           <i data-lucide="trash-2" class="h-4 w-4"></i>
         </button>
@@ -58,13 +60,17 @@
   <form method="post" action="/stories/{{ story.id }}/mode" id="story-mode-form" class="hidden"
         hx-post="/stories/{{ story.id }}/mode"
         hx-target="#mode-pill-wrap"
-        hx-swap="innerHTML"></form>
+        hx-swap="innerHTML"
+        hx-headers='js:{"X-CSRF-Token": (document.cookie.split("; ").find(r => r.startsWith("__Host-csrf=")) || "").split("=")[1] || ""}'>
+    {% call forms::csrf_input() %}
+  </form>
 
   <form method="post" action="/stories/{{ story.id }}/turns"
         class="card chat-composer-card max-w-3xl mx-auto grid gap-2 pointer-events-auto"
         data-loading-title="Thinking…"
         data-loading-detail="The coach is reading your reply and choosing the next probe."
         x-data="{ submitOnEnter(e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.target.form.requestSubmit(); } } }">
+    {% call forms::csrf_input() %}
     <textarea name="content" rows="3" required maxlength="5000"
               @keydown="submitOnEnter"
               placeholder="Answer the coach — concrete details: who, when, what was at stake, what you decided. (⌘/Ctrl + Enter to send)"></textarea>
@@ -110,6 +116,7 @@
           <form method="post" action="/stories/{{ story.id }}/continue" class="m-0"
                 data-loading-title="Reopening…"
                 data-loading-detail="The coach is picking the thinnest section to probe next.">
+            {% call forms::csrf_input() %}
             <button type="submit" class="btn btn-sm w-full" title="Continue chatting (refine into a new version)" aria-label="Continue chatting">
               <i data-lucide="message-circle-plus" class="h-3.5 w-3.5"></i>
             </button>
@@ -123,6 +130,7 @@
       <div class="flex items-center justify-between gap-2">
         <h2 class="section-label m-0">Stories</h2>
         <form method="post" action="/stories" class="m-0">
+          {% call forms::csrf_input() %}
           <input type="hidden" name="competency_id" value="{{ competency.id }}" />
           <button type="submit" class="btn btn-primary btn-sm" title="Start a new story for this competency" aria-label="New story">
             <i data-lucide="plus" class="h-3.5 w-3.5"></i>

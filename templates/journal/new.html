@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}New entry — Journal — unslog{% endblock %}
@@ -14,6 +15,7 @@
 
   <div class="card">
     <form method="post" action="/journal" class="grid gap-3">
+      {% call forms::csrf_input() %}
       <div class="grid gap-1.5">
         <label for="entry_title">Title</label>
         <input type="text" id="entry_title" name="title" required

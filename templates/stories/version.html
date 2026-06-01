@@ -1,4 +1,5 @@
 {% import "macros/ui.html" as ui %}
+{% import "macros/forms.html" as forms %}
 {% extends "base.html" %}
 
 {% block title %}{{ competency.name }} — v{{ version.version_n }}{% endblock %}
@@ -60,6 +61,7 @@
         <form method="post" action="/stories/{{ story.id }}/versions/{{ version.id }}/spoken" class="m-0"
               data-loading-title="Regenerating…"
               data-loading-detail="Re-rendering both monologues from the locked-in bullets.">
+          {% call forms::csrf_input() %}
           <button type="submit" class="btn btn-sm" title="Regenerate both variants" aria-label="Regenerate spoken versions">
             <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
             <span>Regenerate</span>
@@ -97,6 +99,7 @@
           <form method="post" action="/stories/{{ story.id }}/versions/{{ version.id }}/spoken" class="m-0"
                 data-loading-title="Writing your monologues…"
                 data-loading-detail="Turning the STAR+ bullets into two verbatim-ready spoken versions.">
+            {% call forms::csrf_input() %}
             <button type="submit" class="btn btn-primary btn-icon-spring" title="Generate spoken versions" aria-label="Generate spoken versions">
               <span class="btn-icon"><i data-lucide="mic" class="h-4 w-4"></i></span>
               <span>Generate spoken versions</span>

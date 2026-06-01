@@ -19,7 +19,7 @@
     {% endif %}
 
     <form method="post" action="/login" class="grid gap-3" autocomplete="off">
-      {% call forms::csrf_input(csrf_token) %}
+      {% call forms::csrf_input_explicit(csrf_token) %}
       <div class="grid gap-1.5">
         <label for="code">Invite code</label>
         <input

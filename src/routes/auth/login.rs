@@ -41,11 +41,14 @@ struct LoginTemplate {
 #[derive(Deserialize)]
 pub struct LoginForm {
     pub code: String,
-    /// CSRF token from the hidden input. Verified against the cookie copy
-    /// in Phase 2; here we accept the field but defer hard rejection so
-    /// the first-time login (no cookie yet) still works.
+    /// CSRF token from the hidden input. `POST /login` is on the
+    /// `csrf_verify_middleware` allowlist because no `__Host-csrf`
+    /// cookie exists pre-auth — the field is bound only so axum's Form
+    /// extractor doesn't reject extra body fields. The minted token is
+    /// still rendered so a single-page-app login (which would race the
+    /// cookie set) has somewhere to read it from.
     #[serde(default)]
-    #[allow(dead_code)] // TODO(phase-2): wire double-submit verify.
+    #[allow(dead_code)]
     pub csrf_token: String,
 }
 
