@@ -6,6 +6,7 @@ use mockall::predicate;
 fn fixture_session() -> Session {
     Session {
         id: "sess-1".to_string(),
+        owner_id: "usrmaster".to_string(),
         company_id: "co-1".to_string(),
         role: Role::ProductManager,
         selected_company_ids: vec!["co-1".to_string()],

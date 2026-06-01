@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::error::AppError;
-use crate::models::{Attempt, Evaluation, SessionStatus};
+use crate::models::{Attempt, SessionStatus};
 use crate::services::{critique, evaluations, stt, summary, text_validation};
 use crate::startup::AppState;
 
@@ -56,10 +56,12 @@ pub(super) async fn submit_answer(
 
     let company = super::load_company(&state, &session.company_id).await?;
 
-    let (eval, attempt_n) = evaluations::load_or_create(&state.db, &session, &qid, &qtext).await?;
+    let eval_source = evaluations::PgEvalSource { pool: &state.pool };
+    let (eval, attempt_n) =
+        evaluations::load_or_create(&eval_source, &session, &qid, &qtext).await?;
 
     let prior_summaries: Vec<String> = summary::recent_company_summaries(
-        &state.db,
+        &state.pool,
         &session.company_id,
         Some(&session.id),
         summary::CARRY_FORWARD_INTO_CRITIQUE,
@@ -70,7 +72,6 @@ pub(super) async fn submit_answer(
     .collect();
 
     let critique_ctx = critique::CritiqueCtx {
-        db: &state.db,
         pool: &state.pool,
         book_cache: &state.book_cache,
     };
@@ -118,7 +119,7 @@ pub(super) async fn submit_answer(
         critique_audio_path,
         created_at: chrono::Utc::now(),
     };
-    evaluations::commit_attempt(&state.db, eval, attempt).await?;
+    evaluations::commit_attempt(&eval_source, eval, attempt).await?;
 
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
@@ -208,22 +209,17 @@ pub(super) async fn regenerate_critique_audio(
     Path((id, eval_id, attempt_n)): Path<(String, String, u32)>,
 ) -> Result<Response, AppError> {
     let session = super::load_session(&state, &id).await?;
-    let evals = state.db.collection::<Evaluation>(Evaluation::COLLECTION);
-    let eval: Evaluation = evals
-        .find_one(bson::doc! { "_id": &eval_id, "session_id": &id })
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("evaluation {eval_id}")))?;
+    let mut eval = evaluations::load_for_attempt_edit(&state.pool, &id, &eval_id).await?;
 
-    let attempt = eval
+    let critique = eval
         .attempts
         .iter()
         .find(|a| a.attempt_n == attempt_n)
-        .ok_or_else(|| AppError::NotFound(format!("attempt {attempt_n} on {eval_id}")))?;
-
-    let critique = attempt
+        .ok_or_else(|| AppError::NotFound(format!("attempt {attempt_n} on {eval_id}")))?
         .critique
         .as_ref()
-        .ok_or_else(|| AppError::BadRequest("attempt has no critique to read aloud".into()))?;
+        .ok_or_else(|| AppError::BadRequest("attempt has no critique to read aloud".into()))?
+        .clone();
 
     tracing::info!(
         event = "tts.regenerate",
@@ -242,17 +238,18 @@ pub(super) async fn regenerate_critique_audio(
     )
     .await?;
 
-    // Update the matched array element. MongoDB positional `$` operator finds
-    // the right attempt by attempt_n in the array filter.
-    evals
-        .update_one(
-            bson::doc! {
-                "_id": &eval_id,
-                "attempts.attempt_n": attempt_n as i64,
-            },
-            bson::doc! { "$set": { "attempts.$.critique_audio_path": &audio_path } },
-        )
-        .await?;
+    // Mutate the matched attempt in place + persist via the EvalSource
+    // upsert. The full row roundtrip is cheaper than a JSONB-position update
+    // and stays inside the same trait surface tests already use.
+    for a in eval.attempts.iter_mut() {
+        if a.attempt_n == attempt_n {
+            a.critique_audio_path = Some(audio_path.clone());
+            break;
+        }
+    }
+    let eval_source = evaluations::PgEvalSource { pool: &state.pool };
+    use crate::services::evaluations::EvalSource;
+    eval_source.upsert(&eval).await?;
 
     tracing::info!(
         event = "tts.regenerate_ok",

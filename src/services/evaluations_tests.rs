@@ -5,6 +5,7 @@ use mockall::predicate;
 fn fixture_session() -> Session {
     Session {
         id: "sess-1".into(),
+        owner_id: "usrmaster".into(),
         company_id: "co-1".into(),
         role: Role::ProductManager,
         selected_company_ids: vec!["co-1".into()],
@@ -47,6 +48,7 @@ fn eval_with_attempts(n: u32) -> Evaluation {
         .collect();
     Evaluation {
         id: "eval-x".into(),
+        owner_id: "usrmaster".into(),
         session_id: "sess-1".into(),
         company_id: "co-1".into(),
         question_id: "q-1".into(),

@@ -49,7 +49,7 @@ pub fn routes() -> Router<AppState> {
 // ── Helpers shared by lifecycle + answer ─────────────────────────────────
 
 async fn load_session(state: &AppState, id: &str) -> Result<Session, AppError> {
-    sessions::find_or_404(&state.db, id).await
+    sessions::find_or_404(&state.pool, id).await
 }
 
 async fn load_company(state: &AppState, id: &str) -> Result<Company, AppError> {
@@ -102,7 +102,7 @@ async fn toggle_voice(
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     let session = load_session(&state, &id).await?;
-    sessions::toggle_voice(&state.db, &session).await?;
+    sessions::toggle_voice(&state.pool, &session).await?;
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
 
@@ -118,17 +118,14 @@ async fn end(State(state): State<AppState>, Path(id): Path<String>) -> Result<Re
         );
         // Best-effort: if the LLM call fails (no key, model down), still let
         // the session end so the user isn't stuck with an unkillable session.
-        let summary_ctx = summary::SummaryCtx {
-            db: &state.db,
-            pool: &state.pool,
-        };
+        let summary_ctx = summary::SummaryCtx { pool: &state.pool };
         if let Err(e) =
             summary::generate_and_save(&summary_ctx, &*state.openrouter, &session, &company).await
         {
             tracing::warn!(error = %e, session_id = %id, "summary generation failed; ending session anyway");
         }
     }
-    sessions::end(&state.db, &id).await?;
+    sessions::end(&state.pool, &id).await?;
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
 
@@ -136,15 +133,12 @@ async fn delete_session(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let (session_deleted, evals_deleted, summaries_deleted) =
-        sessions::delete_cascade(&state.db, &id).await?;
+    let session_deleted = sessions::delete_cascade(&state.pool, &id).await?;
     tracing::info!(
         event = "session.delete",
         session_id = %id,
         session_deleted,
-        evals_deleted,
-        summaries_deleted,
-        "session deleted",
+        "session deleted (FK CASCADE wiped evaluations + summary)",
     );
     Ok(Redirect::to("/practice").into_response())
 }

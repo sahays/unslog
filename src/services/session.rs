@@ -5,11 +5,11 @@
 //! (`POST /practice`) share. Routes still own validation and the after-insert
 //! `advance_to_next` call.
 
-use mongodb::Database;
 use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{ModelSnapshot, PromptSnapshot, Role, Session, SessionStatus, Settings};
+use crate::services::current_owner::TEMP_OWNER_ID;
 use crate::services::{
     curator::{self, CuratorOutput},
     openrouter::LlmClient,
@@ -28,7 +28,6 @@ pub struct StartInput {
 /// run the curator to pick questions, and insert. Returns the inserted row.
 /// Routes layer their own logging on top.
 pub async fn start(
-    db: &Database,
     pool: &PgPool,
     or: &dyn LlmClient,
     input: StartInput,
@@ -43,15 +42,12 @@ pub async fn start(
 
     let curated = curator::curate(
         or,
-        db,
         pool,
         &settings.lite_model,
         input.role,
         &input.selected_company_ids,
     )
     .await?;
-    // `db` is still required for sessions/evaluations/summaries (not yet
-    // ported). `pool` covers companies/questions in this sub-phase.
 
     let session = build_session(
         input,
@@ -61,18 +57,18 @@ pub async fn start(
         curated,
     );
 
-    sessions::insert(db, &session).await?;
+    sessions::insert(pool, &session).await?;
 
     Ok(session)
 }
 
 /// Assemble a `Session` from already-resolved inputs. Pure — no DB / LLM /
 /// clock dependency beyond `Utc::now()` for the started timestamp. Split
-/// out so the snapshot-capture invariant can be tested without spinning
-/// up Mongo: the critique + summary prompt version IDs MUST land in
-/// `prompt_snapshot` verbatim (so subsequent prompt edits cannot retro-
-/// actively change this session's behavior), and the model fields MUST
-/// mirror the current Settings document.
+/// out so the snapshot-capture invariant can be tested without a database:
+/// the critique + summary prompt version IDs MUST land in `prompt_snapshot`
+/// verbatim (so subsequent prompt edits cannot retroactively change this
+/// session's behavior), and the model fields MUST mirror the current
+/// Settings document.
 fn build_session(
     input: StartInput,
     settings: &Settings,
@@ -81,7 +77,9 @@ fn build_session(
     curated: CuratorOutput,
 ) -> Session {
     Session {
-        id: uuid::Uuid::now_v7().to_string(),
+        id: Session::new_id(),
+        // TODO(phase-1): replace with `current_user.id`.
+        owner_id: TEMP_OWNER_ID.to_string(),
         company_id: input.anchor_company_id,
         role: input.role,
         selected_company_ids: input.selected_company_ids,

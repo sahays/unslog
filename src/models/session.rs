@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::models::Role;
+use crate::services::id_gen::{self, Kind};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -17,6 +18,15 @@ impl SessionStatus {
         match self {
             SessionStatus::Active => "active",
             SessionStatus::Ended => "ended",
+        }
+    }
+
+    /// Inverse of [`as_str`]. Mirrors the CHECK in migration 0001.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "active" => Some(Self::Active),
+            "ended" => Some(Self::Ended),
+            _ => None,
         }
     }
 }
@@ -57,6 +67,11 @@ pub struct PromptSnapshot {
 pub struct Session {
     #[serde(rename = "_id")]
     pub id: String,
+    /// Owner of this session row. Master-bound for now via `TEMP_OWNER_ID`;
+    /// per-user once Phase 1 lands. Legacy Mongo docs lack this column and
+    /// default to empty — the importer backfills before insert.
+    #[serde(default)]
+    pub owner_id: String,
     /// Anchor company. For single-company sessions, this is the only entry
     /// in `selected_company_ids`. For cross-company sessions, this points at
     /// the primary one (used for any "primary packet" fallback in critique).
@@ -99,5 +114,11 @@ fn default_role() -> Role {
 }
 
 impl Session {
+    /// Legacy Mongo collection name. Retained for the one-shot importer.
     pub const COLLECTION: &'static str = "sessions";
+
+    /// Mint a fresh session id via the shared minter.
+    pub fn new_id() -> String {
+        id_gen::new(Kind::Session)
+    }
 }

@@ -1,9 +1,7 @@
 use mongodb::error::{ErrorKind, WriteFailure};
 use mongodb::{Client, Collection, Database};
 
-use crate::models::{
-    Category, Evaluation, PitchVersion, PromptVersion, Session, Story, StoryVersion, Summary,
-};
+use crate::models::{Category, PitchVersion, PromptVersion, Story, StoryVersion};
 
 /// MongoDB error code for a duplicate-key violation against a unique index.
 const DUPLICATE_KEY_CODE: i32 = 11000;
@@ -53,58 +51,10 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
     // see migration 0001 (`questions_company_id_idx`) and 0003
     // (`companies_owner_id_idx`).
 
-    let sessions: Collection<Session> = db.collection(Session::COLLECTION);
-    let s_idx = IndexModel::builder()
-        .keys(bson::doc! { "company_id": 1, "started_at": -1 })
-        .options(
-            IndexOptions::builder()
-                .name("company_started".to_string())
-                .build(),
-        )
-        .build();
-    sessions.create_index(s_idx).await?;
-
-    let summaries: Collection<Summary> = db.collection(Summary::COLLECTION);
-    let sum_idx = IndexModel::builder()
-        .keys(bson::doc! { "session_id": 1 })
-        .options(
-            IndexOptions::builder()
-                .unique(true)
-                .name("session_id_unique".to_string())
-                .build(),
-        )
-        .build();
-    summaries.create_index(sum_idx).await?;
-    let sum_idx2 = IndexModel::builder()
-        .keys(bson::doc! { "company_id": 1, "created_at": -1 })
-        .options(
-            IndexOptions::builder()
-                .name("company_created".to_string())
-                .build(),
-        )
-        .build();
-    summaries.create_index(sum_idx2).await?;
-
-    let evals: Collection<Evaluation> = db.collection(Evaluation::COLLECTION);
-    let e_idx = IndexModel::builder()
-        .keys(bson::doc! { "session_id": 1 })
-        .options(
-            IndexOptions::builder()
-                .name("session_id".to_string())
-                .build(),
-        )
-        .build();
-    evals.create_index(e_idx).await?;
-    let e_idx2 = IndexModel::builder()
-        .keys(bson::doc! { "session_id": 1, "question_id": 1 })
-        .options(
-            IndexOptions::builder()
-                .unique(true)
-                .name("session_question_unique".to_string())
-                .build(),
-        )
-        .build();
-    evals.create_index(e_idx2).await?;
+    // Sessions, evaluations, summaries indexes moved to Postgres in
+    // Phase A Step 7 — see migration 0001
+    // (`sessions_status_started_at_idx`, `evaluations_session_id_idx`,
+    // `summaries_session_id_idx`).
 
     let categories: Collection<Category> = db.collection(Category::COLLECTION);
     let cat_idx = IndexModel::builder()

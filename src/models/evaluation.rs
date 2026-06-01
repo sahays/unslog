@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::services::id_gen::{self, Kind};
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Scores {
     pub specificity: u8,
@@ -80,6 +82,11 @@ pub struct Attempt {
 pub struct Evaluation {
     #[serde(rename = "_id")]
     pub id: String,
+    /// Master-bound for now via `TEMP_OWNER_ID`; per-user once Phase 1 lands.
+    /// Legacy Mongo docs lack this column and default to empty — the
+    /// importer backfills before insert.
+    #[serde(default)]
+    pub owner_id: String,
     pub session_id: String,
     pub company_id: String,
     pub question_id: String,
@@ -89,16 +96,19 @@ pub struct Evaluation {
 }
 
 impl Evaluation {
+    /// Legacy Mongo collection name. Retained for the one-shot importer.
     pub const COLLECTION: &'static str = "evaluations";
 
     pub fn new(
+        owner_id: String,
         session_id: String,
         company_id: String,
         question_id: String,
         question_text: String,
     ) -> Self {
         Self {
-            id: uuid::Uuid::now_v7().to_string(),
+            id: id_gen::new(Kind::Evaluation),
+            owner_id,
             session_id,
             company_id,
             question_id,

@@ -6,6 +6,7 @@ use mockall::predicate;
 fn fixture_session() -> Session {
     Session {
         id: "sess-1".into(),
+        owner_id: "usrmaster".into(),
         company_id: "co-1".into(),
         role: Role::ProductManager,
         selected_company_ids: vec!["co-1".into()],
@@ -53,6 +54,7 @@ fn fixture_company() -> Company {
 fn existing_summary() -> Summary {
     Summary {
         id: "sum-existing".into(),
+        owner_id: "usrmaster".into(),
         session_id: "sess-1".into(),
         company_id: "co-1".into(),
         narrative: "already done".into(),

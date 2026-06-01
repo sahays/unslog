@@ -5,8 +5,6 @@
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use futures::TryStreamExt;
-use mongodb::options::FindOptions;
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by the templates below.
@@ -40,9 +38,7 @@ pub(super) async fn start(
 ) -> Result<Response, AppError> {
     let company = company_store::find_or_404(&state.pool, &id).await?;
 
-    // Single-company entry: scope = just this company.
     let session = crate::services::session::start(
-        &state.db,
         &state.pool,
         &*state.openrouter,
         crate::services::session::StartInput {
@@ -79,14 +75,7 @@ pub(super) async fn show(
     let session = super::load_session(&state, &id).await?;
     let company = super::load_company(&state, &session.company_id).await?;
 
-    let evals: Vec<Evaluation> = state
-        .db
-        .collection::<Evaluation>(Evaluation::COLLECTION)
-        .find(bson::doc! { "session_id": &id })
-        .with_options(FindOptions::builder().sort(bson::doc! { "_id": 1 }).build())
-        .await?
-        .try_collect()
-        .await?;
+    let evals = evaluations::list_for_session(&state.pool, &id).await?;
 
     let current_eval = match &session.current_question_id {
         Some(qid) => evals.iter().find(|e| &e.question_id == qid).cloned(),
@@ -104,7 +93,7 @@ pub(super) async fn show(
             .await?
             .is_some();
 
-    let summary = summary::for_session(&state.db, &id).await?;
+    let summary = summary::for_session(&state.pool, &id).await?;
 
     crate::error::render_html(ActiveTemplate {
         session,
@@ -122,15 +111,8 @@ pub(super) async fn review(
 ) -> Result<Html<String>, AppError> {
     let session = super::load_session(&state, &id).await?;
     let company = super::load_company(&state, &session.company_id).await?;
-    let evals: Vec<Evaluation> = state
-        .db
-        .collection::<Evaluation>(Evaluation::COLLECTION)
-        .find(bson::doc! { "session_id": &id })
-        .with_options(FindOptions::builder().sort(bson::doc! { "_id": 1 }).build())
-        .await?
-        .try_collect()
-        .await?;
-    let summary = summary::for_session(&state.db, &id).await?;
+    let evals = evaluations::list_for_session(&state.pool, &id).await?;
+    let summary = summary::for_session(&state.pool, &id).await?;
     crate::error::render_html(ReviewTemplate {
         session,
         company,
@@ -164,16 +146,13 @@ pub(crate) async fn advance_to_next(
     state: &AppState,
     session: &Session,
 ) -> Result<Option<()>, AppError> {
-    // Only the question_id set is needed here — narrow projection skips
-    // the embedded `attempts[]` payload on every Evaluation row.
-    let answered = evaluations::answered_question_ids(&state.db, &session.id).await?;
+    let answered = evaluations::answered_question_ids(&state.pool, &session.id).await?;
 
     let next_id = crate::services::curator::next_curated(session, &answered);
 
     let pair = if let Some(next_id) = next_id {
-        load_question_by_id(state, session, &next_id).await?
+        load_question_by_id(state, &next_id).await?
     } else if session.curated_question_ids.is_empty() {
-        // Legacy fallback: random from the company's questions.
         let q_pool = questions::list_for_company(&state.pool, &session.company_id).await?;
         questions::pick_random(&q_pool, &answered).map(|q| (q.id.clone(), q.text.clone()))
     } else {
@@ -198,17 +177,22 @@ pub(crate) async fn advance_to_next(
             }
         };
 
-    sessions::set_current_question(&state.db, &session.id, &qid, &qtext, audio_path.as_deref())
-        .await?;
+    sessions::set_current_question(
+        &state.pool,
+        &session.id,
+        &qid,
+        &qtext,
+        audio_path.as_deref(),
+    )
+    .await?;
 
     Ok(Some(()))
 }
 
-/// Look up a question's text by its ID. With a top-level Questions
-/// collection this is a direct lookup — no need to walk per-company banks.
+/// Look up a question's text by its ID. With a top-level Questions table
+/// this is a direct lookup — no need to walk per-company banks.
 async fn load_question_by_id(
     state: &AppState,
-    _session: &Session,
     qid: &str,
 ) -> Result<Option<(String, String)>, AppError> {
     let q = questions::get(&state.pool, qid).await?;
@@ -219,16 +203,13 @@ async fn load_question_by_id(
 async fn end_inline(state: &AppState, session: &Session) -> Result<Response, AppError> {
     let session_id = session.id.clone();
     let company = super::load_company(state, &session.company_id).await?;
-    let summary_ctx = summary::SummaryCtx {
-        db: &state.db,
-        pool: &state.pool,
-    };
+    let summary_ctx = summary::SummaryCtx { pool: &state.pool };
     if let Err(e) =
         summary::generate_and_save(&summary_ctx, &*state.openrouter, session, &company).await
     {
         tracing::warn!(error = %e, session_id = %session_id, "summary generation failed at auto-end");
     }
-    sessions::end(&state.db, &session_id).await?;
+    sessions::end(&state.pool, &session_id).await?;
     tracing::info!(
         event = "session.auto_end",
         session_id = %session_id,

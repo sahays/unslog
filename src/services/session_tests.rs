@@ -92,4 +92,7 @@ fn build_session_starts_active_with_no_question_loaded_and_unique_id() {
     assert!(!s1.voice_critique_enabled);
     assert!(!s1.id.is_empty());
     assert_ne!(s1.id, s2.id, "session IDs must be distinct");
+    // Owner-scoping invariant — sessions inserted without an owner could
+    // be read by the wrong user (or by no one) once Phase 1 lands.
+    assert_eq!(s1.owner_id, crate::services::current_owner::TEMP_OWNER_ID);
 }

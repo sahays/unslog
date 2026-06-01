@@ -6,26 +6,24 @@
 //! Output is an ordered list of question IDs + a short "today's focus" line
 //! shown on the active session header. On any LLM failure we fall back to a
 //! random shuffle so the user can still start practising.
+//!
+//! Postgres reads live in [`mod db`]; LLM prompt assembly in [`mod prompt`].
 
-use futures::TryStreamExt;
-use mongodb::options::FindOptions;
-use mongodb::Database;
+mod db;
+mod prompt;
+
+use std::collections::HashSet;
+
 use rand::seq::SliceRandom;
-use serde::Deserialize;
 use sqlx::PgPool;
 
 use crate::error::AppError;
-use crate::models::{Category, Question, Role, Session, SessionStatus, Summary};
+use crate::models::{Question, Role, Session, SessionStatus};
 use crate::services::category_store;
-use crate::services::openrouter::{parse_json, ChatMessage, LlmClient};
+use crate::services::openrouter::LlmClient;
 use crate::services::questions;
 
-const TARGET_MIN: usize = 4;
-const TARGET_MAX: usize = 6;
-const TARGET_DEFAULT: usize = 5;
-/// How far back to look for "recent" sessions when computing weakness bias
-/// and the recently-asked exclusion list.
-const RECENT_SESSIONS: i64 = 3;
+use prompt::{CuratorJson, TARGET_MAX, TARGET_MIN};
 
 #[derive(Debug, Clone)]
 pub struct CuratorOutput {
@@ -33,18 +31,19 @@ pub struct CuratorOutput {
     pub focus_line: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct CuratorJson {
-    #[serde(default)]
-    question_ids: Vec<String>,
-    #[serde(default)]
-    focus_line: String,
+/// Lightweight projection of a candidate question — just what the curator
+/// (and LLM prompt) need.
+#[derive(Debug, Clone)]
+pub struct PoolItem {
+    pub id: String,
+    pub text: String,
+    pub company_id: String,
+    pub categories: Vec<String>,
 }
 
 /// Pick the curated session for a (role, selected_companies) tuple.
 pub async fn curate(
     or: &dyn LlmClient,
-    db: &Database,
     pg: &PgPool,
     lite_model: &str,
     role: Role,
@@ -67,14 +66,11 @@ pub async fn curate(
         )));
     }
 
-    // TODO(phase-A.7): re-target to Postgres summaries/evaluations once
-    // those tables are ported. Until then `db` still serves recent
-    // summaries and the recently-asked-questions exclusion set.
-    let recent_summaries = recent_summaries(db, selected_company_ids).await?;
-    let recently_asked = recently_asked_ids(db, selected_company_ids, role).await?;
+    let recent_summaries = db::recent_summaries(pg, selected_company_ids).await?;
+    let recently_asked = db::recently_asked_ids(pg, selected_company_ids, role).await?;
     let canonical = category_store::list_all(pg).await?;
 
-    let llm_attempt = try_llm_curate(
+    let llm_attempt = prompt::try_llm_curate(
         or,
         lite_model,
         &pool,
@@ -84,34 +80,7 @@ pub async fn curate(
     )
     .await;
 
-    let (picked_ids, focus_line) = match llm_attempt {
-        Ok(out) if !out.question_ids.is_empty() => {
-            // Validate: every returned ID must actually be in our pool, and
-            // we cap at TARGET_MAX. Drop unknown IDs.
-            let pool_ids: std::collections::HashSet<&str> =
-                pool.iter().map(|p| p.id.as_str()).collect();
-            let validated: Vec<String> = out
-                .question_ids
-                .into_iter()
-                .filter(|id| pool_ids.contains(id.as_str()))
-                .take(TARGET_MAX)
-                .collect();
-            if validated.is_empty() {
-                tracing::warn!("curator returned no valid IDs from pool, falling back to random");
-                fallback_random(&pool, &recently_asked)
-            } else {
-                (validated, out.focus_line)
-            }
-        }
-        Ok(_) => {
-            tracing::warn!("curator returned empty picks, falling back to random");
-            fallback_random(&pool, &recently_asked)
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "curator LLM call failed, falling back to random");
-            fallback_random(&pool, &recently_asked)
-        }
-    };
+    let (picked_ids, focus_line) = choose_picks(llm_attempt, &pool, &recently_asked);
 
     tracing::info!(
         op = "curator",
@@ -132,16 +101,6 @@ pub async fn curate(
     })
 }
 
-/// Lightweight projection of a candidate question — just what the curator
-/// (and LLM prompt) need.
-#[derive(Debug, Clone)]
-pub struct PoolItem {
-    pub id: String,
-    pub text: String,
-    pub company_id: String,
-    pub categories: Vec<String>,
-}
-
 async fn load_pool(
     pg: &PgPool,
     role: Role,
@@ -159,188 +118,51 @@ async fn load_pool(
         .collect())
 }
 
-async fn recent_summaries(
-    db: &Database,
-    selected_company_ids: &[String],
-) -> Result<Vec<Summary>, AppError> {
-    if selected_company_ids.is_empty() {
-        return Ok(Vec::new());
-    }
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "created_at": -1 })
-        .limit(RECENT_SESSIONS)
-        .build();
-    let cursor = db
-        .collection::<Summary>(Summary::COLLECTION)
-        .find(bson::doc! { "company_id": { "$in": selected_company_ids } })
-        .with_options(opts)
-        .await?;
-    Ok(cursor.try_collect().await?)
-}
-
-async fn recently_asked_ids(
-    db: &Database,
-    selected_company_ids: &[String],
-    role: Role,
-) -> Result<std::collections::HashSet<String>, AppError> {
-    use crate::models::Evaluation;
-    if selected_company_ids.is_empty() {
-        return Ok(std::collections::HashSet::new());
-    }
-    // Pull the last N sessions for these companies + role, then collect
-    // every question_id their evaluations referenced. Both reads project
-    // the minimal column set — Evaluation embeds an `attempts[]` array
-    // that can run multi-KB per row.
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "started_at": -1 })
-        .limit(RECENT_SESSIONS * 2)
-        .projection(bson::doc! { "_id": 1 })
-        .build();
-    #[derive(serde::Deserialize)]
-    struct SidRow {
-        #[serde(rename = "_id")]
-        id: String,
-    }
-    let session_ids: Vec<String> = db
-        .collection::<SidRow>(Session::COLLECTION)
-        .find(bson::doc! {
-            "company_id": { "$in": selected_company_ids },
-            "role": role.as_str(),
-            "status": SessionStatus::Ended.as_str(),
-        })
-        .with_options(opts)
-        .await?
-        .try_collect::<Vec<SidRow>>()
-        .await?
-        .into_iter()
-        .map(|r| r.id)
-        .collect();
-    if session_ids.is_empty() {
-        return Ok(std::collections::HashSet::new());
-    }
-    #[derive(serde::Deserialize)]
-    struct QidRow {
-        question_id: String,
-    }
-    let eval_opts = FindOptions::builder()
-        .projection(bson::doc! { "question_id": 1 })
-        .build();
-    let qids: Vec<QidRow> = db
-        .collection::<QidRow>(Evaluation::COLLECTION)
-        .find(bson::doc! { "session_id": { "$in": &session_ids } })
-        .with_options(eval_opts)
-        .await?
-        .try_collect()
-        .await?;
-    Ok(qids.into_iter().map(|r| r.question_id).collect())
-}
-
-async fn try_llm_curate(
-    or: &dyn LlmClient,
-    lite_model: &str,
+fn choose_picks(
+    llm_attempt: Result<CuratorJson, AppError>,
     pool: &[PoolItem],
-    recent_summaries: &[Summary],
-    recently_asked: &std::collections::HashSet<String>,
-    canonical: &[Category],
-) -> Result<CuratorJson, AppError> {
-    let canonical_block = canonical
-        .iter()
-        .map(|c| format!("- `{}`: {}", c.id, c.name))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let pool_block = pool
-        .iter()
-        .map(|p| {
-            let cats = if p.categories.is_empty() {
-                "(untagged)".to_string()
-            } else {
-                p.categories.join(", ")
-            };
-            let recent_marker = if recently_asked.contains(&p.id) {
-                " (RECENTLY ASKED — avoid unless pool is too small)"
-            } else {
-                ""
-            };
-            format!(
-                "- {} | categories: [{cats}] | text: {}{recent_marker}",
-                p.id, p.text
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let weaknesses_block = if recent_summaries.is_empty() {
-        "(no prior session summaries — no weakness bias)".to_string()
-    } else {
-        recent_summaries
-            .iter()
-            .enumerate()
-            .map(|(i, s)| {
-                let weak = if s.recurring_weaknesses.is_empty() {
-                    "(none recorded)".to_string()
-                } else {
-                    s.recurring_weaknesses.join("; ")
-                };
-                format!("Session -{} weaknesses: {}", i + 1, weak)
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-
-    let target_n = TARGET_DEFAULT;
-
-    let system = "You curate a focused behavioral-interview practice session. From a candidate question pool, pick a tight ordered set the user will actually benefit from: bias toward categories where past sessions showed recurring weaknesses, avoid recently-asked questions if alternatives exist, diversify categories so the same competency isn't tested twice in a row, and order the picks to build narrative coherence (warm up, escalate, reflective close).";
-
-    let user = format!(
-        r#"<canonical_categories>
-{canonical_block}
-</canonical_categories>
-
-<pool>
-{pool_block}
-</pool>
-
-<recent_weaknesses>
-{weaknesses_block}
-</recent_weaknesses>
-
-Pick {TARGET_MIN}–{TARGET_MAX} questions (target {target_n}) from the pool, in answer order. Return ONLY a JSON object with this shape:
-
-{{
-  "question_ids": ["<id-from-pool>", "<id-from-pool>", ...],
-  "focus_line": "<one short sentence describing today's focus, e.g. 'Today's focus is ambiguity, where you stumbled last session, plus a fresh ownership story for breadth.'>"
-}}
-
-Rules:
-- Use ONLY question IDs that appear in the pool above. No fabricated IDs.
-- {TARGET_MIN} ≤ count ≤ {TARGET_MAX}.
-- Never repeat an ID.
-- If the pool is small (< {TARGET_MIN}), include every available question."#
-    );
-
-    let raw = or
-        .chat(
-            lite_model,
-            vec![ChatMessage::system(system), ChatMessage::user(user)],
-            true,
-        )
-        .await?;
-
-    parse_json(&raw)
-}
-
-fn fallback_random(
-    pool: &[PoolItem],
-    recently_asked: &std::collections::HashSet<String>,
+    recently_asked: &HashSet<String>,
 ) -> (Vec<String>, String) {
+    match llm_attempt {
+        Ok(out) if !out.question_ids.is_empty() => validate_or_fallback(out, pool, recently_asked),
+        Ok(_) => {
+            tracing::warn!("curator returned empty picks, falling back to random");
+            fallback_random(pool, recently_asked)
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "curator LLM call failed, falling back to random");
+            fallback_random(pool, recently_asked)
+        }
+    }
+}
+
+fn validate_or_fallback(
+    out: CuratorJson,
+    pool: &[PoolItem],
+    recently_asked: &HashSet<String>,
+) -> (Vec<String>, String) {
+    let pool_ids: HashSet<&str> = pool.iter().map(|p| p.id.as_str()).collect();
+    let validated: Vec<String> = out
+        .question_ids
+        .into_iter()
+        .filter(|id| pool_ids.contains(id.as_str()))
+        .take(TARGET_MAX)
+        .collect();
+    if validated.is_empty() {
+        tracing::warn!("curator returned no valid IDs from pool, falling back to random");
+        fallback_random(pool, recently_asked)
+    } else {
+        (validated, out.focus_line)
+    }
+}
+
+fn fallback_random(pool: &[PoolItem], recently_asked: &HashSet<String>) -> (Vec<String>, String) {
     let mut rng = rand::thread_rng();
     let mut fresh: Vec<&PoolItem> = pool
         .iter()
         .filter(|p| !recently_asked.contains(&p.id))
         .collect();
     if fresh.len() < TARGET_MIN {
-        // Pool is exhausted of fresh questions — allow recently-asked.
         fresh = pool.iter().collect();
     }
     fresh.shuffle(&mut rng);
@@ -351,10 +173,7 @@ fn fallback_random(
 
 /// Helper used by `next_question`: walk the curated list and return the next
 /// unanswered ID. Returns None when the list is exhausted.
-pub fn next_curated(
-    session: &Session,
-    answered_ids: &std::collections::HashSet<String>,
-) -> Option<String> {
+pub fn next_curated(session: &Session, answered_ids: &HashSet<String>) -> Option<String> {
     if matches!(session.status, SessionStatus::Ended) {
         return None;
     }

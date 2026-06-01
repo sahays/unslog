@@ -1,9 +1,16 @@
 use serde::{Deserialize, Serialize};
 
+use crate::services::id_gen::{self, Kind};
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Summary {
     #[serde(rename = "_id")]
     pub id: String,
+    /// Master-bound for now via `TEMP_OWNER_ID`; per-user once Phase 1 lands.
+    /// Legacy Mongo docs lack this column and default to empty — the
+    /// importer backfills before insert.
+    #[serde(default)]
+    pub owner_id: String,
     pub session_id: String,
     pub company_id: String,
     #[serde(default)]
@@ -21,7 +28,13 @@ pub struct Summary {
 }
 
 impl Summary {
+    /// Legacy Mongo collection name. Retained for the one-shot importer.
     pub const COLLECTION: &'static str = "summaries";
+
+    /// Mint a fresh summary id via the shared minter.
+    pub fn new_id() -> String {
+        id_gen::new(Kind::Summary)
+    }
 }
 
 /// Shape returned by the summary LLM call. We persist this into a Summary row

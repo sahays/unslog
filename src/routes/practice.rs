@@ -46,12 +46,12 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let company_by_id: HashMap<String, &Company> =
         companies.iter().map(|c| (c.id.clone(), c)).collect();
 
-    let active_sessions = sessions::list_active(&state.db).await?;
+    let active_sessions = sessions::list_active(&state.pool).await?;
 
     // Bulk eval counts: one aggregate keyed by session_id instead of N
     // count_documents calls.
     let session_ids: Vec<&str> = active_sessions.iter().map(|s| s.id.as_str()).collect();
-    let answered_by_session = evaluations::counts_by_session(&state.db, &session_ids).await?;
+    let answered_by_session = evaluations::counts_by_session(&state.pool, &session_ids).await?;
 
     let mut in_progress: Vec<InProgress> = Vec::with_capacity(active_sessions.len());
     for s in &active_sessions {
@@ -160,7 +160,6 @@ async fn start(
     let anchor_id = matched[0].id.clone();
 
     let session = crate::services::session::start(
-        &state.db,
         &state.pool,
         &*state.openrouter,
         crate::services::session::StartInput {
