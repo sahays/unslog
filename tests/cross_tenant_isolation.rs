@@ -23,6 +23,7 @@ mod cross_tenant {
     pub mod pitches;
     pub mod questions;
     pub mod sessions;
+    pub mod sharing;
     pub mod stories;
     pub mod summaries;
 }

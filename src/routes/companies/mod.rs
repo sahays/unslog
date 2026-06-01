@@ -20,6 +20,7 @@ use crate::startup::AppState;
 mod actions;
 mod landing;
 mod questions;
+mod sharing;
 mod show;
 
 pub fn routes() -> Router<AppState> {
@@ -41,6 +42,8 @@ pub fn routes() -> Router<AppState> {
             "/companies/:id/questions/:qid/edit",
             post(questions::edit_question),
         )
+        .route("/companies/:id/publish", post(sharing::publish))
+        .route("/companies/:id/unpublish", post(sharing::unpublish))
 }
 
 // ── Shared types ─────────────────────────────────────────────────────────

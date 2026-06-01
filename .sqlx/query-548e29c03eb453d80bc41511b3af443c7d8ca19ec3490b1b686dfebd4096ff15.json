@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT owner_id, name, role, canonical_role,\n                  research_packet AS \"research_packet: sqlx::types::JsonValue\",\n                  created_at, updated_at\n           FROM companies\n           WHERE id = $1 AND is_public = TRUE\n           FOR SHARE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "owner_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "canonical_role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "research_packet: sqlx::types::JsonValue",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "548e29c03eb453d80bc41511b3af443c7d8ca19ec3490b1b686dfebd4096ff15"
+}

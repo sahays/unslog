@@ -17,6 +17,9 @@
       <div class="muted text-sm mt-1 flex items-center gap-2 flex-wrap">
         <span>{{ company.role }}</span>
         {% call ui::badge(company.canonical_role.display_name(), "accent") %}
+        {% if company.is_public %}
+          {% call ui::badge("public", "accent") %}
+        {% endif %}
       </div>
     </div>
     <div class="flex gap-2 flex-shrink-0">
@@ -31,6 +34,25 @@
           <i data-lucide="refresh-cw" class="h-4 w-4"></i>
         </button>
       </form>
+      {% if company.is_public %}
+        <form method="post" action="/companies/{{ company.id }}/unpublish"
+              onsubmit="return confirm('Make this company private? It will disappear from /browse for everyone else.')">
+          {% call forms::csrf_input() %}
+          <button type="submit" class="btn" title="Make private" aria-label="Make private">
+            <i data-lucide="lock" class="h-4 w-4"></i>
+            <span>Make private</span>
+          </button>
+        </form>
+      {% else %}
+        <form method="post" action="/companies/{{ company.id }}/publish"
+              onsubmit="return confirm('Publish this company to the public /browse page? Anyone signed in can fork a copy.')">
+          {% call forms::csrf_input() %}
+          <button type="submit" class="btn" title="Make public" aria-label="Make public">
+            <i data-lucide="globe" class="h-4 w-4"></i>
+            <span>Make public</span>
+          </button>
+        </form>
+      {% endif %}
       <form method="post" action="/companies/{{ company.id }}/delete"
             onsubmit="return confirm('Delete company? Sessions and evaluations are kept but orphaned.')">
         {% call forms::csrf_input() %}

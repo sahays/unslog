@@ -34,6 +34,10 @@ pub enum Kind {
     JournalEntry,
     Asset,
     PromptVersion,
+    /// Audit row inserted by `services::company_fork::audit` for every
+    /// fork. Prefix `frk` keeps it in the same `{3-letter prefix}{6 alnum}`
+    /// family as the rest of the catalog.
+    Fork,
 }
 
 impl Kind {
@@ -50,6 +54,7 @@ impl Kind {
             Kind::JournalEntry => "jnl",
             Kind::Asset => "ast",
             Kind::PromptVersion => "prv",
+            Kind::Fork => "frk",
         }
     }
 }

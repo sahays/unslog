@@ -1,0 +1,61 @@
+{% import "macros/ui.html" as ui %}
+{% import "macros/forms.html" as forms %}
+{% extends "base.html" %}
+
+{% block title %}Browse — unslog{% endblock %}
+
+{% block breadcrumbs %}<span>Browse</span>{% endblock %}
+
+{% block content %}
+<div class="grid gap-5">
+  {% call ui::page_header_open("Browse public companies", "Research packets that other people have published. Click 'Use this company' to fork a copy into your own list — you can edit it freely without affecting the original.") %}
+  {% call ui::page_header_close() %}
+
+  {% if cards.is_empty() %}
+    <div class="card flex items-center gap-3">
+      <i data-lucide="inbox" class="h-6 w-6 text-[color:var(--color-text-tertiary)]"></i>
+      <p class="muted m-0">No public companies yet. When someone publishes one from their company page, it will show up here.</p>
+    </div>
+  {% else %}
+    <div class="grid gap-3 stagger-children">
+      {% for c in cards %}
+        <article class="card card-interactive grid grid-cols-[1fr_auto] gap-3">
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-heading font-semibold text-base text-[color:var(--color-text-primary)]">{{ c.name }}</span>
+              {% call ui::badge(c.canonical_role.display_name(), "accent") %}
+              {% if c.owner_id == current_user_id %}
+                {% call ui::badge("yours", "good") %}
+              {% endif %}
+            </div>
+            <div class="muted text-sm">{{ c.role }}</div>
+            <div class="muted-soft text-xs mt-1 flex items-center gap-2">
+              <span>from <strong>{{ c.owner_label }}</strong></span>
+              <span aria-hidden="true">·</span>
+              <span>updated {% call ui::time_ago(c.updated_at) %}</span>
+            </div>
+          </div>
+          <div class="flex items-start">
+            {% if c.owner_id == current_user_id %}
+              <a class="btn btn-sm" href="/companies/{{ c.id }}" title="Open your company" aria-label="Open your company">
+                <span>Open</span>
+                <i data-lucide="arrow-right" class="h-3.5 w-3.5"></i>
+              </a>
+            {% else %}
+              <form method="post" action="/browse/companies/{{ c.id }}/fork"
+                    data-loading-title="Forking…"
+                    data-loading-detail="Copying the research packet and question bank into your namespace.">
+                {% call forms::csrf_input() %}
+                <button type="submit" class="btn btn-primary btn-sm btn-icon-spring" title="Use this company" aria-label="Use this company">
+                  <span class="btn-icon"><i data-lucide="copy" class="h-3.5 w-3.5"></i></span>
+                  <span>Use this company</span>
+                </button>
+              </form>
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -100,6 +100,14 @@ const WEIGHTS: &[Entry] = &[
     // PDF upload + extraction is disk + CPU; charge 1 unit.
     (Post, "/assets", Upload, 1),
     (Post, "/assets/:id/reextract", Upload, 1),
+    // ── Share / Fork ─────────────────────────────────────────────
+    // Fork is one transaction copying a small JSONB and an N-row
+    // question bank — no LLM, no audio. Publish/unpublish is a
+    // single UPDATE. All three are billed at 0 so they show up
+    // explicitly in the table (not in UNMETERED).
+    (Post, "/browse/companies/:id/fork", Other, 0),
+    (Post, "/companies/:id/publish", Other, 0),
+    (Post, "/companies/:id/unpublish", Other, 0),
 ];
 
 /// Look up the (kind, cost) for an in-flight request. Default is
@@ -167,6 +175,7 @@ pub const UNMETERED: &[(HttpMethod, &str)] = &[
     // Pure reads / navigation.
     (Get, "/"),
     (Get, "/practice"),
+    (Get, "/browse"),
     (Get, "/companies"),
     (Get, "/companies/new"),
     (Get, "/companies/:id"),

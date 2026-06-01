@@ -4,6 +4,7 @@ use crate::startup::AppState;
 
 pub mod assets;
 pub mod auth;
+pub mod browse;
 pub mod categories;
 pub mod companies;
 pub mod health;
@@ -24,6 +25,7 @@ pub fn router(state: AppState) -> Router {
         .merge(home::routes())
         .merge(journal::routes())
         .merge(assets::routes())
+        .merge(browse::routes())
         .merge(categories::routes())
         .merge(companies::routes())
         .merge(pitches::routes())
