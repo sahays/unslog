@@ -15,6 +15,7 @@ pub mod curator;
 pub mod db;
 pub mod evaluations;
 pub mod id_gen;
+pub mod invite_admin;
 pub mod invite_codes;
 pub mod journal_store;
 pub mod llm_safety;

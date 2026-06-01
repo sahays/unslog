@@ -17,9 +17,15 @@ use crate::startup::AppState;
 const MAX_MODEL_ID: usize = 200;
 
 pub fn routes() -> Router<AppState> {
+    // Merge the invites sub-router BEFORE applying the master-only
+    // middleware layer so `/settings/invites/*` inherits the same gate
+    // as `/settings`. Nesting under a fresh `Router` would skip the
+    // layer because axum applies layers to the router they're attached
+    // to, not to merged child routes that join later.
     Router::new()
         .route("/settings", get(show).post(save))
         .route("/settings/refresh-models", post(refresh_models))
+        .merge(crate::routes::invites::routes())
         .layer(axum::middleware::from_fn(
             crate::middleware::require_master_middleware,
         ))

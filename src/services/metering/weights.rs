@@ -221,6 +221,12 @@ pub const UNMETERED: &[(HttpMethod, &str)] = &[
     (Post, "/categories/:id/delete"),
     (Post, "/settings"),
     (Post, "/settings/refresh-models"),
+    // Admin: invite-code management. Each request is one DB UPDATE /
+    // INSERT — no LLM, no audio. Not metered.
+    (Get, "/settings/invites"),
+    (Post, "/settings/invites"),
+    (Post, "/settings/invites/:id/extend"),
+    (Post, "/settings/invites/:id/revoke"),
     (Post, "/agents/:name"),
     (Post, "/agents/:name/restore/:version_id"),
 ];

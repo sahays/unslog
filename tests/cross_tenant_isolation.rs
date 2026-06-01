@@ -19,6 +19,7 @@ mod cross_tenant {
     pub mod common;
     pub mod companies;
     pub mod evaluations;
+    pub mod invites;
     pub mod journal;
     pub mod pitches;
     pub mod questions;

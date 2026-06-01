@@ -9,6 +9,7 @@ pub mod categories;
 pub mod companies;
 pub mod health;
 pub mod home;
+pub mod invites;
 pub mod journal;
 pub mod pitches;
 pub mod practice;

@@ -1,0 +1,77 @@
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}Invite minted — unslog{% endblock %}
+
+{% block breadcrumbs %}
+<a href="/settings">Settings</a>
+<span aria-hidden="true">/</span>
+<a href="/settings/invites">Invites</a>
+<span aria-hidden="true">/</span>
+<span>New code</span>
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-5 max-w-2xl">
+  {% call ui::alert(
+    "Save this code now.",
+    "It will not be shown again. Only the argon2id hash is stored — there is no recovery path.",
+    "warn"
+  ) %}
+
+  <section class="card grid gap-4">
+    {% call ui::card_header("key-round", "Invite minted") %}
+    <p class="muted text-sm -mt-2">For <strong>{{ label }}</strong>.</p>
+    <dl class="grid gap-2 text-sm">
+      <div class="flex justify-between gap-3">
+        <dt class="muted">Tier</dt>
+        <dd>{{ tier_label }}</dd>
+      </div>
+      <div class="flex justify-between gap-3">
+        <dt class="muted">User id</dt>
+        <dd class="font-mono">{{ invitee_id }}</dd>
+      </div>
+      <div class="flex justify-between gap-3">
+        <dt class="muted">Code hint (logged)</dt>
+        <dd class="font-mono">{{ code_hint }}</dd>
+      </div>
+    </dl>
+
+    <div class="grid gap-2">
+      <label for="plain-code" class="section-label">Invite code</label>
+      <code id="plain-code"
+            class="block font-mono text-lg p-3 rounded-md bg-[color:var(--color-bg-tertiary)]
+                   border border-[color:var(--color-border)] select-all break-all"
+            data-code>{{ plain_code }}</code>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn" id="copy-code-btn">
+          <i data-lucide="copy" class="h-4 w-4"></i>
+          <span>Copy code</span>
+        </button>
+        <a href="/settings/invites" class="btn btn-primary">
+          <i data-lucide="check" class="h-4 w-4"></i>
+          <span>I have saved it</span>
+        </a>
+      </div>
+      <p class="muted-soft text-xs">
+        Send this code to the invitee over a secure channel.
+      </p>
+    </div>
+  </section>
+</div>
+<script>
+  (function () {
+    var btn = document.getElementById('copy-code-btn');
+    var code = document.getElementById('plain-code');
+    if (!btn || !code) return;
+    btn.addEventListener('click', function () {
+      var text = code.textContent.trim();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          btn.querySelector('span').textContent = 'Copied';
+        });
+      }
+    });
+  })();
+</script>
+{% endblock %}

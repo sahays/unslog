@@ -10,13 +10,19 @@
 <div class="grid gap-5">
   <div class="flex items-center justify-between gap-4">
     <h1 class="font-heading text-2xl font-semibold">Settings</h1>
-    <form method="post" action="/settings/refresh-models">
-      {% call forms::csrf_input() %}
-      <button type="submit" class="btn">
-        <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-        Refresh model list
-      </button>
-    </form>
+    <div class="flex items-center gap-2">
+      <a href="/settings/invites" class="btn">
+        <i data-lucide="user-plus" class="h-4 w-4"></i>
+        <span>Manage invites</span>
+      </a>
+      <form method="post" action="/settings/refresh-models">
+        {% call forms::csrf_input() %}
+        <button type="submit" class="btn">
+          <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+          Refresh model list
+        </button>
+      </form>
+    </div>
   </div>
 
   {% if !openrouter_configured %}
