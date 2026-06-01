@@ -26,10 +26,16 @@ pub struct AppState {
     pub resume_cache: crate::services::assets::ResumeCache,
     pub settings_cache: crate::services::settings_store::SettingsCache,
     pub prompt_cache: crate::services::prompt_cache::PromptCache,
+    /// HMAC-SHA256 server key. Persisted at `<data_dir>/session.key`.
+    /// Phase 1.2 will consume this in cookie middleware; carrying it on
+    /// `AppState` now so boot fails fast if the file is corrupted.
+    #[allow(dead_code)]
+    pub session_key: Arc<[u8; 32]>,
 }
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     let pool = crate::services::db::connect_postgres(&config.database_url).await?;
+    seed_master_user(&pool, &config).await?;
     crate::services::prompt_store::seed_defaults(&pool).await?;
     crate::services::category_store::seed_defaults(&pool).await?;
     crate::services::pitch_store::seed_defaults(&pool).await?;
@@ -55,6 +61,9 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
             config.openrouter_api_key.clone(),
             config.referer.clone(),
         ));
+    // Load (or mint) the server-side HMAC key before any request handlers
+    // come up — failing here is preferable to a 500 on the first sign-in.
+    let session_key = crate::services::session_key::load_or_create(&config.data_dir).await?;
     let state = AppState {
         config: Arc::new(config),
         pool,
@@ -65,6 +74,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         resume_cache: crate::services::assets::ResumeCache::new(),
         settings_cache: crate::services::settings_store::SettingsCache::new(),
         prompt_cache: crate::services::prompt_cache::PromptCache::new(),
+        session_key: Arc::new(session_key),
     };
 
     let static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
@@ -88,4 +98,17 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
     tracing::info!("shutdown signal received");
+}
+
+/// Hard-fail boot when `MASTER_INVITE_CODE` is missing; otherwise hand
+/// off to `master_seed::ensure_master`. Kept out of `run()` so the main
+/// boot sequence reads like pseudocode.
+async fn seed_master_user(pool: &PgPool, config: &AppConfig) -> anyhow::Result<()> {
+    let code = config.master_invite_code.as_deref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "MASTER_INVITE_CODE not set in .env (12 alphanumerics required for first boot)"
+        )
+    })?;
+    crate::services::master_seed::ensure_master(pool, code, &config.master_user_label).await?;
+    Ok(())
 }

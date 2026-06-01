@@ -56,6 +56,12 @@ pub struct AppConfig {
     /// Dev-only: drop the `Secure` cookie attribute so cookies work over
     /// plain `http://localhost`. Must remain `false` in production.
     pub dev_insecure: bool,
+    /// Plain-text master invite code, read from `MASTER_INVITE_CODE`. Hashed
+    /// at boot by `services::master_seed::ensure_master`; never logged.
+    /// `None` means "not set" — startup will refuse to boot.
+    pub master_invite_code: Option<String>,
+    /// Master user's label (display name at mint). Defaults to "master".
+    pub master_user_label: String,
 }
 
 impl AppConfig {
@@ -87,6 +93,11 @@ impl AppConfig {
             pro_request_cap_daily: env_parse("PRO_REQUEST_CAP_DAILY", 500),
             pro_max_request_cap_daily: env_parse("PRO_MAX_REQUEST_CAP_DAILY", 2000),
             dev_insecure: env_bool("DEV_INSECURE", false),
+            master_invite_code: env::var("MASTER_INVITE_CODE")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            master_user_label: env_string("MASTER_USER_LABEL", "master"),
         })
     }
 

@@ -32,7 +32,7 @@ serde_json = "1.0"
 # the cleanup commit after the import has been run.
 mongodb = "3"  # Retained until import_from_mongo is run and removed.
 bson = { version = "2", features = ["chrono-0_4", "uuid-1"] }  # Retained until import_from_mongo is run and removed.
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "chrono", "json", "migrate"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "chrono", "json", "migrate", "ipnetwork"] }
 
 # Errors
 anyhow = "1.0"
@@ -60,8 +60,16 @@ bytes = "1"
 # Base64 (for STT input_audio)
 base64 = "0.22"
 
-# Random shuffle
+# Random shuffle + CSPRNG (OsRng) for invite codes, salts, server keys.
 rand = "0.8"
+
+# Auth primitives (Phase 1+). `argon2` for invite-code hashing, `hmac` +
+# `sha2` + `subtle` for the cookie / CSRF MACs. All audited, std-shaped
+# crates; no rolling our own.
+argon2 = "0.5"
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2"
 
 # CLI argument parsing — used by src/bin/eval.rs.
 clap = { version = "4", features = ["derive"] }

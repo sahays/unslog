@@ -20,6 +20,7 @@
 /data/recordings/
 /data/logs/
 /data/assets/
+/data/session.key
 .env
 .env.local
 .env.*.local

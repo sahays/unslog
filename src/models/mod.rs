@@ -12,6 +12,7 @@ pub mod session;
 pub mod settings;
 pub mod story;
 pub mod summary;
+pub mod user;
 
 pub use asset::{Asset, AssetKind, ExtractionStatus};
 pub use category::Category;
@@ -28,3 +29,4 @@ pub use story::{
     ChatRole, ChatTurn, Difficulty, SpokenStory, Story, StoryBody, StoryStatus, StoryVersion,
 };
 pub use summary::{Summary, SummaryPayload};
+pub use user::{User, UserTier};
