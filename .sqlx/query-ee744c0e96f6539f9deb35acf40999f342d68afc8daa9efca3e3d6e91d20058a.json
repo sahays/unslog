@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE journal_entries\n            SET title = $3,\n                body = $4,\n                updated_at = $5,\n                archived_at = $6\n            WHERE owner_id = $1 AND id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ee744c0e96f6539f9deb35acf40999f342d68afc8daa9efca3e3d6e91d20058a"
+}

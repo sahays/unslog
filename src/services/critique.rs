@@ -34,9 +34,9 @@ pub trait CritiqueDeps: Send + Sync {
 
 /// Production impl of [`CritiqueDeps`].
 ///
-/// Holds a Mongo `Database` reference for the book cache (assets remain on
-/// Mongo this phase) and a Postgres pool for the prompt store (ported to
-/// Postgres in Phase A Step 4).
+/// Holds a Mongo `Database` for the resources still on Mongo (companies,
+/// sessions, summaries, evaluations) plus the Postgres `pool` used by the
+/// prompt store and asset store (assets ported in Phase A Step 5).
 pub struct CritiqueCtx<'a> {
     pub db: &'a Database,
     pub pool: &'a PgPool,
@@ -53,7 +53,7 @@ impl<'a> CritiqueDeps for CritiqueCtx<'a> {
     }
 
     async fn get_book_text(&self) -> Result<Arc<String>, AppError> {
-        self.book_cache.get(self.db).await
+        self.book_cache.get(self.pool).await
     }
 }
 

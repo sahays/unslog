@@ -81,7 +81,7 @@ struct EditTemplate {
 // ── Handlers ─────────────────────────────────────────────────────────────
 
 async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let entries = journal_store::list_active(&state.db)
+    let entries = journal_store::list_active(&state.pool)
         .await?
         .into_iter()
         .map(JournalListRow::from)
@@ -127,7 +127,7 @@ async fn create(
     Form(form): Form<EntryForm>,
 ) -> Result<Response, AppError> {
     let (title, body) = validate(&form)?;
-    let entry = journal_store::create(&state.db, title, body).await?;
+    let entry = journal_store::create(&state.pool, title, body).await?;
     tracing::info!(
         event = "journal.entry.created",
         entry_id = %entry.id,
@@ -142,7 +142,7 @@ async fn update(
     Form(form): Form<EntryForm>,
 ) -> Result<Response, AppError> {
     let (title, body) = validate(&form)?;
-    let entry = journal_store::update(&state.db, &id, title, body).await?;
+    let entry = journal_store::update(&state.pool, &id, title, body).await?;
     tracing::info!(
         event = "journal.entry.updated",
         entry_id = %entry.id,
@@ -155,7 +155,7 @@ async fn archive(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    journal_store::archive(&state.db, &id).await?;
+    journal_store::archive(&state.pool, &id).await?;
     tracing::info!(event = "journal.entry.archived", entry_id = %id, "journal entry archived");
     Ok(Redirect::to("/journal").into_response())
 }
@@ -163,7 +163,7 @@ async fn archive(
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 async fn require_entry(state: &AppState, id: &str) -> Result<JournalEntry, AppError> {
-    journal_store::get(&state.db, id)
+    journal_store::get(&state.pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("journal entry {id}")))
 }

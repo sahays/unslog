@@ -10,21 +10,23 @@
 
 use std::sync::Arc;
 
+use sqlx::PgPool;
+
 use crate::error::AppError;
 use crate::services::assets::ResumeCache;
 use crate::startup::AppState;
 
 /// Convenience over [`block_from`]. Pulls the cache out of [`AppState`] and
-/// hands it the live DB handle.
+/// hands it the live pool.
 pub async fn block(state: &AppState) -> Result<String, AppError> {
-    block_from(&state.resume_cache, &state.db).await
+    block_from(&state.resume_cache, &state.pool).await
 }
 
 /// Build the `<resume>…</resume>` system-prompt block. Returns an empty
 /// string when no primary resume exists; callers should skip emitting the
 /// surrounding double-newline in that case.
-pub async fn block_from(cache: &ResumeCache, db: &mongodb::Database) -> Result<String, AppError> {
-    let Some(text) = cache.get(db).await? else {
+pub async fn block_from(cache: &ResumeCache, pool: &PgPool) -> Result<String, AppError> {
+    let Some(text) = cache.get(pool).await? else {
         return Ok(String::new());
     };
     Ok(wrap(&text))

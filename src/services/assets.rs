@@ -8,12 +8,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use mongodb::Database;
+use sqlx::PgPool;
 use tokio::process::Command;
 use tokio::sync::RwLock;
 
 use crate::error::AppError;
 use crate::models::{Asset, AssetKind, ExtractionStatus};
+use crate::services::current_owner::TEMP_OWNER_ID;
 
 const MIN_EXTRACTED_CHARS: usize = 200;
 /// Critique inlines the book up to this many codepoints. The cache stores
@@ -53,21 +54,25 @@ pub async fn save_upload(
 ) -> Result<Asset, AppError> {
     let ext = "pdf";
 
-    let asset_id = uuid::Uuid::now_v7().to_string();
     tokio::fs::create_dir_all(originals_dir(data_dir)).await?;
     tokio::fs::create_dir_all(extracted_dir(data_dir)).await?;
 
-    let path = original_path_for(data_dir, &asset_id, ext);
-    tokio::fs::write(&path, bytes).await?;
-
-    let mut asset = Asset::new(
+    // Mint the id up front so the on-disk filename matches the row id.
+    // `Asset::new` mints internally; we route through it for that single
+    // source of truth on id generation.
+    let asset = Asset::new(
+        TEMP_OWNER_ID.into(),
         name,
         kind,
         original_filename,
-        path.to_string_lossy().into_owned(),
+        String::new(),
     );
-    asset.id = asset_id;
-    Ok(asset)
+    let path = original_path_for(data_dir, &asset.id, ext);
+    tokio::fs::write(&path, bytes).await?;
+    Ok(Asset {
+        original_path: path.to_string_lossy().into_owned(),
+        ..asset
+    })
 }
 
 /// Run extraction for an already-saved asset, writing the extracted markdown
@@ -168,8 +173,8 @@ impl BookCache {
 
     /// Return the primary book's truncated extracted text. Loads from disk
     /// on first call (or after invalidation); subsequent calls hit memory.
-    pub async fn get(&self, db: &Database) -> Result<Arc<String>, AppError> {
-        let primary = crate::services::asset_store::find_primary_by_kind(db, AssetKind::Book)
+    pub async fn get(&self, pool: &PgPool) -> Result<Arc<String>, AppError> {
+        let primary = crate::services::asset_store::find_primary_by_kind(pool, AssetKind::Book)
             .await?
             .ok_or_else(|| {
                 AppError::BadRequest(
@@ -228,9 +233,9 @@ impl ResumeCache {
     /// Return the primary resume's extracted text. Loads from disk on first
     /// call (or after invalidation); subsequent calls hit memory. Returns
     /// `Ok(None)` when no primary resume exists — this is a normal state.
-    pub async fn get(&self, db: &Database) -> Result<Option<Arc<String>>, AppError> {
+    pub async fn get(&self, pool: &PgPool) -> Result<Option<Arc<String>>, AppError> {
         let Some(primary) =
-            crate::services::asset_store::find_primary_by_kind(db, AssetKind::Resume).await?
+            crate::services::asset_store::find_primary_by_kind(pool, AssetKind::Resume).await?
         else {
             return Ok(None);
         };

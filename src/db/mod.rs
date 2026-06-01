@@ -2,8 +2,8 @@ use mongodb::error::{ErrorKind, WriteFailure};
 use mongodb::{Client, Collection, Database};
 
 use crate::models::{
-    Asset, Category, Company, Evaluation, JournalEntry, PitchVersion, PromptVersion, Question,
-    Session, Story, StoryVersion, Summary,
+    Category, Company, Evaluation, PitchVersion, PromptVersion, Question, Session, Story,
+    StoryVersion, Summary,
 };
 
 /// MongoDB error code for a duplicate-key violation against a unique index.
@@ -36,21 +36,8 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
     use mongodb::options::IndexOptions;
     use mongodb::IndexModel;
 
-    let assets: Collection<Asset> = db.collection(Asset::COLLECTION);
-    // Compound `(kind, primary)` covers the hot per-coach-turn lookup
-    // `find_one({kind: <X>, primary: true})` used by `BookCache::get` and
-    // `ResumeCache::get`. Subsumes the prior single-field `primary_1` index
-    // (now deprecated — Mongo doesn't drop indexes at runtime, so existing
-    // installs keep the stray `primary_1` index until manually dropped).
-    let kind_primary_idx = IndexModel::builder()
-        .keys(bson::doc! { "kind": 1, "primary": 1 })
-        .options(
-            IndexOptions::builder()
-                .name("kind_primary".to_string())
-                .build(),
-        )
-        .build();
-    assets.create_index(kind_primary_idx).await?;
+    // Asset indexes moved to Postgres in Phase A Step 5 — see
+    // `assets_one_primary_per_owner_kind_uidx` in migration 0003.
 
     let versions: Collection<PromptVersion> = db.collection(PromptVersion::COLLECTION);
     let pname_idx = IndexModel::builder()
@@ -176,16 +163,8 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         .build();
     stories.create_index(story_idx).await?;
 
-    let journal_entries: Collection<JournalEntry> = db.collection(JournalEntry::COLLECTION);
-    let je_idx = IndexModel::builder()
-        .keys(bson::doc! { "created_at": -1 })
-        .options(
-            IndexOptions::builder()
-                .name("created_at_desc".to_string())
-                .build(),
-        )
-        .build();
-    journal_entries.create_index(je_idx).await?;
+    // Journal entry indexes moved to Postgres in Phase A Step 5 — see
+    // `journal_entries_owner_active_updated_at_idx` in migration 0003.
 
     let story_versions: Collection<StoryVersion> = db.collection(StoryVersion::COLLECTION);
     // Unique on (story_id, version_n) — guards against the double-submit

@@ -5,6 +5,7 @@ use mockall::predicate;
 fn fixture_asset(id: &str, kind: AssetKind, primary: bool) -> Asset {
     Asset {
         id: id.into(),
+        owner_id: crate::services::current_owner::TEMP_OWNER_ID.into(),
         name: format!("asset-{id}"),
         kind,
         primary,

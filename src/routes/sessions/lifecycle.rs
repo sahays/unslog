@@ -100,7 +100,7 @@ pub(super) async fn show(
     // Critique requires a primary *book*. Resume presence is unrelated;
     // scope the check to AssetKind::Book.
     let has_primary_asset =
-        asset_store::find_primary_by_kind(&state.db, crate::models::AssetKind::Book)
+        asset_store::find_primary_by_kind(&state.pool, crate::models::AssetKind::Book)
             .await?
             .is_some();
 

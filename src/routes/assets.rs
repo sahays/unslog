@@ -40,7 +40,7 @@ struct ListTemplate {
 }
 
 async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let assets = asset_store::list_sorted(&state.db).await?;
+    let assets = asset_store::list_sorted(&state.pool).await?;
     let mut books = Vec::new();
     let mut resumes = Vec::new();
     let mut others = Vec::new();
@@ -124,13 +124,13 @@ async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Re
     // If no primary asset of this kind exists yet, mark this one primary.
     // Keeps the "one primary per kind" invariant on bootstrap without
     // requiring a separate user action.
-    if asset_store::find_primary_by_kind(&state.db, kind)
+    if asset_store::find_primary_by_kind(&state.pool, kind)
         .await?
         .is_none()
     {
         asset.primary = true;
     }
-    asset_store::insert(&state.db, &asset).await?;
+    asset_store::insert(&state.pool, &asset).await?;
     if asset.primary {
         invalidate_kind_cache(&state, kind).await;
     }
@@ -153,8 +153,8 @@ async fn set_primary(
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     // Load to learn the kind, so we invalidate the matching cache.
-    let asset = asset_store::find_or_404(&state.db, &id).await?;
-    asset_store::set_primary(&state.db, &id).await?;
+    let asset = asset_store::find_or_404(&state.pool, &id).await?;
+    asset_store::set_primary(&state.pool, &id).await?;
     invalidate_kind_cache(&state, asset.kind).await;
     Ok(Redirect::to("/assets").into_response())
 }
@@ -163,9 +163,9 @@ async fn reextract(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let asset = asset_store::find_or_404(&state.db, &id).await?;
+    let asset = asset_store::find_or_404(&state.pool, &id).await?;
     let (status, extracted_path, err) = svc::extract(&state.config.data_dir, &asset).await;
-    asset_store::update_extraction(&state.db, &id, status, extracted_path, err).await?;
+    asset_store::update_extraction(&state.pool, &id, status, extracted_path, err).await?;
     if asset.primary {
         invalidate_kind_cache(&state, asset.kind).await;
     }
@@ -176,7 +176,7 @@ async fn delete(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let asset = asset_store::find_or_404(&state.db, &id).await?;
+    let asset = asset_store::find_or_404(&state.pool, &id).await?;
 
     let _ = tokio::fs::remove_file(&asset.original_path).await;
     if let Some(ext) = asset.extracted_path.as_ref() {
@@ -189,7 +189,7 @@ async fn delete(
     // `find_primary_by_kind`).
     let was_primary = asset.primary;
     let kind = asset.kind;
-    asset_store::delete(&state.db, &asset).await?;
+    asset_store::delete(&state.pool, &asset).await?;
 
     if was_primary {
         invalidate_kind_cache(&state, kind).await;
@@ -220,7 +220,7 @@ async fn preview(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
-    let asset = asset_store::find_or_404(&state.db, &id).await?;
+    let asset = asset_store::find_or_404(&state.pool, &id).await?;
 
     let mut body = svc::read_extracted(&asset).await?;
     let truncated = body.chars().count() > 80_000;

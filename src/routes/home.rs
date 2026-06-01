@@ -50,7 +50,7 @@ async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> 
     // Critique flow requires a primary *book*. A resume alone doesn't
     // unblock it; scope the presence check to AssetKind::Book.
     let primary_asset_present =
-        asset_store::find_primary_by_kind(&state.db, crate::models::AssetKind::Book)
+        asset_store::find_primary_by_kind(&state.pool, crate::models::AssetKind::Book)
             .await?
             .is_some();
 

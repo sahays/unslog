@@ -1,10 +1,12 @@
 use super::*;
+use crate::services::current_owner::TEMP_OWNER_ID;
 use mockall::predicate;
 
 fn fixture_entry(id: &str) -> JournalEntry {
     let now = chrono::Utc::now();
     JournalEntry {
         id: id.into(),
+        owner_id: TEMP_OWNER_ID.into(),
         title: "old title".into(),
         body: "old body".into(),
         created_at: now,
@@ -18,6 +20,7 @@ async fn case_create_inserts_entry_with_equal_timestamps_and_active() {
     let mut deps = MockJournalSource::new();
     deps.expect_insert().times(1).returning(|entry| {
         assert!(!entry.id.is_empty(), "id should be generated");
+        assert_eq!(entry.owner_id, TEMP_OWNER_ID);
         assert_eq!(entry.title, "t");
         assert_eq!(entry.body, "b");
         assert_eq!(
@@ -28,7 +31,7 @@ async fn case_create_inserts_entry_with_equal_timestamps_and_active() {
         Ok(())
     });
 
-    let out = create(&deps, "t".into(), "b".into()).await.expect("ok");
+    let out = create_via(&deps, "t".into(), "b".into()).await.expect("ok");
     assert!(!out.id.is_empty());
 }
 
@@ -41,9 +44,9 @@ async fn case_update_bumps_updated_at_and_writes_new_fields() {
 
     let mut deps = MockJournalSource::new();
     deps.expect_find_one()
-        .with(predicate::eq("e-1"))
+        .with(predicate::eq(TEMP_OWNER_ID), predicate::eq("e-1"))
         .times(1)
-        .returning(move |_| Ok(Some(stored.clone())));
+        .returning(move |_, _| Ok(Some(stored.clone())));
     deps.expect_replace().times(1).returning(move |entry| {
         assert_eq!(entry.id, "e-1");
         assert_eq!(entry.title, "new title");
@@ -56,7 +59,7 @@ async fn case_update_bumps_updated_at_and_writes_new_fields() {
         Ok(())
     });
 
-    let out = update(&deps, "e-1", "new title".into(), "new body".into())
+    let out = update_via(&deps, "e-1", "new title".into(), "new body".into())
         .await
         .expect("ok");
     assert_eq!(out.title, "new title");
@@ -67,11 +70,11 @@ async fn case_update_bumps_updated_at_and_writes_new_fields() {
 async fn case_update_returns_not_found_when_missing() {
     let mut deps = MockJournalSource::new();
     deps.expect_find_one()
-        .with(predicate::eq("missing"))
+        .with(predicate::eq(TEMP_OWNER_ID), predicate::eq("missing"))
         .times(1)
-        .returning(|_| Ok(None));
+        .returning(|_, _| Ok(None));
 
-    let err = update(&deps, "missing", "t".into(), "b".into())
+    let err = update_via(&deps, "missing", "t".into(), "b".into())
         .await
         .expect_err("expected NotFound");
     assert!(matches!(err, AppError::NotFound(_)));
@@ -86,9 +89,9 @@ async fn case_archive_sets_archived_at_and_preserves_other_fields() {
 
     let mut deps = MockJournalSource::new();
     deps.expect_find_one()
-        .with(predicate::eq("e-1"))
+        .with(predicate::eq(TEMP_OWNER_ID), predicate::eq("e-1"))
         .times(1)
-        .returning(move |_| Ok(Some(stored.clone())));
+        .returning(move |_, _| Ok(Some(stored.clone())));
     deps.expect_replace().times(1).returning(move |entry| {
         assert_eq!(entry.id, "e-1");
         assert!(
@@ -100,18 +103,18 @@ async fn case_archive_sets_archived_at_and_preserves_other_fields() {
         Ok(())
     });
 
-    archive(&deps, "e-1").await.expect("ok");
+    archive_via(&deps, "e-1").await.expect("ok");
 }
 
 #[tokio::test]
 async fn case_archive_returns_not_found_when_missing() {
     let mut deps = MockJournalSource::new();
     deps.expect_find_one()
-        .with(predicate::eq("ghost"))
+        .with(predicate::eq(TEMP_OWNER_ID), predicate::eq("ghost"))
         .times(1)
-        .returning(|_| Ok(None));
+        .returning(|_, _| Ok(None));
 
-    let err = archive(&deps, "ghost")
+    let err = archive_via(&deps, "ghost")
         .await
         .expect_err("expected NotFound");
     assert!(matches!(err, AppError::NotFound(_)));
@@ -121,10 +124,11 @@ async fn case_archive_returns_not_found_when_missing() {
 async fn case_list_active_returns_entries_from_source() {
     let mut deps = MockJournalSource::new();
     deps.expect_find_active()
+        .with(predicate::eq(TEMP_OWNER_ID))
         .times(1)
-        .returning(|| Ok(vec![fixture_entry("a"), fixture_entry("b")]));
+        .returning(|_| Ok(vec![fixture_entry("a"), fixture_entry("b")]));
 
-    let out = list_active(&deps).await.expect("ok");
+    let out = list_active_via(&deps).await.expect("ok");
     assert_eq!(out.len(), 2);
     assert_eq!(out[0].id, "a");
     assert_eq!(out[1].id, "b");
@@ -134,11 +138,11 @@ async fn case_list_active_returns_entries_from_source() {
 async fn case_get_returns_entry_when_present() {
     let mut deps = MockJournalSource::new();
     deps.expect_find_one()
-        .with(predicate::eq("e-1"))
+        .with(predicate::eq(TEMP_OWNER_ID), predicate::eq("e-1"))
         .times(1)
-        .returning(|_| Ok(Some(fixture_entry("e-1"))));
+        .returning(|_, _| Ok(Some(fixture_entry("e-1"))));
 
-    let out = get(&deps, "e-1").await.expect("ok");
+    let out = get_via(&deps, "e-1").await.expect("ok");
     assert!(out.is_some());
     assert_eq!(out.unwrap().id, "e-1");
 }

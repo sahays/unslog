@@ -1,12 +1,20 @@
-//! Prefix-aware id minter + Mongo → Postgres FK map.
+//! Mongo → Postgres FK rewrite table.
 //!
-//! IDs are 9 chars: `{3-letter prefix}{6 lowercase alphanum}`. Catalog
-//! tables (categories, pitches) keep their slug ids; the master user is
-//! the literal `usrmaster`. Everything else gets a fresh prefixed id.
+//! The minter itself lives in [`crate::services::id_gen`] — see that module
+//! for the `{prefix}{6}` shape contract and the [`Kind`] enum. This file
+//! only owns the bin-specific `IdMap` that records old→new mappings across
+//! the read pass for the write pass to consult.
+//!
+//! Catalog tables (categories, pitches) keep their slug ids; the master
+//! user is the literal `usrmaster`. Everything else gets a fresh prefixed
+//! id minted through [`IdMap::mint`].
 
-use rand::rngs::OsRng;
-use rand::RngCore;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+// Re-export the shared minter and Kind enum so existing callers
+// (`mongo_import::*`, `models::prompt::PromptVersion::new`) continue to
+// resolve `Kind` and `mint` through this module.
+pub use crate::services::id_gen::Kind;
 
 /// Reserved literal id for the single master user.
 pub const MASTER_USER_ID: &str = "usrmaster";
@@ -14,60 +22,11 @@ pub const MASTER_USER_ID: &str = "usrmaster";
 /// Singleton id mandated by the Postgres `settings` table check constraint.
 pub const SETTINGS_SINGLETON_ID: &str = "singleton";
 
-/// Lowercase-alphanum alphabet used for the 6-char random suffix.
-const ALPHABET: &[u8; 36] = b"abcdefghijklmnopqrstuvwxyz0123456789";
-
-/// Domain object kinds that get prefixed ids. Catalog / singleton kinds
-/// are intentionally absent — those use slugs / fixed literals.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Kind {
-    Company,
-    Question,
-    Session,
-    Evaluation,
-    Summary,
-    Story,
-    StoryVersion,
-    PitchVersion,
-    JournalEntry,
-    Asset,
-    PromptVersion,
-}
-
-impl Kind {
-    pub fn prefix(self) -> &'static str {
-        match self {
-            Kind::Company => "com",
-            Kind::Question => "qst",
-            Kind::Session => "ses",
-            Kind::Evaluation => "eva",
-            Kind::Summary => "sum",
-            Kind::Story => "sto",
-            Kind::StoryVersion => "stv",
-            Kind::PitchVersion => "piv",
-            Kind::JournalEntry => "jnl",
-            Kind::Asset => "ast",
-            Kind::PromptVersion => "prv",
-        }
-    }
-}
-
-/// Mint a fresh `{prefix}{6}` id using OS CSPRNG. The 9-char total leaves
-/// 36^6 ≈ 2.1B distinct values per prefix — collision under 10k samples is
-/// effectively zero, but [`IdMap::mint`] still retries on the unlikely
-/// duplicate.
+/// Free-function wrapper kept for back-compat with the existing call sites
+/// (`models::prompt::PromptVersion::new`, the bin minting helpers). New
+/// code should call [`crate::services::id_gen::new`] directly.
 pub fn mint(kind: Kind) -> String {
-    let mut suffix = [0u8; 6];
-    let mut raw = [0u8; 6];
-    OsRng.fill_bytes(&mut raw);
-    for (i, byte) in raw.iter().enumerate() {
-        suffix[i] = ALPHABET[(*byte as usize) % ALPHABET.len()];
-    }
-    let mut out = String::with_capacity(9);
-    out.push_str(kind.prefix());
-    // SAFETY: `suffix` only ever holds bytes from `ALPHABET`, which is ASCII.
-    out.push_str(std::str::from_utf8(&suffix).expect("alphabet is ascii"));
-    out
+    crate::services::id_gen::new(kind)
 }
 
 /// Mongo→Postgres id rewrite table, keyed by `(kind, old_id)`. Built in
@@ -76,7 +35,7 @@ pub fn mint(kind: Kind) -> String {
 #[derive(Default)]
 pub struct IdMap {
     inner: HashMap<(Kind, String), String>,
-    minted_suffixes: HashMap<Kind, std::collections::HashSet<String>>,
+    minted_suffixes: HashMap<Kind, HashSet<String>>,
 }
 
 impl IdMap {
@@ -93,7 +52,7 @@ impl IdMap {
         }
         let seen = self.minted_suffixes.entry(kind).or_default();
         let new_id = loop {
-            let candidate = mint(kind);
+            let candidate = crate::services::id_gen::new(kind);
             if seen.insert(candidate.clone()) {
                 break candidate;
             }

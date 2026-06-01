@@ -1,32 +1,27 @@
-//! Store for the `assets` collection — uploaded book / reference / resume PDFs.
+//! Store for the Postgres `assets` table — uploaded book / resume PDFs.
 //!
-//! Read/write surface:
-//! * `get` / `find_or_404` — lookups.
-//! * `find_primary_by_kind` — the one row with `{kind, primary: true}`, if any.
-//! * `list_sorted` — newest-first list for the library page.
-//! * `insert` — single-row write (delete goes through [`delete`] below
-//!   for primary-promotion-safe removal).
-//! * `set_primary` — flip primary by promoting the target first, then
-//!   demoting peers **of the same kind**. The brief window may have two
-//!   primaries within a kind, never zero; downstream consumers
-//!   (`find_primary_by_kind` uses `find_one`) tolerate the two-primary window.
-//! * `delete` — drops a row and, when the deleted row was primary, promotes
-//!   the next-most-recent peer **of the same kind** to keep one primary
-//!   alive per non-empty kind.
+//! Every read is scoped by `owner_id`. `kind = 'book'` rows are pinned to
+//! the master user by a trigger (migration 0003) so the critique flow
+//! sees the same book regardless of which user is logged in. Resumes are
+//! per-user. `set_primary` runs in a transaction so the partial unique
+//! index `assets_one_primary_per_owner_kind_uidx` is never violated.
 //!
-//! The primary-management functions go through the [`AssetSource`] trait so
-//! the per-kind scoping logic is unit-testable without a live Mongo.
+//! Primary-management logic flows through [`AssetSource`] so the per-kind
+//! scoping rules are unit-testable without a live DB.
 
 use async_trait::async_trait;
-use futures::TryStreamExt;
-use mongodb::options::{FindOneOptions, FindOptions};
-use mongodb::Database;
+use sqlx::PgPool;
 
 use crate::error::AppError;
-use crate::models::{Asset, AssetKind};
+use crate::models::{Asset, AssetKind, ExtractionStatus};
+use crate::services::current_owner::TEMP_OWNER_ID;
+
+#[path = "asset_store_row.rs"]
+mod row;
+use row::{AssetRow, ASSET_COLS};
 
 /// Persistence seam for the primary-management logic. Production impl is
-/// `mongodb::Database`; tests inject `MockAssetSource`.
+/// [`PgAssetSource`]; tests inject `MockAssetSource`.
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait AssetSource: Send + Sync {
@@ -48,36 +43,41 @@ pub trait AssetSource: Send + Sync {
     async fn find_by_id(&self, id: &str) -> Result<Option<Asset>, AppError>;
 }
 
+/// Production `AssetSource` over a `&PgPool`.
+pub struct PgAssetSource<'a> {
+    pub pool: &'a PgPool,
+}
+
 #[async_trait]
-impl AssetSource for Database {
+impl<'a> AssetSource for PgAssetSource<'a> {
     async fn find_newest_of_kind_excluding(
         &self,
         kind: AssetKind,
         exclude_id: &str,
     ) -> Result<Option<Asset>, AppError> {
-        Ok(self
-            .collection::<Asset>(Asset::COLLECTION)
-            .find_one(bson::doc! {
-                "kind": kind.as_str(),
-                "_id": { "$ne": exclude_id },
-            })
-            .with_options(
-                FindOneOptions::builder()
-                    .sort(bson::doc! { "uploaded_at": -1 })
-                    .build(),
-            )
-            .await?)
+        let sql = format!(
+            "SELECT {ASSET_COLS}
+             FROM assets
+             WHERE owner_id = $1 AND kind = $2 AND id <> $3
+             ORDER BY uploaded_at DESC
+             LIMIT 1"
+        );
+        let row: Option<AssetRow> = sqlx::query_as(&sql)
+            .bind(TEMP_OWNER_ID)
+            .bind(kind.as_str())
+            .bind(exclude_id)
+            .fetch_optional(self.pool)
+            .await?;
+        row.map(AssetRow::try_into_asset).transpose()
     }
 
     async fn set_primary_flag(&self, id: &str, value: bool) -> Result<u64, AppError> {
-        let res = self
-            .collection::<Asset>(Asset::COLLECTION)
-            .update_one(
-                bson::doc! { "_id": id },
-                bson::doc! { "$set": { "primary": value } },
-            )
+        let res = sqlx::query(r#"UPDATE assets SET "primary" = $2 WHERE id = $1"#)
+            .bind(id)
+            .bind(value)
+            .execute(self.pool)
             .await?;
-        Ok(res.matched_count)
+        Ok(res.rows_affected())
     }
 
     async fn clear_primary_in_kind_excluding(
@@ -85,92 +85,121 @@ impl AssetSource for Database {
         kind: AssetKind,
         keep_id: &str,
     ) -> Result<(), AppError> {
-        self.collection::<Asset>(Asset::COLLECTION)
-            .update_many(
-                bson::doc! {
-                    "kind": kind.as_str(),
-                    "_id": { "$ne": keep_id },
-                },
-                bson::doc! { "$set": { "primary": false } },
-            )
-            .await?;
+        sqlx::query(
+            r#"UPDATE assets SET "primary" = FALSE
+               WHERE owner_id = $1 AND kind = $2 AND id <> $3"#,
+        )
+        .bind(TEMP_OWNER_ID)
+        .bind(kind.as_str())
+        .bind(keep_id)
+        .execute(self.pool)
+        .await?;
         Ok(())
     }
 
     async fn delete_by_id(&self, id: &str) -> Result<(), AppError> {
-        self.collection::<Asset>(Asset::COLLECTION)
-            .delete_one(bson::doc! { "_id": id })
+        sqlx::query("DELETE FROM assets WHERE id = $1")
+            .bind(id)
+            .execute(self.pool)
             .await?;
         Ok(())
     }
 
     async fn find_by_id(&self, id: &str) -> Result<Option<Asset>, AppError> {
-        Ok(self
-            .collection::<Asset>(Asset::COLLECTION)
-            .find_one(bson::doc! { "_id": id })
-            .await?)
+        let sql = format!("SELECT {ASSET_COLS} FROM assets WHERE id = $1");
+        let row: Option<AssetRow> = sqlx::query_as(&sql)
+            .bind(id)
+            .fetch_optional(self.pool)
+            .await?;
+        row.map(AssetRow::try_into_asset).transpose()
     }
 }
 
-// ── Plain lookups (no trait — direct Mongo) ──────────────────────────────
+// ── Plain lookups (no trait — direct pool) ──────────────────────────────
 
-pub async fn get(db: &Database, id: &str) -> Result<Option<Asset>, AppError> {
-    Ok(db
-        .collection::<Asset>(Asset::COLLECTION)
-        .find_one(bson::doc! { "_id": id })
-        .await?)
+// Until Phase 1 lands a real `current_user` extractor, every read +
+// write uses the master owner. Book reads in particular must always pin
+// to the master because the `assets_book_must_be_master_trg` trigger
+// rejects non-master inserts of `kind = 'book'`.
+
+pub async fn get(pool: &PgPool, id: &str) -> Result<Option<Asset>, AppError> {
+    PgAssetSource { pool }.find_by_id(id).await
 }
 
-pub async fn find_or_404(db: &Database, id: &str) -> Result<Asset, AppError> {
-    get(db, id)
+pub async fn find_or_404(pool: &PgPool, id: &str) -> Result<Asset, AppError> {
+    get(pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("asset {id}")))
 }
 
-/// Primary asset of a given kind, if any. Backed by the `kind_primary`
-/// compound index — cheap to call per coach turn.
+/// Primary asset of a given kind, if any. Backed by the partial unique
+/// index `assets_one_primary_per_owner_kind_uidx`.
 pub async fn find_primary_by_kind(
-    db: &Database,
+    pool: &PgPool,
     kind: AssetKind,
 ) -> Result<Option<Asset>, AppError> {
-    Ok(db
-        .collection::<Asset>(Asset::COLLECTION)
-        .find_one(bson::doc! { "kind": kind.as_str(), "primary": true })
-        .await?)
+    let sql = format!(
+        r#"SELECT {ASSET_COLS} FROM assets
+           WHERE owner_id = $1 AND kind = $2 AND "primary" = TRUE LIMIT 1"#
+    );
+    let row: Option<AssetRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .bind(kind.as_str())
+        .fetch_optional(pool)
+        .await?;
+    row.map(AssetRow::try_into_asset).transpose()
 }
 
-/// All assets, newest-uploaded first. Drives the library page.
-pub async fn list_sorted(db: &Database) -> Result<Vec<Asset>, AppError> {
-    let opts = FindOptions::builder()
-        .sort(bson::doc! { "uploaded_at": -1 })
-        .build();
-    let cursor = db
-        .collection::<Asset>(Asset::COLLECTION)
-        .find(bson::doc! {})
-        .with_options(opts)
+/// All assets visible to the caller, newest-uploaded first. Drives the
+/// library page.
+pub async fn list_sorted(pool: &PgPool) -> Result<Vec<Asset>, AppError> {
+    let sql = format!(
+        "SELECT {ASSET_COLS}
+         FROM assets
+         WHERE owner_id = $1
+         ORDER BY uploaded_at DESC"
+    );
+    let rows: Vec<AssetRow> = sqlx::query_as(&sql)
+        .bind(TEMP_OWNER_ID)
+        .fetch_all(pool)
         .await?;
-    Ok(cursor.try_collect().await?)
+    rows.into_iter().map(AssetRow::try_into_asset).collect()
 }
 
-pub async fn insert(db: &Database, asset: &Asset) -> Result<(), AppError> {
-    db.collection::<Asset>(Asset::COLLECTION)
-        .insert_one(asset)
-        .await?;
+pub async fn insert(pool: &PgPool, asset: &Asset) -> Result<(), AppError> {
+    sqlx::query(
+        r#"INSERT INTO assets
+           (id, owner_id, name, kind, "primary",
+            original_filename, original_path, extracted_path,
+            extraction_status, extraction_error, uploaded_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"#,
+    )
+    .bind(&asset.id)
+    .bind(&asset.owner_id)
+    .bind(&asset.name)
+    .bind(asset.kind.as_str())
+    .bind(asset.primary)
+    .bind(&asset.original_filename)
+    .bind(&asset.original_path)
+    .bind(&asset.extracted_path)
+    .bind(asset.extraction_status.as_str())
+    .bind(&asset.extraction_error)
+    .bind(asset.uploaded_at)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
-/// Delete `asset` while preserving the "one primary per kind if any rows of
-/// that kind exist" invariant. When `asset` is the current primary, we
-/// **promote the next-most-recent peer of the same kind first**, then
-/// delete the old primary. A crash between the two writes leaves a brief
-/// two-primary window within the kind — never zero, which is the failure
-/// mode that breaks the critique flow. When no peer of the same kind
-/// remains, zero primaries for that kind is the correct state.
-pub async fn delete(db: &Database, asset: &Asset) -> Result<(), AppError> {
-    delete_via(db, asset).await
+/// Delete `asset` while preserving the "one primary per (owner, kind) if
+/// any rows of that kind exist" invariant. When `asset` is the current
+/// primary, promote the next-most-recent peer of the same kind first,
+/// then delete. A crash between writes leaves a brief two-primary window
+/// (recoverable through `find_primary_by_kind`'s `LIMIT 1`) — never zero,
+/// which is the failure mode that breaks the critique flow.
+pub async fn delete(pool: &PgPool, asset: &Asset) -> Result<(), AppError> {
+    delete_via(&PgAssetSource { pool }, asset).await
 }
 
-/// Same as [`delete`] but generic over [`AssetSource`] for test injection.
 pub async fn delete_via<S: AssetSource + ?Sized>(src: &S, asset: &Asset) -> Result<(), AppError> {
     if asset.primary {
         let _ = promote_next_in_kind_excluding(src, asset.kind, &asset.id).await?;
@@ -178,8 +207,6 @@ pub async fn delete_via<S: AssetSource + ?Sized>(src: &S, asset: &Asset) -> Resu
     src.delete_by_id(&asset.id).await
 }
 
-/// Promote the most-recently-uploaded asset of `kind` whose id is **not**
-/// `exclude_id` to primary. Returns whether a promotion happened.
 async fn promote_next_in_kind_excluding<S: AssetSource + ?Sized>(
     src: &S,
     kind: AssetKind,
@@ -192,19 +219,37 @@ async fn promote_next_in_kind_excluding<S: AssetSource + ?Sized>(
     Ok(true)
 }
 
-/// Flip `primary: true` to `id`, scoped to the asset's own kind. Ordering
-/// matters: we **promote the target first**, then demote every other row of
-/// the same kind in a single `update_many`. A crash between the two writes
-/// leaves the kind with two primaries — recoverable, because
-/// `find_primary_by_kind` uses `find_one` and accepts whichever row Mongo
-/// returns. The inverse order (demote-all then promote-one) could leave
-/// zero primaries within the kind, which the consuming caches can't
-/// recover from. Returns 404 if `id` doesn't exist.
-pub async fn set_primary(db: &Database, id: &str) -> Result<(), AppError> {
-    set_primary_via(db, id).await
+/// Flip `primary: true` to `id`, scoped to the asset's own kind. Demote
+/// peers first then promote the target — wrapped in a transaction so the
+/// partial unique index never sees two primaries for `(owner, kind)`.
+/// Returns 404 if `id` doesn't exist.
+pub async fn set_primary(pool: &PgPool, id: &str) -> Result<(), AppError> {
+    let target = find_or_404(pool, id).await?;
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"UPDATE assets SET "primary" = FALSE
+           WHERE owner_id = $1 AND kind = $2 AND id <> $3"#,
+    )
+    .bind(&target.owner_id)
+    .bind(target.kind.as_str())
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+    let res = sqlx::query(r#"UPDATE assets SET "primary" = TRUE WHERE id = $1"#)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    if res.rows_affected() == 0 {
+        tx.rollback().await?;
+        return Err(AppError::NotFound(format!("asset {id}")));
+    }
+    tx.commit().await?;
+    Ok(())
 }
 
-/// Same as [`set_primary`] but generic over [`AssetSource`] for test injection.
+/// Same as [`set_primary`] but generic over [`AssetSource`] for test
+/// injection. Mirrors the trait-driven order: promote target first, then
+/// clear peers — the mocks only see logical calls, not a real index.
 pub async fn set_primary_via<S: AssetSource + ?Sized>(src: &S, id: &str) -> Result<(), AppError> {
     let target = src
         .find_by_id(id)
@@ -220,24 +265,25 @@ pub async fn set_primary_via<S: AssetSource + ?Sized>(src: &S, id: &str) -> Resu
 
 /// Persist an extraction result onto an existing asset row.
 pub async fn update_extraction(
-    db: &Database,
+    pool: &PgPool,
     id: &str,
-    status: crate::models::ExtractionStatus,
+    status: ExtractionStatus,
     extracted_path: Option<String>,
     extraction_error: Option<String>,
 ) -> Result<(), AppError> {
-    db.collection::<Asset>(Asset::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": id },
-            bson::doc! {
-                "$set": {
-                    "extraction_status": bson::to_bson(&status)?,
-                    "extracted_path": extracted_path,
-                    "extraction_error": extraction_error,
-                }
-            },
-        )
-        .await?;
+    sqlx::query(
+        r#"UPDATE assets
+           SET extraction_status = $2,
+               extracted_path = $3,
+               extraction_error = $4
+           WHERE id = $1"#,
+    )
+    .bind(id)
+    .bind(status.as_str())
+    .bind(extracted_path)
+    .bind(extraction_error)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
