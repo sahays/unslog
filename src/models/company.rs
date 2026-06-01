@@ -47,7 +47,7 @@ pub struct ResearchPacket {
 pub struct Company {
     #[serde(rename = "_id")]
     pub id: String,
-    /// Master-bound for now (TEMP_OWNER_ID); per-user once Phase 1 lands.
+    /// Per-user; set by the calling handler from `CurrentUser::id`.
     #[serde(default)]
     pub owner_id: String,
     pub name: String,

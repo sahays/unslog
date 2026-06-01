@@ -30,6 +30,7 @@ struct LockinPayload {
 pub async fn generate_and_save(
     pool: &PgPool,
     or: &dyn LlmClient,
+    owner_id: &str,
     pitch: &Pitch,
 ) -> Result<PitchVersion, AppError> {
     let span = tracing::info_span!(
@@ -51,8 +52,9 @@ pub async fn generate_and_save(
     let long = payload.long.trim();
     // The unique `(pitch_id, version_n)` index protects against the
     // double-submit race; the helper retries once on duplicate-key.
-    let version = pitch_version_store::insert_with_next_n(pool, &pitch.id, short, long).await?;
-    pitch_store::set_current_version(pool, &pitch.id, &version.id).await?;
+    let version =
+        pitch_version_store::insert_with_next_n(pool, owner_id, &pitch.id, short, long).await?;
+    pitch_store::set_current_version(pool, owner_id, &pitch.id, &version.id).await?;
 
     tracing::info!(
         event = "pitch.lockin",
@@ -72,6 +74,7 @@ pub async fn generate_and_save(
 pub async fn regenerate_version(
     pool: &PgPool,
     or: &dyn LlmClient,
+    owner_id: &str,
     pitch: &Pitch,
     version_id: &str,
 ) -> Result<(), AppError> {
@@ -91,6 +94,7 @@ pub async fn regenerate_version(
     let payload = call_lockin_model(pool, or, pitch).await?;
     pitch_version_store::replace_in_place(
         pool,
+        owner_id,
         version_id,
         &pitch.id,
         payload.short.trim(),

@@ -14,7 +14,8 @@ use tokio::sync::RwLock;
 
 use crate::error::AppError;
 use crate::models::{Asset, AssetKind, ExtractionStatus};
-use crate::services::current_owner::TEMP_OWNER_ID;
+use crate::services::auth::CurrentUser;
+use crate::services::master_seed::MASTER_ID;
 
 const MIN_EXTRACTED_CHARS: usize = 200;
 /// Critique inlines the book up to this many codepoints. The cache stores
@@ -39,6 +40,8 @@ pub fn extracted_path_for(data_dir: &str, asset_id: &str) -> PathBuf {
 
 /// Persist an uploaded blob to `data/assets/originals/<id>.pdf` and
 /// build a freshly-minted `Asset` row (extraction_status: pending).
+/// `owner_id` is the per-user owner for resumes; books are still
+/// master-pinned by trigger so the caller passes MASTER_ID for that kind.
 ///
 /// Saved extension is hardcoded to `pdf`: the upload route already
 /// rejects anything that isn't a real PDF (magic-byte check), and
@@ -47,6 +50,7 @@ pub fn extracted_path_for(data_dir: &str, asset_id: &str) -> PathBuf {
 /// that round-trips `original_path`.
 pub async fn save_upload(
     data_dir: &str,
+    owner_id: &str,
     name: String,
     kind: AssetKind,
     original_filename: String,
@@ -61,7 +65,7 @@ pub async fn save_upload(
     // `Asset::new` mints internally; we route through it for that single
     // source of truth on id generation.
     let asset = Asset::new(
-        TEMP_OWNER_ID.into(),
+        owner_id.into(),
         name,
         kind,
         original_filename,
@@ -73,6 +77,23 @@ pub async fn save_upload(
         original_path: path.to_string_lossy().into_owned(),
         ..asset
     })
+}
+
+/// Authorization guard for write paths on a `kind=book` asset. Books are
+/// global content (the critique prompt inlines the master-owned book
+/// for every user), so only the master account may mutate them. Resumes
+/// and other kinds are per-user and bypass this check.
+pub fn ensure_book_mutable_by(user: &CurrentUser, kind: AssetKind) -> Result<(), AppError> {
+    if kind == AssetKind::Book && !user.is_master {
+        tracing::info!(
+            event = "auth.forbidden",
+            user_id = %user.id,
+            route = "asset.book.mutate",
+            "non-master attempted to mutate a book asset",
+        );
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
 }
 
 /// Run extraction for an already-saved asset, writing the extracted markdown
@@ -173,14 +194,16 @@ impl BookCache {
 
     /// Return the primary book's truncated extracted text. Loads from disk
     /// on first call (or after invalidation); subsequent calls hit memory.
+    /// Book is global content — always looked up under the master owner.
     pub async fn get(&self, pool: &PgPool) -> Result<Arc<String>, AppError> {
-        let primary = crate::services::asset_store::find_primary_by_kind(pool, AssetKind::Book)
-            .await?
-            .ok_or_else(|| {
-                AppError::BadRequest(
-                    "no primary book configured — upload the book and mark it primary".into(),
-                )
-            })?;
+        let primary =
+            crate::services::asset_store::find_primary_by_kind(pool, MASTER_ID, AssetKind::Book)
+                .await?
+                .ok_or_else(|| {
+                    AppError::BadRequest(
+                        "no primary book configured — upload the book and mark it primary".into(),
+                    )
+                })?;
 
         {
             let guard = self.inner.read().await;
@@ -218,8 +241,8 @@ impl BookCache {
 /// uploaded, in which case `get` returns `Ok(None)` and the coach prompts
 /// simply omit the `<resume>` block.
 ///
-/// Single-user app; the cache is invalidated explicitly from the `/assets`
-/// route after any insert / delete / set_primary on a `kind=resume` row.
+/// Resumes are per-user; the cache key includes the owner id so a
+/// shared process never serves user A's resume to user B.
 #[derive(Clone, Default)]
 pub struct ResumeCache {
     inner: Arc<RwLock<CacheSlot>>,
@@ -230,20 +253,29 @@ impl ResumeCache {
         Self::default()
     }
 
-    /// Return the primary resume's extracted text. Loads from disk on first
-    /// call (or after invalidation); subsequent calls hit memory. Returns
-    /// `Ok(None)` when no primary resume exists — this is a normal state.
-    pub async fn get(&self, pool: &PgPool) -> Result<Option<Arc<String>>, AppError> {
+    /// Return the primary resume's extracted text for `owner_id`. Loads from
+    /// disk on first call (or after invalidation); subsequent calls hit
+    /// memory. Returns `Ok(None)` when no primary resume exists — this is a
+    /// normal state.
+    pub async fn get(
+        &self,
+        pool: &PgPool,
+        owner_id: &str,
+    ) -> Result<Option<Arc<String>>, AppError> {
         let Some(primary) =
-            crate::services::asset_store::find_primary_by_kind(pool, AssetKind::Resume).await?
+            crate::services::asset_store::find_primary_by_kind(pool, owner_id, AssetKind::Resume)
+                .await?
         else {
             return Ok(None);
         };
 
+        // The cache key is (owner_id, asset_id) so a per-user invalidation
+        // doesn't poison cross-user reads.
+        let key = format!("{owner_id}|{}", primary.id);
         {
             let guard = self.inner.read().await;
-            if let Some((cached_id, text)) = guard.as_ref() {
-                if cached_id == &primary.id {
+            if let Some((cached_key, text)) = guard.as_ref() {
+                if cached_key == &key {
                     return Ok(Some(text.clone()));
                 }
             }
@@ -253,7 +285,7 @@ impl ResumeCache {
         let arc = Arc::new(raw);
         {
             let mut guard = self.inner.write().await;
-            *guard = Some((primary.id.clone(), arc.clone()));
+            *guard = Some((key, arc.clone()));
         }
         Ok(Some(arc))
     }

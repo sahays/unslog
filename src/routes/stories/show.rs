@@ -3,12 +3,13 @@
 //! version (`POST /stories/:id/versions/:vid/spoken`).
 
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by stories/show.html.
 use crate::models::{Category, Story, StoryStatus, StoryVersion};
+use crate::services::auth::CurrentUser;
 use crate::services::{category_store, story_spoken, story_store, story_version_store};
 use crate::startup::AppState;
 
@@ -36,20 +37,21 @@ pub struct SiblingStory {
 
 pub(super) async fn show(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
-    let story = super::load_story(&state, &id).await?;
+    let story = super::load_story(&state, &current_user.id, &id).await?;
     let competency = category_store::get(&state.pool, &story.competency_id)
         .await?
         .unwrap_or_else(|| super::unknown_competency(&story.competency_id));
 
     let current = match &story.current_version_id {
-        Some(vid) => story_version_store::get(&state.pool, vid).await?,
+        Some(vid) => story_version_store::get(&state.pool, &current_user.id, vid).await?,
         None => None,
     };
 
-    let versions = picker_entries(&state, &story).await?;
-    let siblings = siblings_view(&state, &story).await?;
+    let versions = picker_entries(&state, &current_user.id, &story).await?;
+    let siblings = siblings_view(&state, &current_user.id, &story).await?;
 
     crate::error::render_html(ShowTemplate {
         story,
@@ -60,8 +62,13 @@ pub(super) async fn show(
     })
 }
 
-async fn siblings_view(state: &AppState, story: &Story) -> Result<Vec<SiblingStory>, AppError> {
-    let rows = story_store::list_siblings(&state.pool, &story.id, &story.competency_id).await?;
+async fn siblings_view(
+    state: &AppState,
+    owner_id: &str,
+    story: &Story,
+) -> Result<Vec<SiblingStory>, AppError> {
+    let rows =
+        story_store::list_siblings(&state.pool, owner_id, &story.id, &story.competency_id).await?;
     Ok(rows
         .into_iter()
         .map(|r| SiblingStory {
@@ -74,9 +81,10 @@ async fn siblings_view(state: &AppState, story: &Story) -> Result<Vec<SiblingSto
 
 async fn picker_entries(
     state: &AppState,
+    owner_id: &str,
     story: &Story,
 ) -> Result<Vec<VersionPickerEntry>, AppError> {
-    let rows = story_version_store::list_for_picker(&state.pool, &story.id).await?;
+    let rows = story_version_store::list_for_picker(&state.pool, owner_id, &story.id).await?;
     let current = story.current_version_id.as_deref();
     Ok(rows
         .into_iter()
@@ -99,10 +107,11 @@ struct VersionTemplate {
 
 pub(super) async fn show_version(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path((id, vid)): Path<(String, String)>,
 ) -> Result<Html<String>, AppError> {
-    let story = super::load_story(&state, &id).await?;
-    let version = load_version(&state, &id, &vid).await?;
+    let story = super::load_story(&state, &current_user.id, &id).await?;
+    let version = load_version(&state, &current_user.id, &id, &vid).await?;
     let competency = category_store::get(&state.pool, &story.competency_id)
         .await?
         .unwrap_or_else(|| super::unknown_competency(&story.competency_id));
@@ -122,19 +131,27 @@ pub(super) async fn show_version(
 /// the bullets, not an independent artifact.
 pub(super) async fn generate_spoken(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path((id, vid)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    let version = load_version(&state, &id, &vid).await?;
-    story_spoken::generate_and_save(&state.pool, state.openrouter.as_ref(), &version).await?;
+    let version = load_version(&state, &current_user.id, &id, &vid).await?;
+    story_spoken::generate_and_save(
+        &state.pool,
+        state.openrouter.as_ref(),
+        &current_user.id,
+        &version,
+    )
+    .await?;
     Ok(Redirect::to(&format!("/stories/{id}/versions/{vid}")).into_response())
 }
 
 async fn load_version(
     state: &AppState,
+    owner_id: &str,
     story_id: &str,
     version_id: &str,
 ) -> Result<StoryVersion, AppError> {
-    story_version_store::find_by_story_and_id(&state.pool, story_id, version_id)
+    story_version_store::find_by_story_and_id(&state.pool, owner_id, story_id, version_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("story version {version_id}")))
 }

@@ -2,7 +2,7 @@
 //! Pick role + selected companies → curator picks 4–6 questions → session starts.
 
 use askama::Template;
-use axum::extract::State;
+use axum::extract::{Extension, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::get;
 use axum::Router;
@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use crate::error::AppError;
 use crate::filters; // base.html's sidebar footer calls custom filters.
 use crate::models::{Company, Role};
+use crate::services::auth::CurrentUser;
 use crate::services::{company_store, evaluations, sessions};
 use crate::startup::AppState;
 
@@ -42,17 +43,21 @@ pub struct InProgress {
     pub stale: bool,
 }
 
-async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let companies = company_store::list_by_name(&state.pool).await?;
+async fn show(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+) -> Result<Html<String>, AppError> {
+    let companies = company_store::list_by_name(&state.pool, &current_user.id).await?;
     let company_by_id: HashMap<String, &Company> =
         companies.iter().map(|c| (c.id.clone(), c)).collect();
 
-    let active_sessions = sessions::list_active(&state.pool).await?;
+    let active_sessions = sessions::list_active(&state.pool, &current_user.id).await?;
 
     // Bulk eval counts: one aggregate keyed by session_id instead of N
     // count_documents calls.
     let session_ids: Vec<&str> = active_sessions.iter().map(|s| s.id.as_str()).collect();
-    let answered_by_session = evaluations::counts_by_session(&state.pool, &session_ids).await?;
+    let answered_by_session =
+        evaluations::counts_by_session(&state.pool, &current_user.id, &session_ids).await?;
 
     let mut in_progress: Vec<InProgress> = Vec::with_capacity(active_sessions.len());
     for s in &active_sessions {
@@ -106,6 +111,7 @@ pub struct StartForm {
 
 async fn start(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Form(form): Form<StartForm>,
 ) -> Result<Response, AppError> {
     let role = Role::parse(form.role.trim())
@@ -129,7 +135,7 @@ async fn start(
     // existence + role in app code. Avoids N round-trips for N selected
     // companies (no big-O improvement for tiny N, but the contract is the
     // same and the index hit is cheaper).
-    let rows = company_store::find_by_ids(&state.pool, &selected).await?;
+    let rows = company_store::find_by_ids(&state.pool, &current_user.id, &selected).await?;
     let mut by_id: HashMap<String, Company> = rows.into_iter().map(|c| (c.id.clone(), c)).collect();
     let mut matched: Vec<Company> = Vec::with_capacity(selected.len());
     for cid in &selected {
@@ -163,6 +169,7 @@ async fn start(
     let session = crate::services::session::start(
         &state.pool,
         &*state.openrouter,
+        &current_user.id,
         crate::services::session::StartInput {
             role,
             anchor_company_id: anchor_id,

@@ -2,12 +2,13 @@
 //! intro/narrative questions with per-tile status badges.
 
 use askama::Template;
-use axum::extract::State;
+use axum::extract::{Extension, State};
 use axum::response::Html;
 
 use crate::error::AppError;
 use crate::filters; // base.html's sidebar footer calls custom filters.
 use crate::models::{Pitch, PitchStatus};
+use crate::services::auth::CurrentUser;
 use crate::services::pitch_store;
 use crate::startup::AppState;
 
@@ -24,8 +25,11 @@ pub struct PitchTile {
     pub status: PitchStatus,
 }
 
-pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let pitches = pitch_store::list_all(&state.pool).await?;
+pub(super) async fn index(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+) -> Result<Html<String>, AppError> {
+    let pitches = pitch_store::list_all(&state.pool, &current_user.id).await?;
     let tiles: Vec<PitchTile> = pitches.into_iter().map(tile_from).collect();
     crate::error::render_html(IndexTemplate { tiles })
 }

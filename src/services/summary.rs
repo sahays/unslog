@@ -35,13 +35,21 @@ pub const CARRY_FORWARD_INTO_CRITIQUE: i64 = 3;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait SummaryDeps: Send + Sync {
-    async fn find_existing_summary(&self, session_id: &str) -> Result<Option<Summary>, AppError>;
+    async fn find_existing_summary(
+        &self,
+        owner_id: &str,
+        session_id: &str,
+    ) -> Result<Option<Summary>, AppError>;
     async fn get_summary_prompt_body(&self, version_id: &str) -> Result<String, AppError>;
-    async fn find_session_evaluations(&self, session_id: &str)
-        -> Result<Vec<Evaluation>, AppError>;
+    async fn find_session_evaluations(
+        &self,
+        owner_id: &str,
+        session_id: &str,
+    ) -> Result<Vec<Evaluation>, AppError>;
     /// `exclude_session` owned because mockall can't elide a borrow inside Option.
     async fn recent_company_summaries_for_prompt(
         &self,
+        owner_id: &str,
         company_id: &str,
         exclude_session: Option<String>,
         limit: i64,
@@ -56,8 +64,12 @@ pub struct SummaryCtx<'a> {
 
 #[async_trait]
 impl<'a> SummaryDeps for SummaryCtx<'a> {
-    async fn find_existing_summary(&self, session_id: &str) -> Result<Option<Summary>, AppError> {
-        store::for_session(self.pool, session_id).await
+    async fn find_existing_summary(
+        &self,
+        owner_id: &str,
+        session_id: &str,
+    ) -> Result<Option<Summary>, AppError> {
+        store::for_session(self.pool, owner_id, session_id).await
     }
 
     async fn get_summary_prompt_body(&self, version_id: &str) -> Result<String, AppError> {
@@ -69,18 +81,27 @@ impl<'a> SummaryDeps for SummaryCtx<'a> {
 
     async fn find_session_evaluations(
         &self,
+        owner_id: &str,
         session_id: &str,
     ) -> Result<Vec<Evaluation>, AppError> {
-        evaluations::list_for_session(self.pool, session_id).await
+        evaluations::list_for_session(self.pool, owner_id, session_id).await
     }
 
     async fn recent_company_summaries_for_prompt(
         &self,
+        owner_id: &str,
         company_id: &str,
         exclude_session: Option<String>,
         limit: i64,
     ) -> Result<Vec<Summary>, AppError> {
-        store::recent_for_company(self.pool, company_id, exclude_session.as_deref(), limit).await
+        store::recent_for_company(
+            self.pool,
+            owner_id,
+            company_id,
+            exclude_session.as_deref(),
+            limit,
+        )
+        .await
     }
 
     async fn insert_summary(&self, summary: &Summary) -> Result<(), AppError> {
@@ -104,7 +125,10 @@ pub async fn generate_and_save(
     let _enter = span.enter();
     let start = std::time::Instant::now();
 
-    if let Some(existing) = deps.find_existing_summary(&session.id).await? {
+    if let Some(existing) = deps
+        .find_existing_summary(&session.owner_id, &session.id)
+        .await?
+    {
         tracing::info!(
             event = "summary.reused",
             session_id = %session.id,
@@ -118,9 +142,12 @@ pub async fn generate_and_save(
         deps.get_summary_prompt_body(&session.prompt_snapshot.summary)
             .await?,
     );
-    let evals = deps.find_session_evaluations(&session.id).await?;
+    let evals = deps
+        .find_session_evaluations(&session.owner_id, &session.id)
+        .await?;
     let priors = deps
         .recent_company_summaries_for_prompt(
+            &session.owner_id,
             &company.id,
             Some(session.id.clone()),
             MAX_PRIOR_SUMMARIES,
@@ -181,11 +208,12 @@ fn build_summary(session: &Session, company: &Company, payload: SummaryPayload) 
 /// the store module.
 pub async fn recent_company_summaries(
     pool: &PgPool,
+    owner_id: &str,
     company_id: &str,
     exclude_session: Option<&str>,
     limit: i64,
 ) -> Result<Vec<Summary>, AppError> {
-    store::recent_for_company(pool, company_id, exclude_session, limit).await
+    store::recent_for_company(pool, owner_id, company_id, exclude_session, limit).await
 }
 
 #[cfg(test)]

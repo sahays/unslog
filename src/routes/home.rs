@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 
 use askama::Template;
-use axum::{extract::State, response::Html, routing::get, Router};
+use axum::extract::{Extension, State};
+use axum::{response::Html, routing::get, Router};
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
+use crate::services::auth::CurrentUser;
+use crate::services::master_seed::MASTER_ID;
 use crate::services::{
     asset_store, category_store, company_store, pitch_store, sessions, story_store,
 };
@@ -45,17 +48,22 @@ struct HomeTemplate {
     in_progress: Vec<InProgressRow>,
 }
 
-async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let company_count = company_store::count(&state.pool).await?;
+async fn index(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+) -> Result<Html<String>, AppError> {
+    let company_count = company_store::count(&state.pool, &current_user.id).await?;
     // Critique flow requires a primary *book*. A resume alone doesn't
     // unblock it; scope the presence check to AssetKind::Book.
+    // Book is master-owned global content, so the lookup uses MASTER_ID
+    // regardless of the signed-in user.
     let primary_asset_present =
-        asset_store::find_primary_by_kind(&state.pool, crate::models::AssetKind::Book)
+        asset_store::find_primary_by_kind(&state.pool, MASTER_ID, crate::models::AssetKind::Book)
             .await?
             .is_some();
 
-    let active_count = sessions::count_active(&state.pool).await?;
-    let in_progress = load_in_progress(&state).await?;
+    let active_count = sessions::count_active(&state.pool, &current_user.id).await?;
+    let in_progress = load_in_progress(&state, &current_user.id).await?;
 
     let openrouter_configured = state.openrouter.configured();
     crate::error::render_html(HomeTemplate {
@@ -80,11 +88,14 @@ async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> 
 
 /// Fan-in across the three in-progress sources, merged into a single
 /// most-recently-touched-first list for the home feed.
-async fn load_in_progress(state: &AppState) -> Result<Vec<InProgressRow>, AppError> {
+async fn load_in_progress(
+    state: &AppState,
+    owner_id: &str,
+) -> Result<Vec<InProgressRow>, AppError> {
     let (active_sessions, in_progress_stories, in_progress_pitches) = futures::try_join!(
-        sessions::list_active(&state.pool),
-        story_store::list_in_progress(&state.pool),
-        pitch_store::list_in_progress(&state.pool),
+        sessions::list_active(&state.pool, owner_id),
+        story_store::list_in_progress(&state.pool, owner_id),
+        pitch_store::list_in_progress(&state.pool, owner_id),
     )?;
 
     let company_by_id = if active_sessions.is_empty() {
@@ -94,7 +105,7 @@ async fn load_in_progress(state: &AppState) -> Result<Vec<InProgressRow>, AppErr
             .iter()
             .map(|s| s.company_id.as_str())
             .collect();
-        company_store::names_by_ids(&state.pool, &ids).await?
+        company_store::names_by_ids(&state.pool, owner_id, &ids).await?
     };
 
     let competency_by_id: HashMap<String, String> = if in_progress_stories.is_empty() {

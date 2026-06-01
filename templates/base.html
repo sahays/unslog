@@ -93,6 +93,7 @@
               <span class="nav-link-side__hint">Reference books and PDFs</span>
             </span>
           </a>
+          {% if ""|current_user_is_master %}
           <a href="/agents" class="nav-link-side" data-nav-key="agents" @click="navOpen = false">
             <i data-lucide="file-text" class="h-7 w-7"></i>
             <span class="nav-link-side__text">
@@ -107,6 +108,7 @@
               <span class="nav-link-side__hint">Models, voices, API keys</span>
             </span>
           </a>
+          {% endif %}
         </nav>
         {% block sidebar_footer %}
         {% let current_label = ""|current_user_label %}

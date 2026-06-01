@@ -2,8 +2,9 @@
 //!
 //! Every read is scoped by `owner_id`. `kind = 'book'` rows are pinned to
 //! the master user by a trigger (migration 0003) so the critique flow
-//! sees the same book regardless of which user is logged in. Resumes are
-//! per-user. `set_primary` runs in a transaction so the partial unique
+//! sees the same book regardless of which user is logged in — book reads
+//! therefore use [`services::master_seed::MASTER_ID`] explicitly. Resumes
+//! are per-user. `set_primary` runs in a transaction so the partial unique
 //! index `assets_one_primary_per_owner_kind_uidx` is never violated.
 //!
 //! Primary-management logic flows through [`AssetSource`] so the per-kind
@@ -14,7 +15,7 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{Asset, AssetKind, ExtractionStatus};
-use crate::services::current_owner::TEMP_OWNER_ID;
+use crate::services::master_seed::MASTER_ID;
 
 #[path = "asset_store_row.rs"]
 mod row;
@@ -29,6 +30,7 @@ pub trait AssetSource: Send + Sync {
     /// `exclude_id`. Used to pick a replacement primary on delete.
     async fn find_newest_of_kind_excluding(
         &self,
+        owner_id: &str,
         kind: AssetKind,
         exclude_id: &str,
     ) -> Result<Option<Asset>, AppError>;
@@ -36,6 +38,7 @@ pub trait AssetSource: Send + Sync {
     /// Clear `primary` on every asset of `kind` whose id is not `keep_id`.
     async fn clear_primary_in_kind_excluding(
         &self,
+        owner_id: &str,
         kind: AssetKind,
         keep_id: &str,
     ) -> Result<(), AppError>;
@@ -52,6 +55,7 @@ pub struct PgAssetSource<'a> {
 impl<'a> AssetSource for PgAssetSource<'a> {
     async fn find_newest_of_kind_excluding(
         &self,
+        owner_id: &str,
         kind: AssetKind,
         exclude_id: &str,
     ) -> Result<Option<Asset>, AppError> {
@@ -63,7 +67,7 @@ impl<'a> AssetSource for PgAssetSource<'a> {
              LIMIT 1"
         );
         let row: Option<AssetRow> = sqlx::query_as(&sql)
-            .bind(TEMP_OWNER_ID)
+            .bind(owner_id)
             .bind(kind.as_str())
             .bind(exclude_id)
             .fetch_optional(self.pool)
@@ -82,6 +86,7 @@ impl<'a> AssetSource for PgAssetSource<'a> {
 
     async fn clear_primary_in_kind_excluding(
         &self,
+        owner_id: &str,
         kind: AssetKind,
         keep_id: &str,
     ) -> Result<(), AppError> {
@@ -89,7 +94,7 @@ impl<'a> AssetSource for PgAssetSource<'a> {
             r#"UPDATE assets SET "primary" = FALSE
                WHERE owner_id = $1 AND kind = $2 AND id <> $3"#,
         )
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(kind.as_str())
         .bind(keep_id)
         .execute(self.pool)
@@ -117,11 +122,9 @@ impl<'a> AssetSource for PgAssetSource<'a> {
 
 // ── Plain lookups (no trait — direct pool) ──────────────────────────────
 
-// Until Phase 1 lands a real `current_user` extractor, every read +
-// write uses the master owner. Book reads in particular must always pin
-// to the master because the `assets_book_must_be_master_trg` trigger
-// rejects non-master inserts of `kind = 'book'`.
-
+/// Owner-agnostic lookup by primary key. The asset row carries its own
+/// `owner_id`, which callers must check against `CurrentUser::id` when the
+/// kind is anything other than `Book` (book is intentionally cross-user).
 pub async fn get(pool: &PgPool, id: &str) -> Result<Option<Asset>, AppError> {
     PgAssetSource { pool }.find_by_id(id).await
 }
@@ -132,18 +135,26 @@ pub async fn find_or_404(pool: &PgPool, id: &str) -> Result<Asset, AppError> {
         .ok_or_else(|| AppError::NotFound(format!("asset {id}")))
 }
 
-/// Primary asset of a given kind, if any. Backed by the partial unique
-/// index `assets_one_primary_per_owner_kind_uidx`.
+/// Primary asset of a given kind, if any. `kind = Book` is always
+/// master-owned (the trigger in migration 0003 enforces this); resumes
+/// are per-user. Backed by the partial unique index
+/// `assets_one_primary_per_owner_kind_uidx`.
 pub async fn find_primary_by_kind(
     pool: &PgPool,
+    owner_id: &str,
     kind: AssetKind,
 ) -> Result<Option<Asset>, AppError> {
+    let lookup_owner = if kind == AssetKind::Book {
+        MASTER_ID
+    } else {
+        owner_id
+    };
     let sql = format!(
         r#"SELECT {ASSET_COLS} FROM assets
            WHERE owner_id = $1 AND kind = $2 AND "primary" = TRUE LIMIT 1"#
     );
     let row: Option<AssetRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(lookup_owner)
         .bind(kind.as_str())
         .fetch_optional(pool)
         .await?;
@@ -151,16 +162,19 @@ pub async fn find_primary_by_kind(
 }
 
 /// All assets visible to the caller, newest-uploaded first. Drives the
-/// library page.
-pub async fn list_sorted(pool: &PgPool) -> Result<Vec<Asset>, AppError> {
+/// library page. Returns the union of the caller's own assets *and* the
+/// master-pinned book(s) so a non-master user still sees the configured
+/// book in their library.
+pub async fn list_sorted(pool: &PgPool, owner_id: &str) -> Result<Vec<Asset>, AppError> {
     let sql = format!(
         "SELECT {ASSET_COLS}
          FROM assets
-         WHERE owner_id = $1
+         WHERE owner_id = $1 OR (kind = 'book' AND owner_id = $2)
          ORDER BY uploaded_at DESC"
     );
     let rows: Vec<AssetRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
+        .bind(MASTER_ID)
         .fetch_all(pool)
         .await?;
     rows.into_iter().map(AssetRow::try_into_asset).collect()
@@ -202,17 +216,21 @@ pub async fn delete(pool: &PgPool, asset: &Asset) -> Result<(), AppError> {
 
 pub async fn delete_via<S: AssetSource + ?Sized>(src: &S, asset: &Asset) -> Result<(), AppError> {
     if asset.primary {
-        let _ = promote_next_in_kind_excluding(src, asset.kind, &asset.id).await?;
+        let _ = promote_next_in_kind_excluding(src, &asset.owner_id, asset.kind, &asset.id).await?;
     }
     src.delete_by_id(&asset.id).await
 }
 
 async fn promote_next_in_kind_excluding<S: AssetSource + ?Sized>(
     src: &S,
+    owner_id: &str,
     kind: AssetKind,
     exclude_id: &str,
 ) -> Result<bool, AppError> {
-    let Some(next) = src.find_newest_of_kind_excluding(kind, exclude_id).await? else {
+    let Some(next) = src
+        .find_newest_of_kind_excluding(owner_id, kind, exclude_id)
+        .await?
+    else {
         return Ok(false);
     };
     let _ = src.set_primary_flag(&next.id, true).await?;
@@ -259,7 +277,8 @@ pub async fn set_primary_via<S: AssetSource + ?Sized>(src: &S, id: &str) -> Resu
     if matched == 0 {
         return Err(AppError::NotFound(format!("asset {id}")));
     }
-    src.clear_primary_in_kind_excluding(target.kind, id).await?;
+    src.clear_primary_in_kind_excluding(&target.owner_id, target.kind, id)
+        .await?;
     Ok(())
 }
 

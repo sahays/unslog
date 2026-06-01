@@ -1,13 +1,14 @@
 //! `/companies/:id` show page — company detail, question bank, sessions.
 
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::response::Html;
 use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::{Company, Question};
+use crate::services::auth::CurrentUser;
 use crate::services::{category_store, evaluations, questions, sessions as session_store, summary};
 use crate::startup::AppState;
 
@@ -32,12 +33,13 @@ pub struct ShowQuery {
 
 pub async fn show(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
     axum::extract::Query(query): axum::extract::Query<ShowQuery>,
 ) -> Result<Html<String>, AppError> {
-    let company = super::load_company(&state, &id).await?;
-    let questions_list = questions::list_for_company(&state.pool, &id).await?;
-    let sessions = load_session_rows(&state, &id).await?;
+    let company = super::load_company(&state, &current_user.id, &id).await?;
+    let questions_list = questions::list_for_company(&state.pool, &current_user.id, &id).await?;
+    let sessions = load_session_rows(&state, &current_user.id, &id).await?;
     let canonical_categories = category_store::list_all(&state.pool).await?;
 
     crate::error::render_html(ShowTemplate {
@@ -54,13 +56,14 @@ pub async fn show(
 /// bulk queries (instead of 2× per session). Sorted newest-first.
 async fn load_session_rows(
     state: &AppState,
+    owner_id: &str,
     company_id: &str,
 ) -> Result<Vec<SessionRow>, AppError> {
-    let sessions_raw = session_store::list_for_company(&state.pool, company_id).await?;
+    let sessions_raw = session_store::list_for_company(&state.pool, owner_id, company_id).await?;
 
     let session_ids: Vec<&str> = sessions_raw.iter().map(|s| s.id.as_str()).collect();
-    let counts = evaluations::counts_by_session(&state.pool, &session_ids).await?;
-    let summary_by_session = summary::by_session_ids(&state.pool, &session_ids).await?;
+    let counts = evaluations::counts_by_session(&state.pool, owner_id, &session_ids).await?;
+    let summary_by_session = summary::by_session_ids(&state.pool, owner_id, &session_ids).await?;
 
     Ok(sessions_raw
         .into_iter()

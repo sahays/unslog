@@ -1,11 +1,9 @@
 //! Top-level Question CRUD on Postgres. Each question is its own row in
 //! the `questions` table; replaces the old per-company embedded array.
 //!
-//! Every read/write is owner-scoped through
-//! [`crate::services::current_owner::TEMP_OWNER_ID`] until Phase 1 lands
-//! a real current-user extractor. `categories` is JSONB on the column
-//! side; `source` and `role` are TEXT + CHECK and round-trip through
-//! `as_str` / `parse`.
+//! Every read/write is owner-scoped via `CurrentUser::id` threaded through
+//! by the handler layer. `categories` is JSONB on the column side; `source`
+//! and `role` are TEXT + CHECK and round-trip through `as_str` / `parse`.
 
 use std::collections::HashSet;
 
@@ -17,7 +15,6 @@ use crate::error::AppError;
 use crate::models::{Company, Question, QuestionSource, Role};
 use crate::services::categorize;
 use crate::services::category_store;
-use crate::services::current_owner::TEMP_OWNER_ID;
 use crate::services::openrouter::LlmClient;
 use crate::services::settings_store;
 
@@ -28,14 +25,18 @@ use row::{source_str, QuestionRow, QUESTION_COLS};
 // ── Reads ────────────────────────────────────────────────────────────────
 
 /// All questions tagged for a company, sorted oldest-first.
-pub async fn list_for_company(pool: &PgPool, company_id: &str) -> Result<Vec<Question>, AppError> {
+pub async fn list_for_company(
+    pool: &PgPool,
+    owner_id: &str,
+    company_id: &str,
+) -> Result<Vec<Question>, AppError> {
     let sql = format!(
         "SELECT {QUESTION_COLS} FROM questions
          WHERE owner_id = $1 AND company_id = $2
          ORDER BY added_at ASC"
     );
     let rows: Vec<QuestionRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(company_id)
         .fetch_all(pool)
         .await?;
@@ -48,6 +49,7 @@ pub async fn list_for_company(pool: &PgPool, company_id: &str) -> Result<Vec<Que
 /// questions (`company_id IS NULL`). Used by the curator.
 pub async fn list_for_pool(
     pool: &PgPool,
+    owner_id: &str,
     role: Role,
     company_ids: &[String],
 ) -> Result<Vec<Question>, AppError> {
@@ -58,7 +60,7 @@ pub async fn list_for_pool(
            AND (company_id IS NULL OR company_id = ANY($3))"
     );
     let rows: Vec<QuestionRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(role.as_str())
         .bind(company_ids)
         .fetch_all(pool)
@@ -68,13 +70,13 @@ pub async fn list_for_pool(
         .collect()
 }
 
-pub async fn get(pool: &PgPool, id: &str) -> Result<Option<Question>, AppError> {
+pub async fn get(pool: &PgPool, owner_id: &str, id: &str) -> Result<Option<Question>, AppError> {
     let sql = format!(
         "SELECT {QUESTION_COLS} FROM questions
          WHERE owner_id = $1 AND id = $2"
     );
     let row: Option<QuestionRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(id)
         .fetch_optional(pool)
         .await?;
@@ -88,6 +90,7 @@ pub async fn get(pool: &PgPool, id: &str) -> Result<Option<Question>, AppError> 
 /// classifier upstream and capture it in a closure).
 pub async fn append<F>(
     pool: &PgPool,
+    owner_id: &str,
     texts: impl IntoIterator<Item = String>,
     source: QuestionSource,
     role: Role,
@@ -104,7 +107,7 @@ where
         .map(|t| {
             let cats = categories_for(&t);
             Question::new(
-                TEMP_OWNER_ID.to_string(),
+                owner_id.to_string(),
                 t,
                 source,
                 role,
@@ -154,6 +157,7 @@ async fn insert_many(pool: &PgPool, rows: &[Question]) -> Result<(), AppError> {
 
 pub async fn update(
     pool: &PgPool,
+    owner_id: &str,
     id: &str,
     text: &str,
     role: Role,
@@ -164,7 +168,7 @@ pub async fn update(
            SET text = $3, role = $4, categories = $5
            WHERE owner_id = $1 AND id = $2"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(owner_id)
     .bind(id)
     .bind(text)
     .bind(role.as_str())
@@ -174,9 +178,9 @@ pub async fn update(
     Ok(())
 }
 
-pub async fn delete(pool: &PgPool, id: &str) -> Result<(), AppError> {
+pub async fn delete(pool: &PgPool, owner_id: &str, id: &str) -> Result<(), AppError> {
     sqlx::query("DELETE FROM questions WHERE owner_id = $1 AND id = $2")
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(id)
         .execute(pool)
         .await?;
@@ -207,6 +211,7 @@ pub fn pick_random<'a>(pool: &'a [Question], seen: &HashSet<String>) -> Option<&
 pub async fn append_skipping_existing(
     pool: &PgPool,
     or: &dyn LlmClient,
+    owner_id: &str,
     company: &Company,
     candidates: Vec<String>,
     role: Role,
@@ -214,7 +219,7 @@ pub async fn append_skipping_existing(
     if candidates.is_empty() {
         return Ok(0);
     }
-    let existing = list_for_company(pool, &company.id).await?;
+    let existing = list_for_company(pool, owner_id, &company.id).await?;
     let existing_texts: HashSet<String> = existing.iter().map(|q| q.text.clone()).collect();
     let new_questions: Vec<String> = candidates
         .into_iter()
@@ -225,6 +230,7 @@ pub async fn append_skipping_existing(
         categorize_and_append(
             pool,
             or,
+            owner_id,
             new_questions,
             QuestionSource::Agent,
             role,
@@ -240,6 +246,7 @@ pub async fn append_skipping_existing(
 pub async fn categorize_and_append(
     pool: &PgPool,
     openrouter: &dyn LlmClient,
+    owner_id: &str,
     texts: Vec<String>,
     source: QuestionSource,
     role: Role,
@@ -254,7 +261,7 @@ pub async fn categorize_and_append(
         categorize::classify_batch(openrouter, &settings.lite_model, &texts, &canonical).await;
     let by_text: std::collections::HashMap<String, Vec<String>> =
         texts.iter().cloned().zip(tags.into_iter()).collect();
-    append(pool, texts, source, role, company_id, |t| {
+    append(pool, owner_id, texts, source, role, company_id, |t| {
         by_text.get(t).cloned().unwrap_or_default()
     })
     .await

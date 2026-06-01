@@ -12,7 +12,7 @@
 //! Helpers shared between the three sit here.
 
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
@@ -22,6 +22,7 @@ use axum_htmx::HxRequest;
 
 use crate::error::AppError;
 use crate::models::{Category, ChatTurn, Difficulty, Story};
+use crate::services::auth::CurrentUser;
 use crate::services::openrouter::ChatMessage;
 use crate::services::{prompt_escape, resume_context, story_store};
 use crate::startup::AppState;
@@ -49,10 +50,10 @@ pub fn routes() -> Router<AppState> {
 // ── Helpers shared by landing + show + chat ──────────────────────────────
 
 /// Thin route-side wrapper around [`story_store::find_or_404`]. Kept so
-/// submodules can call `super::load_story(&state, id)` without taking a
-/// `&Database` reference everywhere.
-async fn load_story(state: &AppState, id: &str) -> Result<Story, AppError> {
-    story_store::find_or_404(&state.pool, id).await
+/// submodules can call `super::load_story(&state, owner, id)` without
+/// taking a `&Database` reference everywhere.
+async fn load_story(state: &AppState, owner_id: &str, id: &str) -> Result<Story, AppError> {
+    story_store::find_or_404(&state.pool, owner_id, id).await
 }
 
 /// Wrapper around [`story_store::push_turn`] — same reasoning as above.
@@ -65,6 +66,7 @@ async fn push_turn(state: &AppState, story: &mut Story, turn: ChatTurn) -> Resul
 /// content.
 async fn run_chat_model(
     state: &AppState,
+    owner_id: &str,
     story: &Story,
     competency: &Category,
 ) -> Result<String, AppError> {
@@ -84,7 +86,7 @@ async fn run_chat_model(
     // Resume context is optional — empty string when the user hasn't
     // uploaded one, in which case we omit the surrounding double-newline
     // so the prompt stays clean.
-    let resume_block = resume_context::block(state).await?;
+    let resume_block = resume_context::block(state, owner_id).await?;
     let system = resume_context::join_blocks(&[&system_body, &resume_block, &competency_block]);
     tracing::info!(
         event = "story.chat",
@@ -138,12 +140,13 @@ struct ModePillFragment {
 
 async fn set_mode(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     HxRequest(is_htmx): HxRequest,
     Path(id): Path<String>,
     Form(form): Form<ModeForm>,
 ) -> Result<Response, AppError> {
     let mode = Difficulty::from_form(&form.mode);
-    story_store::set_mode(&state.pool, &id, mode).await?;
+    story_store::set_mode(&state.pool, &current_user.id, &id, mode).await?;
     tracing::info!(
         event = "story.set_mode",
         story_id = %id,
@@ -161,9 +164,10 @@ async fn set_mode(
 
 async fn delete_story(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    story_store::delete_cascade(&state.pool, &id).await?;
+    story_store::delete_cascade(&state.pool, &current_user.id, &id).await?;
     tracing::info!(event = "story.delete", story_id = %id, "story cascade-deleted");
     Ok(Redirect::to("/stories").into_response())
 }

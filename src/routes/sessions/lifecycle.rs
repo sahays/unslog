@@ -3,12 +3,14 @@
 //! the prompt audio.
 
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by the templates below.
 use crate::models::{Company, Evaluation, Session, SessionStatus, Summary};
+use crate::services::auth::CurrentUser;
+use crate::services::master_seed::MASTER_ID;
 use crate::services::{asset_store, company_store, evaluations, questions, sessions, summary};
 use crate::startup::AppState;
 
@@ -34,13 +36,15 @@ struct ReviewTemplate {
 
 pub(super) async fn start(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let company = company_store::find_or_404(&state.pool, &id).await?;
+    let company = company_store::find_or_404(&state.pool, &current_user.id, &id).await?;
 
     let session = crate::services::session::start(
         &state.pool,
         &*state.openrouter,
+        &current_user.id,
         crate::services::session::StartInput {
             role: company.canonical_role,
             anchor_company_id: id,
@@ -70,12 +74,13 @@ pub(super) async fn start(
 
 pub(super) async fn show(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
-    let session = super::load_session(&state, &id).await?;
-    let company = super::load_company(&state, &session.company_id).await?;
+    let session = super::load_session(&state, &current_user.id, &id).await?;
+    let company = super::load_company(&state, &current_user.id, &session.company_id).await?;
 
-    let evals = evaluations::list_for_session(&state.pool, &id).await?;
+    let evals = evaluations::list_for_session(&state.pool, &current_user.id, &id).await?;
 
     let current_eval = match &session.current_question_id {
         Some(qid) => evals.iter().find(|e| &e.question_id == qid).cloned(),
@@ -86,14 +91,14 @@ pub(super) async fn show(
         .filter(|e| Some(&e.question_id) != session.current_question_id.as_ref())
         .collect();
 
-    // Critique requires a primary *book*. Resume presence is unrelated;
-    // scope the check to AssetKind::Book.
+    // Critique requires a primary *book*. Book is master-owned global
+    // content; the lookup is intentionally master-scoped.
     let has_primary_asset =
-        asset_store::find_primary_by_kind(&state.pool, crate::models::AssetKind::Book)
+        asset_store::find_primary_by_kind(&state.pool, MASTER_ID, crate::models::AssetKind::Book)
             .await?
             .is_some();
 
-    let summary = summary::for_session(&state.pool, &id).await?;
+    let summary = summary::for_session(&state.pool, &current_user.id, &id).await?;
 
     crate::error::render_html(ActiveTemplate {
         session,
@@ -107,12 +112,13 @@ pub(super) async fn show(
 
 pub(super) async fn review(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
-    let session = super::load_session(&state, &id).await?;
-    let company = super::load_company(&state, &session.company_id).await?;
-    let evals = evaluations::list_for_session(&state.pool, &id).await?;
-    let summary = summary::for_session(&state.pool, &id).await?;
+    let session = super::load_session(&state, &current_user.id, &id).await?;
+    let company = super::load_company(&state, &current_user.id, &session.company_id).await?;
+    let evals = evaluations::list_for_session(&state.pool, &current_user.id, &id).await?;
+    let summary = summary::for_session(&state.pool, &current_user.id, &id).await?;
     crate::error::render_html(ReviewTemplate {
         session,
         company,
@@ -123,9 +129,10 @@ pub(super) async fn review(
 
 pub(super) async fn next_question(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let session = super::load_session(&state, &id).await?;
+    let session = super::load_session(&state, &current_user.id, &id).await?;
     if session.status != SessionStatus::Active {
         return Err(AppError::BadRequest("session has ended".into()));
     }
@@ -146,14 +153,17 @@ pub(crate) async fn advance_to_next(
     state: &AppState,
     session: &Session,
 ) -> Result<Option<()>, AppError> {
-    let answered = evaluations::answered_question_ids(&state.pool, &session.id).await?;
+    let answered =
+        evaluations::answered_question_ids(&state.pool, &session.owner_id, &session.id).await?;
 
     let next_id = crate::services::curator::next_curated(session, &answered);
 
     let pair = if let Some(next_id) = next_id {
-        load_question_by_id(state, &next_id).await?
+        load_question_by_id(state, &session.owner_id, &next_id).await?
     } else if session.curated_question_ids.is_empty() {
-        let q_pool = questions::list_for_company(&state.pool, &session.company_id).await?;
+        let q_pool =
+            questions::list_for_company(&state.pool, &session.owner_id, &session.company_id)
+                .await?;
         questions::pick_random(&q_pool, &answered).map(|q| (q.id.clone(), q.text.clone()))
     } else {
         return Ok(None);
@@ -179,6 +189,7 @@ pub(crate) async fn advance_to_next(
 
     sessions::set_current_question(
         &state.pool,
+        &session.owner_id,
         &session.id,
         &qid,
         &qtext,
@@ -193,23 +204,24 @@ pub(crate) async fn advance_to_next(
 /// this is a direct lookup — no need to walk per-company banks.
 async fn load_question_by_id(
     state: &AppState,
+    owner_id: &str,
     qid: &str,
 ) -> Result<Option<(String, String)>, AppError> {
-    let q = questions::get(&state.pool, qid).await?;
+    let q = questions::get(&state.pool, owner_id, qid).await?;
     Ok(q.map(|q| (q.id, q.text)))
 }
 
 /// Fire the existing `end` flow inline (used when curated list is exhausted).
 async fn end_inline(state: &AppState, session: &Session) -> Result<Response, AppError> {
     let session_id = session.id.clone();
-    let company = super::load_company(state, &session.company_id).await?;
+    let company = super::load_company(state, &session.owner_id, &session.company_id).await?;
     let summary_ctx = summary::SummaryCtx { pool: &state.pool };
     if let Err(e) =
         summary::generate_and_save(&summary_ctx, &*state.openrouter, session, &company).await
     {
         tracing::warn!(error = %e, session_id = %session_id, "summary generation failed at auto-end");
     }
-    sessions::end(&state.pool, &session_id).await?;
+    sessions::end(&state.pool, &session.owner_id, &session_id).await?;
     tracing::info!(
         event = "session.auto_end",
         session_id = %session_id,

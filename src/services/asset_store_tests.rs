@@ -2,10 +2,12 @@ use super::*;
 use crate::models::{Asset, AssetKind, ExtractionStatus};
 use mockall::predicate;
 
+const TEST_OWNER: &str = "usrtest1";
+
 fn fixture_asset(id: &str, kind: AssetKind, primary: bool) -> Asset {
     Asset {
         id: id.into(),
-        owner_id: crate::services::current_owner::TEMP_OWNER_ID.into(),
+        owner_id: TEST_OWNER.into(),
         name: format!("asset-{id}"),
         kind,
         primary,
@@ -33,9 +35,9 @@ async fn case_set_primary_of_resume_clears_only_resume_peers() {
     // Critical: the clear is scoped to Resume — the primary Book must not
     // be touched.
     src.expect_clear_primary_in_kind_excluding()
-        .withf(|k, keep| *k == AssetKind::Resume && keep == "r-2")
+        .withf(|owner, k, keep| owner == TEST_OWNER && *k == AssetKind::Resume && keep == "r-2")
         .times(1)
-        .returning(|_, _| Ok(()));
+        .returning(|_, _, _| Ok(()));
 
     set_primary_via(&src, "r-2").await.expect("ok");
 }
@@ -53,9 +55,9 @@ async fn case_set_primary_of_book_clears_only_book_peers() {
         .times(1)
         .returning(|_, _| Ok(1));
     src.expect_clear_primary_in_kind_excluding()
-        .withf(|k, keep| *k == AssetKind::Book && keep == "b-1")
+        .withf(|owner, k, keep| owner == TEST_OWNER && *k == AssetKind::Book && keep == "b-1")
         .times(1)
-        .returning(|_, _| Ok(()));
+        .returning(|_, _, _| Ok(()));
 
     set_primary_via(&src, "b-1").await.expect("ok");
 }
@@ -83,9 +85,9 @@ async fn case_delete_primary_resume_promotes_next_resume_not_book() {
     // would silently promote the wrong kind and break the per-kind
     // primary invariant.
     src.expect_find_newest_of_kind_excluding()
-        .withf(|k, ex| *k == AssetKind::Resume && ex == "r-1")
+        .withf(|owner, k, ex| owner == TEST_OWNER && *k == AssetKind::Resume && ex == "r-1")
         .times(1)
-        .returning(move |_, _| Ok(Some(next_resume.clone())));
+        .returning(move |_, _, _| Ok(Some(next_resume.clone())));
     src.expect_set_primary_flag()
         .with(predicate::eq("r-0"), predicate::eq(true))
         .times(1)
@@ -103,9 +105,9 @@ async fn case_delete_only_resume_leaves_kind_empty_no_promotion() {
     let deleted = fixture_asset("r-1", AssetKind::Resume, true);
     let mut src = MockAssetSource::new();
     src.expect_find_newest_of_kind_excluding()
-        .withf(|k, ex| *k == AssetKind::Resume && ex == "r-1")
+        .withf(|owner, k, ex| owner == TEST_OWNER && *k == AssetKind::Resume && ex == "r-1")
         .times(1)
-        .returning(|_, _| Ok(None));
+        .returning(|_, _, _| Ok(None));
     // No set_primary_flag call — no peer to promote.
     src.expect_delete_by_id()
         .with(predicate::eq("r-1"))

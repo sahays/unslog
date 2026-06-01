@@ -45,6 +45,7 @@ pub struct PoolItem {
 pub async fn curate(
     or: &dyn LlmClient,
     pg: &PgPool,
+    owner_id: &str,
     lite_model: &str,
     role: Role,
     selected_company_ids: &[String],
@@ -58,7 +59,7 @@ pub async fn curate(
     let _enter = span.enter();
     let start = std::time::Instant::now();
 
-    let pool = load_pool(pg, role, selected_company_ids).await?;
+    let pool = load_pool(pg, owner_id, role, selected_company_ids).await?;
     if pool.is_empty() {
         return Err(AppError::BadRequest(format!(
             "no {} questions in the selected companies — add some first",
@@ -66,8 +67,8 @@ pub async fn curate(
         )));
     }
 
-    let recent_summaries = db::recent_summaries(pg, selected_company_ids).await?;
-    let recently_asked = db::recently_asked_ids(pg, selected_company_ids, role).await?;
+    let recent_summaries = db::recent_summaries(pg, owner_id, selected_company_ids).await?;
+    let recently_asked = db::recently_asked_ids(pg, owner_id, selected_company_ids, role).await?;
     let canonical = category_store::list_all(pg).await?;
 
     let llm_attempt = prompt::try_llm_curate(
@@ -103,10 +104,12 @@ pub async fn curate(
 
 async fn load_pool(
     pg: &PgPool,
+    owner_id: &str,
     role: Role,
     selected_company_ids: &[String],
 ) -> Result<Vec<PoolItem>, AppError> {
-    let pool: Vec<Question> = questions::list_for_pool(pg, role, selected_company_ids).await?;
+    let pool: Vec<Question> =
+        questions::list_for_pool(pg, owner_id, role, selected_company_ids).await?;
     Ok(pool
         .into_iter()
         .map(|q| PoolItem {

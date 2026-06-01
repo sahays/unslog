@@ -113,6 +113,13 @@ pub fn csrf_token<S: AsRef<str>>(_unused: S) -> askama::Result<String> {
     Ok(crate::middleware::current_csrf_token())
 }
 
+/// True iff the signed-in user has `is_master = true`. Used by `base.html`
+/// to conditionally render admin-only sidebar links. Defaults to false
+/// outside a request scope, so /login (no user yet) hides those links.
+pub fn current_user_is_master<S: AsRef<str>>(_unused: S) -> askama::Result<bool> {
+    Ok(crate::middleware::current_user_is_master())
+}
+
 #[cfg(test)]
 #[path = "filters_tests.rs"]
 mod tests;

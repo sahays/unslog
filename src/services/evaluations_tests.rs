@@ -62,9 +62,13 @@ async fn case_load_or_create_returns_existing() {
     // Existing eval with 2 attempts → next attempt_n should be 3.
     let mut deps = MockEvalSource::new();
     deps.expect_find()
-        .with(predicate::eq("sess-1"), predicate::eq("q-1"))
+        .with(
+            predicate::eq("usrmaster"),
+            predicate::eq("sess-1"),
+            predicate::eq("q-1"),
+        )
         .times(1)
-        .returning(|_, _| Ok(Some(eval_with_attempts(2))));
+        .returning(|_, _, _| Ok(Some(eval_with_attempts(2))));
 
     let session = fixture_session();
     let (eval, attempt_n) = load_or_create(&deps, &session, "q-1", "ignored")
@@ -79,7 +83,7 @@ async fn case_load_or_create_creates_when_missing() {
     // Nothing on disk → returns a fresh Evaluation, attempts empty,
     // attempt_n == 1.
     let mut deps = MockEvalSource::new();
-    deps.expect_find().times(1).returning(|_, _| Ok(None));
+    deps.expect_find().times(1).returning(|_, _, _| Ok(None));
 
     let session = fixture_session();
     let (eval, attempt_n) = load_or_create(&deps, &session, "q-new", "fresh question")
@@ -97,7 +101,7 @@ async fn case_load_or_create_propagates_error() {
     let mut deps = MockEvalSource::new();
     deps.expect_find()
         .times(1)
-        .returning(|_, _| Err(AppError::Other(anyhow::anyhow!("db down"))));
+        .returning(|_, _, _| Err(AppError::Other(anyhow::anyhow!("db down"))));
 
     let session = fixture_session();
     let err = load_or_create(&deps, &session, "q-1", "x")

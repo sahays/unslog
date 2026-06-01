@@ -67,9 +67,9 @@ pub struct PromptSnapshot {
 pub struct Session {
     #[serde(rename = "_id")]
     pub id: String,
-    /// Owner of this session row. Master-bound for now via `TEMP_OWNER_ID`;
-    /// per-user once Phase 1 lands. Legacy Mongo docs lack this column and
-    /// default to empty — the importer backfills before insert.
+    /// Owner of this session row. Set by the calling handler from
+    /// `CurrentUser::id`. Legacy Mongo docs lack this column and default to
+    /// empty — the importer backfills before insert.
     #[serde(default)]
     pub owner_id: String,
     /// Anchor company. For single-company sessions, this is the only entry

@@ -1,15 +1,15 @@
 //! `/companies` list, new-form, and create handlers.
 
 use askama::Template;
-use axum::extract::{Form, State};
+use axum::extract::{Extension, Form, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::Company;
+use crate::services::auth::CurrentUser;
 use crate::services::company_store::CompanyListRow;
-use crate::services::current_owner::TEMP_OWNER_ID;
 use crate::services::{
     company_store, questions, redact,
     research::{self, ResearchCtx},
@@ -46,8 +46,11 @@ pub struct NewCompanyForm {
     pub canonical_role: String,
 }
 
-pub async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let companies = company_store::list_sorted(&state.pool).await?;
+pub async fn list(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+) -> Result<Html<String>, AppError> {
+    let companies = company_store::list_sorted(&state.pool, &current_user.id).await?;
     crate::error::render_html(ListTemplate { companies })
 }
 
@@ -60,6 +63,7 @@ pub async fn new_form(State(state): State<AppState>) -> Result<Html<String>, App
 
 pub async fn create(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Form(form): Form<NewCompanyForm>,
 ) -> Result<Response, AppError> {
     let name = text_validation::sanitize_short(&form.name, MAX_COMPANY_NAME, "name")?;
@@ -68,7 +72,7 @@ pub async fn create(
         .unwrap_or(crate::models::Role::SolutionsArchitect);
 
     let mut company = Company::new(
-        TEMP_OWNER_ID.to_string(),
+        current_user.id.clone(),
         name.clone(),
         role.clone(),
         canonical_role,
@@ -99,6 +103,7 @@ pub async fn create(
     let agent_questions_n = questions::append_skipping_existing(
         &state.pool,
         &*state.openrouter,
+        &current_user.id,
         &company,
         agent_questions,
         company.canonical_role,

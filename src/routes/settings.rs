@@ -20,6 +20,9 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/settings", get(show).post(save))
         .route("/settings/refresh-models", post(refresh_models))
+        .layer(axum::middleware::from_fn(
+            crate::middleware::require_master_middleware,
+        ))
 }
 
 #[derive(Template)]

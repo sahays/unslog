@@ -9,13 +9,14 @@
 //!   read-only past version.
 //! * `chat` — post a turn, lock in, refine.
 
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
 
 use crate::error::AppError;
 use crate::models::{ChatTurn, Pitch};
+use crate::services::auth::CurrentUser;
 use crate::services::openrouter::ChatMessage;
 use crate::services::{pitch_store, prompt_escape, resume_context};
 use crate::startup::AppState;
@@ -41,8 +42,8 @@ pub fn routes() -> Router<AppState> {
 
 // ── Helpers shared by landing + show + chat ──────────────────────────────
 
-async fn load_pitch(state: &AppState, slug: &str) -> Result<Pitch, AppError> {
-    pitch_store::get(&state.pool, slug)
+async fn load_pitch(state: &AppState, owner_id: &str, slug: &str) -> Result<Pitch, AppError> {
+    pitch_store::get(&state.pool, owner_id, slug)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("pitch {slug}")))
 }
@@ -50,7 +51,11 @@ async fn load_pitch(state: &AppState, slug: &str) -> Result<Pitch, AppError> {
 /// Build [system, ...history] and call the chat model. The system prompt
 /// is `pitch_chat`; the `<pitch>` block tells the coach which intro
 /// question is in play (parallel to the `<competency>` block on Stories).
-async fn run_chat_model(state: &AppState, pitch: &Pitch) -> Result<String, AppError> {
+async fn run_chat_model(
+    state: &AppState,
+    owner_id: &str,
+    pitch: &Pitch,
+) -> Result<String, AppError> {
     let settings = state.settings_cache.get(&state.pool).await?;
     let system_body = state.prompt_cache.get(&state.pool, "pitch_chat").await?;
     // Pitch catalog fields are seeded but editable in principle — escape
@@ -64,7 +69,7 @@ async fn run_chat_model(state: &AppState, pitch: &Pitch) -> Result<String, AppEr
     );
     // Resume context is optional — empty string when the user hasn't
     // uploaded one. Same join helper as the story coach.
-    let resume_block = resume_context::block(state).await?;
+    let resume_block = resume_context::block(state, owner_id).await?;
     let system = resume_context::join_blocks(&[&system_body, &resume_block, &pitch_block]);
     tracing::info!(
         event = "pitch.chat",
@@ -104,9 +109,10 @@ async fn run_chat_model(state: &AppState, pitch: &Pitch) -> Result<String, AppEr
 /// Past versions are kept (immutable history) but no longer current.
 async fn reset_pitch(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(slug): Path<String>,
 ) -> Result<Response, AppError> {
-    pitch_store::reset(&state.pool, &slug).await?;
+    pitch_store::reset(&state.pool, &current_user.id, &slug).await?;
     tracing::info!(event = "pitch.reset", pitch_id = %slug, "pitch reset to not_started");
     Ok(Redirect::to(&format!("/pitches/{slug}")).into_response())
 }
@@ -115,8 +121,9 @@ async fn reset_pitch(
 
 pub(crate) async fn push_turn(
     state: &AppState,
+    owner_id: &str,
     pitch: &mut Pitch,
     turn: ChatTurn,
 ) -> Result<(), AppError> {
-    pitch_store::push_turn(&state.pool, pitch, turn).await
+    pitch_store::push_turn(&state.pool, owner_id, pitch, turn).await
 }

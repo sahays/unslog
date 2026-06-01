@@ -112,9 +112,9 @@ pub struct ChatTurn {
 pub struct Story {
     #[serde(rename = "_id")]
     pub id: String,
-    /// Owner of this story row. Master-bound for now via `TEMP_OWNER_ID`;
-    /// per-user once Phase 1 lands. Legacy Mongo docs lack this field; the
-    /// importer backfills before insert.
+    /// Owner of this story row. Set by the calling handler from
+    /// `CurrentUser::id`. Legacy Mongo docs lack this field; the importer
+    /// backfills before insert.
     #[serde(default)]
     pub owner_id: String,
     /// FK → `categories._id`. The competency this story is being built against.

@@ -10,13 +10,14 @@
 //! `super::name`; nothing here is `pub` outside the crate except
 //! `advance_to_next`, which is re-exported for `routes::practice::start`.
 
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
 
 use crate::error::AppError;
 use crate::models::{Company, Session, SessionStatus};
+use crate::services::auth::CurrentUser;
 use crate::services::{company_store, sessions, summary, tts};
 use crate::startup::AppState;
 
@@ -48,12 +49,12 @@ pub fn routes() -> Router<AppState> {
 
 // ── Helpers shared by lifecycle + answer ─────────────────────────────────
 
-async fn load_session(state: &AppState, id: &str) -> Result<Session, AppError> {
-    sessions::find_or_404(&state.pool, id).await
+async fn load_session(state: &AppState, owner_id: &str, id: &str) -> Result<Session, AppError> {
+    sessions::find_or_404(&state.pool, owner_id, id).await
 }
 
-async fn load_company(state: &AppState, id: &str) -> Result<Company, AppError> {
-    company_store::find_or_404(&state.pool, id).await
+async fn load_company(state: &AppState, owner_id: &str, id: &str) -> Result<Company, AppError> {
+    company_store::find_or_404(&state.pool, owner_id, id).await
 }
 
 /// Synthesize `text` to MP3 in this session's recording dir at `filename`,
@@ -99,17 +100,22 @@ fn critique_audio_filename(question_id: &str, attempt_n: u32) -> String {
 
 async fn toggle_voice(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let session = load_session(&state, &id).await?;
+    let session = load_session(&state, &current_user.id, &id).await?;
     sessions::toggle_voice(&state.pool, &session).await?;
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
 
-async fn end(State(state): State<AppState>, Path(id): Path<String>) -> Result<Response, AppError> {
-    let session = load_session(&state, &id).await?;
+async fn end(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    let session = load_session(&state, &current_user.id, &id).await?;
     if session.status == SessionStatus::Active {
-        let company = load_company(&state, &session.company_id).await?;
+        let company = load_company(&state, &current_user.id, &session.company_id).await?;
         tracing::info!(
             event = "session.end",
             session_id = %id,
@@ -125,15 +131,16 @@ async fn end(State(state): State<AppState>, Path(id): Path<String>) -> Result<Re
             tracing::warn!(error = %e, session_id = %id, "summary generation failed; ending session anyway");
         }
     }
-    sessions::end(&state.pool, &id).await?;
+    sessions::end(&state.pool, &current_user.id, &id).await?;
     Ok(Redirect::to(&format!("/sessions/{id}")).into_response())
 }
 
 async fn delete_session(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let session_deleted = sessions::delete_cascade(&state.pool, &id).await?;
+    let session_deleted = sessions::delete_cascade(&state.pool, &current_user.id, &id).await?;
     tracing::info!(
         event = "session.delete",
         session_id = %id,

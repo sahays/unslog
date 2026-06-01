@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use askama::Template;
-use axum::extract::State;
+use axum::extract::{Extension, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::Form;
 use serde::Deserialize;
@@ -11,6 +11,7 @@ use serde::Deserialize;
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::{Category, ChatRole, ChatTurn, Story, StoryStatus};
+use crate::services::auth::CurrentUser;
 use crate::services::{category_store, story_store, story_version_store};
 use crate::startup::AppState;
 
@@ -45,9 +46,12 @@ pub struct CompletedCard {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+pub(super) async fn index(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+) -> Result<Html<String>, AppError> {
     let categories = category_store::list_all(&state.pool).await?;
-    let stories = story_store::list_for_landing(&state.pool).await?;
+    let stories = story_store::list_for_landing(&state.pool, &current_user.id).await?;
 
     let mut latest_by_comp: HashMap<String, String> = HashMap::new();
     let mut counts: HashMap<String, (usize, usize)> = HashMap::new();
@@ -71,9 +75,12 @@ pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>,
         .filter(|s| s.status == StoryStatus::Complete)
         .filter_map(|s| s.current_version_id.clone())
         .collect();
-    let versions_by_id =
-        story_version_store::list_version_labels_by_ids(&state.pool, &completed_version_ids)
-            .await?;
+    let versions_by_id = story_version_store::list_version_labels_by_ids(
+        &state.pool,
+        &current_user.id,
+        &completed_version_ids,
+    )
+    .await?;
 
     let category_name_by_id: HashMap<String, String> = categories
         .iter()
@@ -131,6 +138,7 @@ pub(super) struct CreateForm {
 
 pub(super) async fn create(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Form(form): Form<CreateForm>,
 ) -> Result<Response, AppError> {
     let competency_id = form.competency_id.trim().to_string();
@@ -144,8 +152,7 @@ pub(super) async fn create(
     let now = chrono::Utc::now();
     let mut story = Story {
         id: Story::new_id(),
-        // TODO(phase-1): replace with `current_user.id`.
-        owner_id: crate::services::current_owner::TEMP_OWNER_ID.to_string(),
+        owner_id: current_user.id.clone(),
         competency_id: cat.id.clone(),
         status: StoryStatus::InProgress,
         mode: crate::models::Difficulty::default(),
@@ -164,7 +171,7 @@ pub(super) async fn create(
 
     // Seed the opening probe so the candidate lands on a question, not a blank
     // chat. If the AI call fails, log and let the user kick it off by typing.
-    if let Err(e) = open_chat(&state, &mut story, &cat).await {
+    if let Err(e) = open_chat(&state, &current_user.id, &mut story, &cat).await {
         tracing::warn!(
             error = %e,
             story_id = %story.id,
@@ -179,10 +186,11 @@ pub(super) async fn create(
 /// prompt instructs it to ask one focused opening question.
 async fn open_chat(
     state: &AppState,
+    owner_id: &str,
     story: &mut Story,
     competency: &Category,
 ) -> Result<(), AppError> {
-    let assistant = super::run_chat_model(state, story, competency).await?;
+    let assistant = super::run_chat_model(state, owner_id, story, competency).await?;
     let turn = ChatTurn {
         role: ChatRole::Assistant,
         content: assistant,

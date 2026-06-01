@@ -39,8 +39,10 @@ pub async fn generate_and_save(
     let body = call_summarize_model(pool, or, story).await?;
     // The unique `(story_id, version_n)` constraint protects against the
     // double-submit race; the helper retries once on duplicate-key.
-    let version = story_version_store::insert_with_next_n(pool, &story.id, &body, None).await?;
-    story_store::set_current_version(pool, &story.id, &version.id).await?;
+    let version =
+        story_version_store::insert_with_next_n(pool, &story.owner_id, &story.id, &body, None)
+            .await?;
+    story_store::set_current_version(pool, &story.owner_id, &story.id, &version.id).await?;
 
     tracing::info!(
         event = "story.generate",

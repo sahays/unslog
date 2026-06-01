@@ -8,7 +8,6 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{Role, Summary};
-use crate::services::current_owner::TEMP_OWNER_ID;
 
 /// How far back to look for "recent" sessions when computing weakness bias
 /// and the recently-asked exclusion list.
@@ -16,6 +15,7 @@ const RECENT_SESSIONS: i64 = 3;
 
 pub(super) async fn recent_summaries(
     pool: &PgPool,
+    owner_id: &str,
     selected_company_ids: &[String],
 ) -> Result<Vec<Summary>, AppError> {
     if selected_company_ids.is_empty() {
@@ -33,7 +33,7 @@ pub(super) async fn recent_summaries(
         LIMIT $3
     "#;
     let rows: Vec<SummaryRow> = sqlx::query_as(sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(selected_company_ids)
         .bind(RECENT_SESSIONS)
         .fetch_all(pool)
@@ -46,6 +46,7 @@ pub(super) async fn recent_summaries(
 /// only the last `RECENT_SESSIONS * 2` ended sessions contribute.
 pub(super) async fn recently_asked_ids(
     pool: &PgPool,
+    owner_id: &str,
     selected_company_ids: &[String],
     role: Role,
 ) -> Result<HashSet<String>, AppError> {
@@ -73,7 +74,7 @@ pub(super) async fn recently_asked_ids(
               LIMIT $4
           )
         "#,
-        TEMP_OWNER_ID,
+        owner_id,
         selected_company_ids,
         role.as_str(),
         limit,

@@ -30,6 +30,8 @@ fn fixture_curated() -> CuratorOutput {
     }
 }
 
+const TEST_OWNER: &str = "usrtest1";
+
 /// Prompt-snapshot integrity: the version IDs handed in MUST land in
 /// `prompt_snapshot` verbatim. If they don't, every critique +
 /// summary on this session will resolve against the wrong (later)
@@ -37,6 +39,7 @@ fn fixture_curated() -> CuratorOutput {
 #[test]
 fn build_session_captures_prompt_version_ids_verbatim_into_snapshot() {
     let session = build_session(
+        TEST_OWNER,
         fixture_input(),
         &fixture_settings(),
         "critique-version-abc",
@@ -54,7 +57,14 @@ fn build_session_captures_prompt_version_ids_verbatim_into_snapshot() {
 #[test]
 fn build_session_mirrors_current_settings_into_model_snapshot_for_replay_integrity() {
     let settings = fixture_settings();
-    let session = build_session(fixture_input(), &settings, "c-v", "s-v", fixture_curated());
+    let session = build_session(
+        TEST_OWNER,
+        fixture_input(),
+        &settings,
+        "c-v",
+        "s-v",
+        fixture_curated(),
+    );
     assert_eq!(session.model_snapshot.critique, settings.critique_model);
     assert_eq!(session.model_snapshot.research, settings.research_model);
     assert_eq!(session.model_snapshot.stt, settings.stt_model);
@@ -71,6 +81,7 @@ fn build_session_mirrors_current_settings_into_model_snapshot_for_replay_integri
 #[test]
 fn build_session_starts_active_with_no_question_loaded_and_unique_id() {
     let s1 = build_session(
+        TEST_OWNER,
         fixture_input(),
         &fixture_settings(),
         "c",
@@ -78,6 +89,7 @@ fn build_session_starts_active_with_no_question_loaded_and_unique_id() {
         fixture_curated(),
     );
     let s2 = build_session(
+        TEST_OWNER,
         fixture_input(),
         &fixture_settings(),
         "c",
@@ -93,6 +105,6 @@ fn build_session_starts_active_with_no_question_loaded_and_unique_id() {
     assert!(!s1.id.is_empty());
     assert_ne!(s1.id, s2.id, "session IDs must be distinct");
     // Owner-scoping invariant — sessions inserted without an owner could
-    // be read by the wrong user (or by no one) once Phase 1 lands.
-    assert_eq!(s1.owner_id, crate::services::current_owner::TEMP_OWNER_ID);
+    // be read by the wrong user (or by no one).
+    assert_eq!(s1.owner_id, TEST_OWNER);
 }

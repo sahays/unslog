@@ -8,7 +8,6 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::Summary;
-use crate::services::current_owner::TEMP_OWNER_ID;
 
 /// SELECT clause shared by every full-row read.
 const SUMMARY_SELECT: &str = r#"
@@ -26,6 +25,7 @@ const SUMMARY_SELECT: &str = r#"
 /// when re-running end on a rolled-back session.
 pub async fn recent_for_company(
     pool: &PgPool,
+    owner_id: &str,
     company_id: &str,
     exclude_session: Option<&str>,
     limit: i64,
@@ -38,7 +38,7 @@ pub async fn recent_for_company(
          LIMIT $4"
     );
     let rows: Vec<SummaryRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(company_id)
         .bind(exclude_session)
         .bind(limit)
@@ -48,10 +48,14 @@ pub async fn recent_for_company(
 }
 
 /// Lookup-by-session helper for the per-session view.
-pub async fn for_session(pool: &PgPool, session_id: &str) -> Result<Option<Summary>, AppError> {
+pub async fn for_session(
+    pool: &PgPool,
+    owner_id: &str,
+    session_id: &str,
+) -> Result<Option<Summary>, AppError> {
     let sql = format!("{SUMMARY_SELECT} WHERE owner_id = $1 AND session_id = $2");
     let row: Option<SummaryRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(session_id)
         .fetch_optional(pool)
         .await?;
@@ -62,6 +66,7 @@ pub async fn for_session(pool: &PgPool, session_id: &str) -> Result<Option<Summa
 /// `session_id → Summary`. Drives the company show page.
 pub async fn by_session_ids(
     pool: &PgPool,
+    owner_id: &str,
     session_ids: &[&str],
 ) -> Result<HashMap<String, Summary>, AppError> {
     if session_ids.is_empty() {
@@ -70,7 +75,7 @@ pub async fn by_session_ids(
     let owned: Vec<String> = session_ids.iter().map(|s| (*s).to_string()).collect();
     let sql = format!("{SUMMARY_SELECT} WHERE owner_id = $1 AND session_id = ANY($2)");
     let rows: Vec<SummaryRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(&owned)
         .fetch_all(pool)
         .await?;

@@ -2,7 +2,7 @@
 //! No AI on this side; no integration with stories.
 
 use askama::Template;
-use axum::extract::{Form, Path, State};
+use axum::extract::{Extension, Form, Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
@@ -11,6 +11,7 @@ use serde::Deserialize;
 use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::JournalEntry;
+use crate::services::auth::CurrentUser;
 use crate::services::{journal_store, text_validation};
 use crate::startup::AppState;
 
@@ -80,8 +81,11 @@ struct EditTemplate {
 
 // ── Handlers ─────────────────────────────────────────────────────────────
 
-async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let entries = journal_store::list_active(&state.pool)
+async fn list(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+) -> Result<Html<String>, AppError> {
+    let entries = journal_store::list_active(&state.pool, &current_user.id)
         .await?
         .into_iter()
         .map(JournalListRow::from)
@@ -98,17 +102,19 @@ async fn new_form() -> Result<Html<String>, AppError> {
 
 async fn show(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
-    let entry = require_entry(&state, &id).await?;
+    let entry = require_entry(&state, &current_user.id, &id).await?;
     crate::error::render_html(ShowTemplate { entry })
 }
 
 async fn edit_form(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
-    let entry = require_entry(&state, &id).await?;
+    let entry = require_entry(&state, &current_user.id, &id).await?;
     crate::error::render_html(EditTemplate {
         entry,
         max_title: MAX_TITLE_LEN,
@@ -124,10 +130,11 @@ pub struct EntryForm {
 
 async fn create(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Form(form): Form<EntryForm>,
 ) -> Result<Response, AppError> {
     let (title, body) = validate(&form)?;
-    let entry = journal_store::create(&state.pool, title, body).await?;
+    let entry = journal_store::create(&state.pool, &current_user.id, title, body).await?;
     tracing::info!(
         event = "journal.entry.created",
         entry_id = %entry.id,
@@ -138,11 +145,12 @@ async fn create(
 
 async fn update(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
     Form(form): Form<EntryForm>,
 ) -> Result<Response, AppError> {
     let (title, body) = validate(&form)?;
-    let entry = journal_store::update(&state.pool, &id, title, body).await?;
+    let entry = journal_store::update(&state.pool, &current_user.id, &id, title, body).await?;
     tracing::info!(
         event = "journal.entry.updated",
         entry_id = %entry.id,
@@ -153,17 +161,22 @@ async fn update(
 
 async fn archive(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    journal_store::archive(&state.pool, &id).await?;
+    journal_store::archive(&state.pool, &current_user.id, &id).await?;
     tracing::info!(event = "journal.entry.archived", entry_id = %id, "journal entry archived");
     Ok(Redirect::to("/journal").into_response())
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-async fn require_entry(state: &AppState, id: &str) -> Result<JournalEntry, AppError> {
-    journal_store::get(&state.pool, id)
+async fn require_entry(
+    state: &AppState,
+    owner_id: &str,
+    id: &str,
+) -> Result<JournalEntry, AppError> {
+    journal_store::get(&state.pool, owner_id, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("journal entry {id}")))
 }

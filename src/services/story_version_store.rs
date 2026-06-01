@@ -19,7 +19,6 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{SpokenStory, StoryBody, StoryVersion};
-use crate::services::current_owner::TEMP_OWNER_ID;
 
 /// Columns for full-row `StoryVersion` reads. Note the explicit JSONB-to-
 /// `Json<...>` aliases so sqlx maps them straight onto `body` / `spoken`.
@@ -59,10 +58,14 @@ pub struct VersionPickerRow {
 
 // ── Reads ────────────────────────────────────────────────────────────────
 
-pub async fn get(pool: &PgPool, version_id: &str) -> Result<Option<StoryVersion>, AppError> {
+pub async fn get(
+    pool: &PgPool,
+    owner_id: &str,
+    version_id: &str,
+) -> Result<Option<StoryVersion>, AppError> {
     let sql = format!("SELECT {VERSION_COLS} FROM story_versions WHERE owner_id = $1 AND id = $2");
     let row: Option<StoryVersionRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(version_id)
         .fetch_optional(pool)
         .await?;
@@ -71,6 +74,7 @@ pub async fn get(pool: &PgPool, version_id: &str) -> Result<Option<StoryVersion>
 
 pub async fn find_by_story_and_id(
     pool: &PgPool,
+    owner_id: &str,
     story_id: &str,
     version_id: &str,
 ) -> Result<Option<StoryVersion>, AppError> {
@@ -79,7 +83,7 @@ pub async fn find_by_story_and_id(
          WHERE owner_id = $1 AND story_id = $2 AND id = $3"
     );
     let row: Option<StoryVersionRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(story_id)
         .bind(version_id)
         .fetch_optional(pool)
@@ -92,6 +96,7 @@ pub async fn find_by_story_and_id(
 /// current version body in one query. Owner-scoped.
 pub async fn list_by_ids(
     pool: &PgPool,
+    owner_id: &str,
     ids: &[String],
 ) -> Result<HashMap<String, StoryVersion>, AppError> {
     if ids.is_empty() {
@@ -102,7 +107,7 @@ pub async fn list_by_ids(
          WHERE owner_id = $1 AND id = ANY($2)"
     );
     let rows: Vec<StoryVersionRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(ids)
         .fetch_all(pool)
         .await?;
@@ -117,13 +122,14 @@ pub async fn list_by_ids(
 
 pub async fn list_for_picker(
     pool: &PgPool,
+    owner_id: &str,
     story_id: &str,
 ) -> Result<Vec<VersionPickerRow>, AppError> {
     let rows = sqlx::query!(
         r#"SELECT id, version_n FROM story_versions
            WHERE owner_id = $1 AND story_id = $2
            ORDER BY version_n ASC"#,
-        TEMP_OWNER_ID,
+        owner_id,
         story_id,
     )
     .fetch_all(pool)
@@ -142,6 +148,7 @@ pub async fn list_for_picker(
 /// one query instead of N per-card lookups.
 pub async fn list_version_labels_by_ids(
     pool: &PgPool,
+    owner_id: &str,
     ids: &[String],
 ) -> Result<HashMap<String, u32>, AppError> {
     if ids.is_empty() {
@@ -150,7 +157,7 @@ pub async fn list_version_labels_by_ids(
     let rows = sqlx::query!(
         r#"SELECT id, version_n FROM story_versions
            WHERE owner_id = $1 AND id = ANY($2)"#,
-        TEMP_OWNER_ID,
+        owner_id,
         ids,
     )
     .fetch_all(pool)
@@ -169,13 +176,14 @@ pub async fn list_version_labels_by_ids(
 /// on the same story), retry once.
 pub async fn insert_with_next_n(
     pool: &PgPool,
+    owner_id: &str,
     story_id: &str,
     body: &StoryBody,
     spoken: Option<&SpokenStory>,
 ) -> Result<StoryVersion, AppError> {
-    match try_insert(pool, story_id, body, spoken).await {
+    match try_insert(pool, owner_id, story_id, body, spoken).await {
         Ok(v) => Ok(v),
-        Err(e) if is_dup_key(&e) => try_insert(pool, story_id, body, spoken).await,
+        Err(e) if is_dup_key(&e) => try_insert(pool, owner_id, story_id, body, spoken).await,
         Err(e) => Err(e),
     }
 }
@@ -196,6 +204,7 @@ fn is_dup_key(e: &AppError) -> bool {
 /// surfaces as a UNIQUE-violation we can retry once.
 async fn try_insert(
     pool: &PgPool,
+    owner_id: &str,
     story_id: &str,
     body: &StoryBody,
     spoken: Option<&SpokenStory>,
@@ -212,7 +221,7 @@ async fn try_insert(
            RETURNING version_n, created_at"#,
         story_id,
         id,
-        TEMP_OWNER_ID,
+        owner_id,
         serde_json::to_value(body).map_err(|e| AppError::Other(e.into()))?,
         spoken
             .map(serde_json::to_value)
@@ -235,6 +244,7 @@ async fn try_insert(
 /// have to plumb the owner through. Used by `story_spoken::generate_and_save`.
 pub async fn set_spoken(
     pool: &PgPool,
+    owner_id: &str,
     version_id: &str,
     spoken: &SpokenStory,
 ) -> Result<(), AppError> {
@@ -243,7 +253,7 @@ pub async fn set_spoken(
            SET spoken = $3
            WHERE owner_id = $1 AND id = $2"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(owner_id)
     .bind(version_id)
     .bind(Json(spoken))
     .execute(pool)

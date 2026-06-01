@@ -17,7 +17,6 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::PitchVersion;
-use crate::services::current_owner::TEMP_OWNER_ID;
 
 /// Compact projection for the version picker dropdown on the show page.
 pub struct VersionPickerRow {
@@ -54,10 +53,14 @@ const VERSION_COLS: &str = "id, pitch_id, version_n, short, long, created_at";
 
 /// Lookup by version id alone. Owner-scoped. Used when the route already
 /// loaded the pitch and knows the version belongs to it.
-pub async fn get(pool: &PgPool, version_id: &str) -> Result<Option<PitchVersion>, AppError> {
+pub async fn get(
+    pool: &PgPool,
+    owner_id: &str,
+    version_id: &str,
+) -> Result<Option<PitchVersion>, AppError> {
     let sql = format!("SELECT {VERSION_COLS} FROM pitch_versions WHERE owner_id = $1 AND id = $2");
     let row: Option<PitchVersionRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(version_id)
         .fetch_optional(pool)
         .await?;
@@ -69,6 +72,7 @@ pub async fn get(pool: &PgPool, version_id: &str) -> Result<Option<PitchVersion>
 /// into A's page.
 pub async fn find_by_pitch_and_id(
     pool: &PgPool,
+    owner_id: &str,
     pitch_id: &str,
     version_id: &str,
 ) -> Result<Option<PitchVersion>, AppError> {
@@ -77,7 +81,7 @@ pub async fn find_by_pitch_and_id(
          WHERE owner_id = $1 AND pitch_id = $2 AND id = $3"
     );
     let row: Option<PitchVersionRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(pitch_id)
         .bind(version_id)
         .fetch_optional(pool)
@@ -88,13 +92,14 @@ pub async fn find_by_pitch_and_id(
 /// All versions for a pitch in ascending order, projected for the picker.
 pub async fn list_for_picker(
     pool: &PgPool,
+    owner_id: &str,
     pitch_id: &str,
 ) -> Result<Vec<VersionPickerRow>, AppError> {
     let rows = sqlx::query!(
         r#"SELECT id, version_n FROM pitch_versions
            WHERE owner_id = $1 AND pitch_id = $2
            ORDER BY version_n ASC"#,
-        TEMP_OWNER_ID,
+        owner_id,
         pitch_id,
     )
     .fetch_all(pool)
@@ -116,13 +121,14 @@ pub async fn list_for_picker(
 /// on the same pitch), retry once.
 pub async fn insert_with_next_n(
     pool: &PgPool,
+    owner_id: &str,
     pitch_id: &str,
     short: &str,
     long: &str,
 ) -> Result<PitchVersion, AppError> {
-    match try_insert(pool, pitch_id, short, long).await {
+    match try_insert(pool, owner_id, pitch_id, short, long).await {
         Ok(v) => Ok(v),
-        Err(e) if is_dup_key(&e) => try_insert(pool, pitch_id, short, long).await,
+        Err(e) if is_dup_key(&e) => try_insert(pool, owner_id, pitch_id, short, long).await,
         Err(e) => Err(e),
     }
 }
@@ -140,6 +146,7 @@ fn is_dup_key(e: &AppError) -> bool {
 /// returns the resulting `PitchVersion`.
 async fn try_insert(
     pool: &PgPool,
+    owner_id: &str,
     pitch_id: &str,
     short: &str,
     long: &str,
@@ -156,7 +163,7 @@ async fn try_insert(
            RETURNING version_n, created_at"#,
         pitch_id,
         id,
-        TEMP_OWNER_ID,
+        owner_id,
         short,
         long,
     )
@@ -177,6 +184,7 @@ async fn try_insert(
 /// "same version slot, new content drawn from the same chat".
 pub async fn replace_in_place(
     pool: &PgPool,
+    owner_id: &str,
     version_id: &str,
     pitch_id: &str,
     short: &str,
@@ -187,7 +195,7 @@ pub async fn replace_in_place(
            SET short = $3, long = $4
            WHERE owner_id = $1 AND id = $2 AND pitch_id = $5"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(owner_id)
     .bind(version_id)
     .bind(short)
     .bind(long)

@@ -18,6 +18,7 @@ use sqlx::PgPool;
 
 use crate::evals::gold::{self, ChatTurnGold, CompanyGold, StoryGold};
 use crate::models::{Category, StoryStatus};
+use crate::services::master_seed::MASTER_ID;
 use crate::services::{category_store, company_store, story_store, story_version_store};
 
 pub struct ExtractReport {
@@ -37,7 +38,7 @@ pub async fn extract_all(pool: &PgPool, data_dir: &str) -> Result<ExtractReport>
 }
 
 async fn extract_stories(pool: &PgPool, data_dir: &str) -> Result<(usize, usize)> {
-    let stories = story_store::list_completed(pool)
+    let stories = story_store::list_completed(pool, MASTER_ID)
         .await
         .context("query completed stories")?;
 
@@ -45,7 +46,7 @@ async fn extract_stories(pool: &PgPool, data_dir: &str) -> Result<(usize, usize)
         .iter()
         .filter_map(|s| s.current_version_id.clone())
         .collect();
-    let versions_by_id = story_version_store::list_by_ids(pool, &version_ids)
+    let versions_by_id = story_version_store::list_by_ids(pool, MASTER_ID, &version_ids)
         .await
         .context("query story versions")?;
 
@@ -106,7 +107,7 @@ async fn load_competencies_by_id(pool: &PgPool) -> Result<HashMap<String, Catego
 /// `list_by_name` returns the full row including the packet; filter
 /// client-side since the eval bin has no need for a partial-index query.
 async fn extract_companies(pool: &PgPool, data_dir: &str) -> Result<usize> {
-    let companies = company_store::list_by_name(pool)
+    let companies = company_store::list_by_name(pool, MASTER_ID)
         .await
         .context("query companies with packets")?;
     let mut written = 0;

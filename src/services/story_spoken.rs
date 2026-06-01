@@ -33,6 +33,7 @@ struct SpokenPayload {
 pub async fn generate_and_save(
     pool: &PgPool,
     or: &dyn LlmClient,
+    owner_id: &str,
     version: &StoryVersion,
 ) -> Result<SpokenStory, AppError> {
     let span = tracing::info_span!(
@@ -66,7 +67,7 @@ pub async fn generate_and_save(
         generated_at: chrono::Utc::now(),
     };
 
-    story_version_store::set_spoken(pool, &version.id, &spoken).await?;
+    story_version_store::set_spoken(pool, owner_id, &version.id, &spoken).await?;
 
     tracing::info!(
         event = "story.spoken.generated",

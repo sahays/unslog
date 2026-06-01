@@ -1,11 +1,12 @@
 //! `/companies/:id/questions{,/...}` — paste-bulk add, delete, and edit.
 
-use axum::extract::{Form, Path, State};
+use axum::extract::{Extension, Form, Path, State};
 use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::models::QuestionSource;
+use crate::services::auth::CurrentUser;
 use crate::services::{category_store, company_store, questions, text_validation};
 use crate::startup::AppState;
 
@@ -23,16 +24,18 @@ pub struct AddQuestionsForm {
 
 pub async fn add_questions(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
     Form(form): Form<AddQuestionsForm>,
 ) -> Result<Response, AppError> {
     let lines = parse_bulk_questions(&form.text)?;
-    let company = company_store::find_or_404(&state.pool, &id).await?;
+    let company = company_store::find_or_404(&state.pool, &current_user.id, &id).await?;
 
     let appended_n = lines.len();
     questions::categorize_and_append(
         &state.pool,
         &*state.openrouter,
+        &current_user.id,
         lines,
         QuestionSource::Uploaded,
         company.canonical_role,
@@ -51,9 +54,10 @@ pub async fn add_questions(
 
 pub async fn delete_question(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path((id, qid)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    questions::delete(&state.pool, &qid).await?;
+    questions::delete(&state.pool, &current_user.id, &qid).await?;
     tracing::info!(
         event = "question.delete",
         company_id = %id,
@@ -75,6 +79,7 @@ pub struct EditQuestionForm {
 
 pub async fn edit_question(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path((id, qid)): Path<(String, String)>,
     Form(form): Form<EditQuestionForm>,
 ) -> Result<Response, AppError> {
@@ -92,7 +97,15 @@ pub async fn edit_question(
         .filter(|c| valid.contains(c))
         .collect();
 
-    questions::update(&state.pool, &qid, &text, role, &categories).await?;
+    questions::update(
+        &state.pool,
+        &current_user.id,
+        &qid,
+        &text,
+        role,
+        &categories,
+    )
+    .await?;
     tracing::info!(
         event = "question.edit",
         company_id = %id,

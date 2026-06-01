@@ -9,10 +9,6 @@ use super::*;
 #[test]
 fn excerpt_does_not_panic_on_multi_byte_char_boundary() {
     let body: String = "é".repeat(EXCERPT_CHARS);
-    let e = JournalEntry::new(
-        crate::services::current_owner::TEMP_OWNER_ID.into(),
-        "t".into(),
-        body.clone(),
-    );
+    let e = JournalEntry::new("usrmaster".into(), "t".into(), body.clone());
     assert_eq!(e.excerpt(), body);
 }

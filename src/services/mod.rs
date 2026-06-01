@@ -11,7 +11,6 @@ pub mod cookies;
 pub mod critique;
 pub mod csrf;
 pub mod curator;
-pub mod current_owner;
 pub mod db;
 pub mod evaluations;
 pub mod id_gen;

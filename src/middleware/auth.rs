@@ -37,6 +37,10 @@ tokio::task_local! {
     /// Freshly-minted CSRF token for the in-flight request. Read by the
     /// `csrf_token` filter for the sidebar sign-out form.
     pub static CURRENT_CSRF_TOKEN: String;
+    /// True when the in-flight request's user has `is_master = true`. Read
+    /// by `base.html` via the `current_user_is_master` Askama filter so
+    /// admin-only sidebar links can be hidden for non-master accounts.
+    pub static CURRENT_USER_IS_MASTER: bool;
 }
 
 /// Best-effort lookup of the current user's label. Empty when no user is
@@ -53,6 +57,13 @@ pub fn current_csrf_token() -> String {
     CURRENT_CSRF_TOKEN
         .try_with(|v| v.clone())
         .unwrap_or_default()
+}
+
+/// Best-effort lookup of the current user's master flag. Defaults to
+/// `false` outside a request scope (so admin-only template fragments stay
+/// hidden when there's no signed-in user).
+pub fn current_user_is_master() -> bool {
+    CURRENT_USER_IS_MASTER.try_with(|v| *v).unwrap_or(false)
 }
 
 /// Axum 0.7 middleware closure. Mounted globally; per-path exemption is
@@ -100,8 +111,9 @@ fn is_allowlisted(path: &str) -> bool {
         || path.starts_with("/recordings/")
 }
 
-/// Stamp the resolved user onto the request, publish label + CSRF token
-/// into task-locals, and run the rest of the chain inside that scope.
+/// Stamp the resolved user onto the request, publish label + CSRF token +
+/// is_master into task-locals, and run the rest of the chain inside that
+/// scope.
 async fn attach_and_continue(
     cu: CurrentUser,
     state: &AppState,
@@ -109,12 +121,16 @@ async fn attach_and_continue(
     next: Next,
 ) -> Response {
     let label = cu.label.clone();
+    let is_master = cu.is_master;
     let csrf_token = csrf::mint(&cu.id, state.session_key.as_slice());
     request.extensions_mut().insert(cu);
     CURRENT_USER_LABEL
         .scope(
             label,
-            CURRENT_CSRF_TOKEN.scope(csrf_token, next.run(request)),
+            CURRENT_CSRF_TOKEN.scope(
+                csrf_token,
+                CURRENT_USER_IS_MASTER.scope(is_master, next.run(request)),
+            ),
         )
         .await
 }

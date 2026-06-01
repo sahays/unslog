@@ -72,9 +72,9 @@ async fn case_generate_skips_when_already_present() {
     // insert. Pin those .times(0) call counts.
     let mut deps = MockSummaryDeps::new();
     deps.expect_find_existing_summary()
-        .with(predicate::eq("sess-1"))
+        .with(predicate::eq("usrmaster"), predicate::eq("sess-1"))
         .times(1)
-        .returning(|_| Ok(Some(existing_summary())));
+        .returning(|_, _| Ok(Some(existing_summary())));
     deps.expect_insert_summary().times(0);
 
     let mut llm = MockLlmClient::new();
@@ -94,17 +94,17 @@ async fn case_generate_calls_llm_when_absent() {
     let mut deps = MockSummaryDeps::new();
     deps.expect_find_existing_summary()
         .times(1)
-        .returning(|_| Ok(None));
+        .returning(|_, _| Ok(None));
     deps.expect_get_summary_prompt_body()
         .with(predicate::eq("p-s"))
         .times(1)
         .returning(|_| Ok("be a coach".into()));
     deps.expect_find_session_evaluations()
         .times(1)
-        .returning(|_| Ok(vec![]));
+        .returning(|_, _| Ok(vec![]));
     deps.expect_recent_company_summaries_for_prompt()
         .times(1)
-        .returning(|_, _, _| Ok(vec![]));
+        .returning(|_, _, _, _| Ok(vec![]));
     deps.expect_insert_summary().times(1).returning(|_| Ok(()));
 
     let mut llm = MockLlmClient::new();

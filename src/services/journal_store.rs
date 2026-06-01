@@ -1,9 +1,8 @@
 //! Journal entries — plain CRUD over the Postgres `journal_entries`
 //! table. No taxonomy, no AI; the user owns the text end-to-end.
 //!
-//! Every read is scoped by `owner_id` so a future multi-user world sees
-//! only its own rows; during this transition the owner is always
-//! [`crate::services::current_owner::TEMP_OWNER_ID`].
+//! Every read is scoped by `owner_id` so multi-user installs see only
+//! their own rows. The handler layer passes `CurrentUser::id` through.
 //!
 //! Persistence goes through [`JournalSource`] so the small bit of logic
 //! that lives in free functions below (timestamp bumps, NotFound mapping,
@@ -14,7 +13,6 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::JournalEntry;
-use crate::services::current_owner::TEMP_OWNER_ID;
 
 /// Persistence seam — owner-scoped operations on the journal table.
 /// Production impl is [`PgJournalSource`]; tests inject `MockJournalSource`.
@@ -113,47 +111,65 @@ impl<'a> JournalSource for PgJournalSource<'a> {
 
 // ── Pool-facing convenience wrappers (route layer calls these) ──────────
 
-pub async fn list_active(pool: &PgPool) -> Result<Vec<JournalEntry>, AppError> {
-    list_active_via(&PgJournalSource { pool }).await
+pub async fn list_active(pool: &PgPool, owner_id: &str) -> Result<Vec<JournalEntry>, AppError> {
+    list_active_via(&PgJournalSource { pool }, owner_id).await
 }
 
-pub async fn get(pool: &PgPool, id: &str) -> Result<Option<JournalEntry>, AppError> {
-    get_via(&PgJournalSource { pool }, id).await
+pub async fn get(
+    pool: &PgPool,
+    owner_id: &str,
+    id: &str,
+) -> Result<Option<JournalEntry>, AppError> {
+    get_via(&PgJournalSource { pool }, owner_id, id).await
 }
 
-pub async fn create(pool: &PgPool, title: String, body: String) -> Result<JournalEntry, AppError> {
-    create_via(&PgJournalSource { pool }, title, body).await
+pub async fn create(
+    pool: &PgPool,
+    owner_id: &str,
+    title: String,
+    body: String,
+) -> Result<JournalEntry, AppError> {
+    create_via(&PgJournalSource { pool }, owner_id, title, body).await
 }
 
 pub async fn update(
     pool: &PgPool,
+    owner_id: &str,
     id: &str,
     title: String,
     body: String,
 ) -> Result<JournalEntry, AppError> {
-    update_via(&PgJournalSource { pool }, id, title, body).await
+    update_via(&PgJournalSource { pool }, owner_id, id, title, body).await
 }
 
-pub async fn archive(pool: &PgPool, id: &str) -> Result<(), AppError> {
-    archive_via(&PgJournalSource { pool }, id).await
+pub async fn archive(pool: &PgPool, owner_id: &str, id: &str) -> Result<(), AppError> {
+    archive_via(&PgJournalSource { pool }, owner_id, id).await
 }
 
 // ── Trait-generic logic (the mockable surface) ──────────────────────────
 
-pub async fn list_active_via(deps: &dyn JournalSource) -> Result<Vec<JournalEntry>, AppError> {
-    deps.find_active(TEMP_OWNER_ID).await
+pub async fn list_active_via(
+    deps: &dyn JournalSource,
+    owner_id: &str,
+) -> Result<Vec<JournalEntry>, AppError> {
+    deps.find_active(owner_id).await
 }
 
-pub async fn get_via(deps: &dyn JournalSource, id: &str) -> Result<Option<JournalEntry>, AppError> {
-    deps.find_one(TEMP_OWNER_ID, id).await
+pub async fn get_via(
+    deps: &dyn JournalSource,
+    owner_id: &str,
+    id: &str,
+) -> Result<Option<JournalEntry>, AppError> {
+    deps.find_one(owner_id, id).await
 }
 
 pub async fn create_via(
     deps: &dyn JournalSource,
+    owner_id: &str,
     title: String,
     body: String,
 ) -> Result<JournalEntry, AppError> {
-    let entry = JournalEntry::new(TEMP_OWNER_ID.to_string(), title, body);
+    let entry = JournalEntry::new(owner_id.to_string(), title, body);
     deps.insert(&entry).await?;
     Ok(entry)
 }
@@ -161,11 +177,12 @@ pub async fn create_via(
 /// Load → mutate → save with a fresh `updated_at`. Missing id → `NotFound`.
 pub async fn update_via(
     deps: &dyn JournalSource,
+    owner_id: &str,
     id: &str,
     title: String,
     body: String,
 ) -> Result<JournalEntry, AppError> {
-    let mut entry = load_existing(deps, id).await?;
+    let mut entry = load_existing(deps, owner_id, id).await?;
     entry.title = title;
     entry.body = body;
     entry.updated_at = chrono::Utc::now();
@@ -175,15 +192,23 @@ pub async fn update_via(
 
 /// Mark the entry archived (hidden from the list view). Idempotent: archiving
 /// an already-archived entry refreshes the timestamp.
-pub async fn archive_via(deps: &dyn JournalSource, id: &str) -> Result<(), AppError> {
-    let mut entry = load_existing(deps, id).await?;
+pub async fn archive_via(
+    deps: &dyn JournalSource,
+    owner_id: &str,
+    id: &str,
+) -> Result<(), AppError> {
+    let mut entry = load_existing(deps, owner_id, id).await?;
     entry.archived_at = Some(chrono::Utc::now());
     deps.replace(&entry).await?;
     Ok(())
 }
 
-async fn load_existing(deps: &dyn JournalSource, id: &str) -> Result<JournalEntry, AppError> {
-    deps.find_one(TEMP_OWNER_ID, id)
+async fn load_existing(
+    deps: &dyn JournalSource,
+    owner_id: &str,
+    id: &str,
+) -> Result<JournalEntry, AppError> {
+    deps.find_one(owner_id, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("journal entry {id}")))
 }

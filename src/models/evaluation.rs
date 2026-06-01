@@ -82,7 +82,7 @@ pub struct Attempt {
 pub struct Evaluation {
     #[serde(rename = "_id")]
     pub id: String,
-    /// Master-bound for now via `TEMP_OWNER_ID`; per-user once Phase 1 lands.
+    /// Per-user; set by the calling handler from `CurrentUser::id`.
     /// Legacy Mongo docs lack this column and default to empty — the
     /// importer backfills before insert.
     #[serde(default)]

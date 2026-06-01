@@ -5,13 +5,14 @@
 //! * `continue_chat` — refine kickoff: append a fresh probe and reopen the
 //!   chat for vN+1.
 
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum_extra::extract::Form;
 use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::models::{ChatRole, ChatTurn, StoryStatus};
+use crate::services::auth::CurrentUser;
 use crate::services::{
     category_store, chat_lockin, story_lockin, story_refine, story_store, story_version_store,
     text_validation,
@@ -32,11 +33,12 @@ pub(super) struct TurnForm {
 
 pub(super) async fn post_turn(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
     Form(form): Form<TurnForm>,
 ) -> Result<Response, AppError> {
     let content = text_validation::sanitize_long(&form.content, MAX_CHAT_TURN_CHARS, "message")?;
-    let mut story = super::load_story(&state, &id).await?;
+    let mut story = super::load_story(&state, &current_user.id, &id).await?;
     let competency = category_store::get(&state.pool, &story.competency_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("competency {}", story.competency_id)))?;
@@ -53,7 +55,7 @@ pub(super) async fn post_turn(
     // literal `<<LOCK_IN>>` token (contract spelled out in
     // `prompts/story_chat.md`). We strip the token, persist the rest as the
     // final coach turn, and trigger story_lockin.
-    let raw = super::run_chat_model(&state, &story, &competency).await?;
+    let raw = super::run_chat_model(&state, &current_user.id, &story, &competency).await?;
     let (cleaned, lock_in) = chat_lockin::strip_lock_in_token(&raw);
 
     if !cleaned.is_empty() {
@@ -76,9 +78,10 @@ pub(super) async fn post_turn(
 
 pub(super) async fn generate(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let story = super::load_story(&state, &id).await?;
+    let story = super::load_story(&state, &current_user.id, &id).await?;
     story_lockin::generate_and_save(&state.pool, state.openrouter.as_ref(), &story).await?;
     Ok(Redirect::to(&format!("/stories/{id}")).into_response())
 }
@@ -87,15 +90,16 @@ pub(super) async fn generate(
 
 pub(super) async fn continue_chat(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let mut story = super::load_story(&state, &id).await?;
+    let mut story = super::load_story(&state, &current_user.id, &id).await?;
     let Some(vid) = story.current_version_id.clone() else {
         return Err(AppError::BadRequest(
             "no current version to refine — generate v1 first".into(),
         ));
     };
-    let version = story_version_store::get(&state.pool, &vid)
+    let version = story_version_store::get(&state.pool, &current_user.id, &vid)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("story version {vid}")))?;
 
@@ -111,7 +115,13 @@ pub(super) async fn continue_chat(
 
     // Reopen the chat: status returns to InProgress so the next Generate
     // creates vN+1 instead of being a no-op visually.
-    story_store::set_status(&state.pool, &story.id, StoryStatus::InProgress).await?;
+    story_store::set_status(
+        &state.pool,
+        &current_user.id,
+        &story.id,
+        StoryStatus::InProgress,
+    )
+    .await?;
     tracing::info!(
         event = "story.continue",
         story_id = %story.id,

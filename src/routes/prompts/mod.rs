@@ -29,6 +29,9 @@ pub fn routes() -> Router<AppState> {
         .route("/agents/:name/history", get(history::history))
         .route("/agents/:name/versions/:version_id", get(version::view))
         .route("/agents/:name/restore/:version_id", post(restore::restore))
+        .layer(axum::middleware::from_fn(
+            crate::middleware::require_master_middleware,
+        ))
 }
 
 /// Hard cap on a single prompt-body version. The bundled prompts under

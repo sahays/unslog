@@ -10,9 +10,8 @@
 //! * `list_for_landing` / `list_siblings` / `list_in_progress` — projected
 //!   reads for the index tile grid, the show-page sidebar, and the home feed.
 //!
-//! Every read filters by `owner_id`; every write sets it. The owner is
-//! pinned to [`crate::services::current_owner::TEMP_OWNER_ID`] until
-//! Phase 1 lands a request-bound current user.
+//! Every read filters by `owner_id`; every write sets it. The handler
+//! layer threads `CurrentUser::id` through.
 
 use chrono::{DateTime, Utc};
 use sqlx::types::Json;
@@ -20,7 +19,6 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{ChatTurn, Difficulty, Story, StoryStatus};
-use crate::services::current_owner::TEMP_OWNER_ID;
 
 #[path = "story_store_row.rs"]
 mod row;
@@ -51,37 +49,44 @@ fn check_chat_capacity(current_len: usize) -> Result<(), AppError> {
 
 // ── Reads ────────────────────────────────────────────────────────────────
 
-pub async fn get(pool: &PgPool, id: &str) -> Result<Option<Story>, AppError> {
+pub async fn get(pool: &PgPool, owner_id: &str, id: &str) -> Result<Option<Story>, AppError> {
     let sql = format!("SELECT {STORY_COLS} FROM stories WHERE owner_id = $1 AND id = $2");
     let row: Option<StoryRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(id)
         .fetch_optional(pool)
         .await?;
     row.map(StoryRow::try_into_story).transpose()
 }
 
-pub async fn find_or_404(pool: &PgPool, id: &str) -> Result<Story, AppError> {
-    get(pool, id)
+pub async fn find_or_404(pool: &PgPool, owner_id: &str, id: &str) -> Result<Story, AppError> {
+    get(pool, owner_id, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("story {id}")))
 }
 
 /// Projected list for the landing page — every story, newest-first.
-pub async fn list_for_landing(pool: &PgPool) -> Result<Vec<StoryListRow>, AppError> {
-    fetch_landing(pool, None).await
+pub async fn list_for_landing(
+    pool: &PgPool,
+    owner_id: &str,
+) -> Result<Vec<StoryListRow>, AppError> {
+    fetch_landing(pool, owner_id, None).await
 }
 
 /// In-progress stories only, newest-first. Powers the home page's
 /// "In progress" feed.
-pub async fn list_in_progress(pool: &PgPool) -> Result<Vec<StoryListRow>, AppError> {
-    fetch_landing(pool, Some(StoryStatus::InProgress)).await
+pub async fn list_in_progress(
+    pool: &PgPool,
+    owner_id: &str,
+) -> Result<Vec<StoryListRow>, AppError> {
+    fetch_landing(pool, owner_id, Some(StoryStatus::InProgress)).await
 }
 
 /// Shared body for `list_for_landing` + `list_in_progress`. `status_filter`
 /// is `None` for "all stories" and `Some(status)` for "only this status".
 async fn fetch_landing(
     pool: &PgPool,
+    owner_id: &str,
     status_filter: Option<StoryStatus>,
 ) -> Result<Vec<StoryListRow>, AppError> {
     let sql = "SELECT id, competency_id, status, current_version_id, updated_at \
@@ -89,7 +94,7 @@ async fn fetch_landing(
                WHERE owner_id = $1 AND ($2::text IS NULL OR status = $2) \
                ORDER BY updated_at DESC";
     let rows: Vec<StoryListRowSql> = sqlx::query_as(sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(status_filter.map(|s| s.as_str()))
         .fetch_all(pool)
         .await?;
@@ -100,14 +105,14 @@ async fn fetch_landing(
 
 /// Every story whose status is `complete`. Used by the eval gold-set
 /// extractor; small N (≤ a few hundred) so a full scan is fine.
-pub async fn list_completed(pool: &PgPool) -> Result<Vec<Story>, AppError> {
+pub async fn list_completed(pool: &PgPool, owner_id: &str) -> Result<Vec<Story>, AppError> {
     let sql = format!(
         "SELECT {STORY_COLS} FROM stories \
          WHERE owner_id = $1 AND status = $2 \
          ORDER BY updated_at DESC"
     );
     let rows: Vec<StoryRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(StoryStatus::Complete.as_str())
         .fetch_all(pool)
         .await?;
@@ -118,6 +123,7 @@ pub async fn list_completed(pool: &PgPool) -> Result<Vec<Story>, AppError> {
 /// most-recently-updated. Powers the side panel on the show page.
 pub async fn list_siblings(
     pool: &PgPool,
+    owner_id: &str,
     story_id: &str,
     competency_id: &str,
 ) -> Result<Vec<SiblingRow>, AppError> {
@@ -133,7 +139,7 @@ pub async fn list_siblings(
            WHERE owner_id = $1 AND competency_id = $2 AND id <> $3
            ORDER BY updated_at DESC"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(owner_id)
     .bind(competency_id)
     .bind(story_id)
     .fetch_all(pool)
@@ -186,7 +192,7 @@ pub async fn push_turn(pool: &PgPool, story: &mut Story, turn: ChatTurn) -> Resu
            SET chat = chat || $3::jsonb, updated_at = $4
            WHERE owner_id = $1 AND id = $2"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(&story.owner_id)
     .bind(&story.id)
     .bind(turn_json)
     .bind(now)
@@ -201,6 +207,7 @@ pub async fn push_turn(pool: &PgPool, story: &mut Story, turn: ChatTurn) -> Resu
 /// owner-scoped UPDATE. Called by `story_lockin::generate_and_save`.
 pub async fn set_current_version(
     pool: &PgPool,
+    owner_id: &str,
     story_id: &str,
     version_id: &str,
 ) -> Result<(), AppError> {
@@ -209,7 +216,7 @@ pub async fn set_current_version(
            SET current_version_id = $3, status = $4, updated_at = NOW()
            WHERE owner_id = $1 AND id = $2"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(owner_id)
     .bind(story_id)
     .bind(version_id)
     .bind(StoryStatus::Complete.as_str())
@@ -222,16 +229,22 @@ pub async fn set_current_version(
 /// reopen a completed story for refinement.
 pub async fn set_status(
     pool: &PgPool,
+    owner_id: &str,
     story_id: &str,
     status: StoryStatus,
 ) -> Result<(), AppError> {
-    update_scalar(pool, story_id, "status", status.as_str()).await
+    update_scalar(pool, owner_id, story_id, "status", status.as_str()).await
 }
 
 /// Update coach mode for this story. New mode takes effect on the next
 /// chat turn (which loads `story.mode` to pick the matching prompt).
-pub async fn set_mode(pool: &PgPool, story_id: &str, mode: Difficulty) -> Result<(), AppError> {
-    update_scalar(pool, story_id, "mode", mode.as_str()).await
+pub async fn set_mode(
+    pool: &PgPool,
+    owner_id: &str,
+    story_id: &str,
+    mode: Difficulty,
+) -> Result<(), AppError> {
+    update_scalar(pool, owner_id, story_id, "mode", mode.as_str()).await
 }
 
 /// Shared body for the small single-column flips (`status`, `mode`).
@@ -239,6 +252,7 @@ pub async fn set_mode(pool: &PgPool, story_id: &str, mode: Difficulty) -> Result
 /// safe; values still go through bind.
 async fn update_scalar(
     pool: &PgPool,
+    owner_id: &str,
     story_id: &str,
     column: &'static str,
     value: &str,
@@ -248,7 +262,7 @@ async fn update_scalar(
          WHERE owner_id = $1 AND id = $2"
     );
     sqlx::query(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(story_id)
         .bind(value)
         .execute(pool)
@@ -258,9 +272,9 @@ async fn update_scalar(
 
 /// Delete the story. The Postgres FK CASCADE (migration 0001) drops the
 /// dependent `story_versions` rows in the same transaction. Owner-scoped.
-pub async fn delete_cascade(pool: &PgPool, story_id: &str) -> Result<(), AppError> {
+pub async fn delete_cascade(pool: &PgPool, owner_id: &str, story_id: &str) -> Result<(), AppError> {
     sqlx::query("DELETE FROM stories WHERE owner_id = $1 AND id = $2")
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(story_id)
         .execute(pool)
         .await?;

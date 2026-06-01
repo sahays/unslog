@@ -9,13 +9,14 @@
 //! Mirrors `routes::stories::chat` minus the bullets/summarize step — at
 //! lock-in we go straight from chat to spoken short+long prose.
 
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum_extra::extract::Form;
 use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::models::{ChatRole, ChatTurn};
+use crate::services::auth::CurrentUser;
 use crate::services::{chat_lockin, pitch_lockin, pitch_store, text_validation};
 use crate::startup::AppState;
 
@@ -33,20 +34,21 @@ pub(super) struct TurnForm {
 
 pub(super) async fn post_turn(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(slug): Path<String>,
     Form(form): Form<TurnForm>,
 ) -> Result<Response, AppError> {
     let content = text_validation::sanitize_long(&form.content, MAX_CHAT_TURN_CHARS, "message")?;
-    let mut pitch = super::load_pitch(&state, &slug).await?;
+    let mut pitch = super::load_pitch(&state, &current_user.id, &slug).await?;
 
     let user_turn = ChatTurn {
         role: ChatRole::User,
         content,
         ts: chrono::Utc::now(),
     };
-    super::push_turn(&state, &mut pitch, user_turn).await?;
+    super::push_turn(&state, &current_user.id, &mut pitch, user_turn).await?;
 
-    let raw = super::run_chat_model(&state, &pitch).await?;
+    let raw = super::run_chat_model(&state, &current_user.id, &pitch).await?;
     let (cleaned, lock_in) = chat_lockin::strip_lock_in_token(&raw);
 
     if !cleaned.is_empty() {
@@ -55,11 +57,17 @@ pub(super) async fn post_turn(
             content: cleaned,
             ts: chrono::Utc::now(),
         };
-        super::push_turn(&state, &mut pitch, assistant_turn).await?;
+        super::push_turn(&state, &current_user.id, &mut pitch, assistant_turn).await?;
     }
 
     if lock_in {
-        pitch_lockin::generate_and_save(&state.pool, state.openrouter.as_ref(), &pitch).await?;
+        pitch_lockin::generate_and_save(
+            &state.pool,
+            state.openrouter.as_ref(),
+            &current_user.id,
+            &pitch,
+        )
+        .await?;
     }
 
     Ok(Redirect::to(&format!("/pitches/{slug}")).into_response())
@@ -71,15 +79,22 @@ pub(super) async fn post_turn(
 /// generating the spoken version from whatever's in the chat.
 pub(super) async fn generate(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(slug): Path<String>,
 ) -> Result<Response, AppError> {
-    let pitch = super::load_pitch(&state, &slug).await?;
+    let pitch = super::load_pitch(&state, &current_user.id, &slug).await?;
     if pitch.chat.is_empty() {
         return Err(AppError::BadRequest(
             "no chat content yet — answer at least one probe before generating".into(),
         ));
     }
-    pitch_lockin::generate_and_save(&state.pool, state.openrouter.as_ref(), &pitch).await?;
+    pitch_lockin::generate_and_save(
+        &state.pool,
+        state.openrouter.as_ref(),
+        &current_user.id,
+        &pitch,
+    )
+    .await?;
     Ok(Redirect::to(&format!("/pitches/{slug}")).into_response())
 }
 
@@ -92,24 +107,25 @@ pub(super) async fn generate(
 /// and naturally probes further. No second prompt needed.
 pub(super) async fn continue_chat(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(slug): Path<String>,
 ) -> Result<Response, AppError> {
-    let mut pitch = super::load_pitch(&state, &slug).await?;
+    let mut pitch = super::load_pitch(&state, &current_user.id, &slug).await?;
     if pitch.current_version_id.is_none() {
         return Err(AppError::BadRequest(
             "no current version to refine — lock in v1 first".into(),
         ));
     }
 
-    pitch_store::reopen(&state.pool, &pitch.id).await?;
+    pitch_store::reopen(&state.pool, &current_user.id, &pitch.id).await?;
 
-    let probe = super::run_chat_model(&state, &pitch).await?;
+    let probe = super::run_chat_model(&state, &current_user.id, &pitch).await?;
     let turn = ChatTurn {
         role: ChatRole::Assistant,
         content: probe,
         ts: chrono::Utc::now(),
     };
-    super::push_turn(&state, &mut pitch, turn).await?;
+    super::push_turn(&state, &current_user.id, &mut pitch, turn).await?;
 
     tracing::info!(
         event = "pitch.continue",

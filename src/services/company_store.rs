@@ -1,9 +1,7 @@
 //! Store for the Postgres `companies` table — target-company packets.
 //!
-//! Every read is owner-scoped. Until Phase 1 lands a real `current_user`
-//! extractor, every call site reads through
-//! [`crate::services::current_owner::TEMP_OWNER_ID`] (the master user
-//! seeded by migration 0002 + import bootstrap).
+//! Every read is owner-scoped. The handler layer threads `CurrentUser::id`
+//! through.
 //!
 //! `research_packet` is JSONB on the Postgres side and serializes through
 //! [`sqlx::types::Json`]. Owner-scoped DELETE cascades through the FK in
@@ -26,7 +24,6 @@ use sqlx::PgPool;
 use crate::error::AppError;
 use crate::models::company::ResearchPacket;
 use crate::models::{Company, Role};
-use crate::services::current_owner::TEMP_OWNER_ID;
 
 /// Columns shared by every full-row read. Centralized so a schema add only
 /// edits one place. `research_packet` returns as JSONB → `Option<Json<...>>`.
@@ -84,18 +81,18 @@ pub struct CompanyListRow {
 
 // ── Single-row reads ─────────────────────────────────────────────────────
 
-pub async fn get(pool: &PgPool, id: &str) -> Result<Option<Company>, AppError> {
+pub async fn get(pool: &PgPool, owner_id: &str, id: &str) -> Result<Option<Company>, AppError> {
     let sql = format!("SELECT {COMPANY_COLS} FROM companies WHERE owner_id = $1 AND id = $2");
     let row: Option<CompanyRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(id)
         .fetch_optional(pool)
         .await?;
     row.map(CompanyRow::try_into_company).transpose()
 }
 
-pub async fn find_or_404(pool: &PgPool, id: &str) -> Result<Company, AppError> {
-    get(pool, id)
+pub async fn find_or_404(pool: &PgPool, owner_id: &str, id: &str) -> Result<Company, AppError> {
+    get(pool, owner_id, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("company {id}")))
 }
@@ -106,7 +103,7 @@ pub async fn find_or_404(pool: &PgPool, id: &str) -> Result<Company, AppError> {
 /// research-packet body. `has_packet` is derived server-side via the
 /// `research_packet IS NOT NULL` check so the multi-KB JSONB stays on
 /// the database side.
-pub async fn list_sorted(pool: &PgPool) -> Result<Vec<CompanyListRow>, AppError> {
+pub async fn list_sorted(pool: &PgPool, owner_id: &str) -> Result<Vec<CompanyListRow>, AppError> {
     let rows = sqlx::query!(
         r#"
         SELECT id, name, role, canonical_role, created_at,
@@ -115,7 +112,7 @@ pub async fn list_sorted(pool: &PgPool) -> Result<Vec<CompanyListRow>, AppError>
         WHERE owner_id = $1
         ORDER BY updated_at DESC
         "#,
-        TEMP_OWNER_ID,
+        owner_id,
     )
     .fetch_all(pool)
     .await?;
@@ -142,21 +139,22 @@ pub async fn list_sorted(pool: &PgPool) -> Result<Vec<CompanyListRow>, AppError>
 /// All companies for the owner, sorted by name. Drives the `/practice`
 /// picker (full Company rows including the packet, since the picker
 /// needs canonical_role for filtering).
-pub async fn list_by_name(pool: &PgPool) -> Result<Vec<Company>, AppError> {
+pub async fn list_by_name(pool: &PgPool, owner_id: &str) -> Result<Vec<Company>, AppError> {
     let sql = format!(
         "SELECT {COMPANY_COLS} FROM companies
          WHERE owner_id = $1
          ORDER BY name ASC"
     );
-    let rows: Vec<CompanyRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
-        .fetch_all(pool)
-        .await?;
+    let rows: Vec<CompanyRow> = sqlx::query_as(&sql).bind(owner_id).fetch_all(pool).await?;
     rows.into_iter().map(CompanyRow::try_into_company).collect()
 }
 
 /// Bulk fetch full company rows for a set of ids in one query.
-pub async fn find_by_ids(pool: &PgPool, ids: &[String]) -> Result<Vec<Company>, AppError> {
+pub async fn find_by_ids(
+    pool: &PgPool,
+    owner_id: &str,
+    ids: &[String],
+) -> Result<Vec<Company>, AppError> {
     if ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -165,7 +163,7 @@ pub async fn find_by_ids(pool: &PgPool, ids: &[String]) -> Result<Vec<Company>, 
          WHERE owner_id = $1 AND id = ANY($2)"
     );
     let rows: Vec<CompanyRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(ids)
         .fetch_all(pool)
         .await?;
@@ -175,6 +173,7 @@ pub async fn find_by_ids(pool: &PgPool, ids: &[String]) -> Result<Vec<Company>, 
 /// Bulk-load company names for a set of ids. Returns `id → name`.
 pub async fn names_by_ids(
     pool: &PgPool,
+    owner_id: &str,
     ids: &[&str],
 ) -> Result<HashMap<String, String>, AppError> {
     if ids.is_empty() {
@@ -186,7 +185,7 @@ pub async fn names_by_ids(
         SELECT id, name FROM companies
         WHERE owner_id = $1 AND id = ANY($2)
         "#,
-        TEMP_OWNER_ID,
+        owner_id,
         &ids_owned,
     )
     .fetch_all(pool)
@@ -194,10 +193,10 @@ pub async fn names_by_ids(
     Ok(rows.into_iter().map(|r| (r.id, r.name)).collect())
 }
 
-pub async fn count(pool: &PgPool) -> Result<u64, AppError> {
+pub async fn count(pool: &PgPool, owner_id: &str) -> Result<u64, AppError> {
     let n: i64 = sqlx::query_scalar!(
         "SELECT COUNT(*) AS \"count!\" FROM companies WHERE owner_id = $1",
-        TEMP_OWNER_ID,
+        owner_id,
     )
     .fetch_one(pool)
     .await?;
@@ -234,6 +233,7 @@ pub async fn insert(pool: &PgPool, company: &Company) -> Result<(), AppError> {
 /// Refresh a company's research packet. Owner-scoped; bumps `updated_at`.
 pub async fn update_packet(
     pool: &PgPool,
+    owner_id: &str,
     company_id: &str,
     packet: &ResearchPacket,
 ) -> Result<(), AppError> {
@@ -243,7 +243,7 @@ pub async fn update_packet(
                updated_at      = NOW()
            WHERE owner_id = $1 AND id = $2"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(owner_id)
     .bind(company_id)
     .bind(Json(packet.clone()))
     .execute(pool)
@@ -253,9 +253,9 @@ pub async fn update_packet(
 
 /// Delete a company row. The Postgres FK CASCADE drops dependent
 /// questions / sessions / evaluations / summaries (see migration 0001).
-pub async fn delete(pool: &PgPool, company_id: &str) -> Result<(), AppError> {
+pub async fn delete(pool: &PgPool, owner_id: &str, company_id: &str) -> Result<(), AppError> {
     sqlx::query("DELETE FROM companies WHERE owner_id = $1 AND id = $2")
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(company_id)
         .execute(pool)
         .await?;

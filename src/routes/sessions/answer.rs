@@ -1,7 +1,7 @@
 //! Answer flow: submit_answer (record an attempt + critique it), transcribe
 //! (STT a recording), regenerate_critique_audio (re-TTS a stored critique).
 
-use axum::extract::{Form, Path, State};
+use axum::extract::{Extension, Form, Path, State};
 use axum::response::{IntoResponse, Json, Redirect, Response};
 use axum_extra::extract::Multipart;
 use serde::Deserialize;
@@ -9,6 +9,7 @@ use serde_json::json;
 
 use crate::error::AppError;
 use crate::models::{Attempt, SessionStatus};
+use crate::services::auth::CurrentUser;
 use crate::services::{critique, evaluations, stt, summary, text_validation};
 use crate::startup::AppState;
 
@@ -35,13 +36,14 @@ pub(super) struct AnswerForm {
 
 pub(super) async fn submit_answer(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
     Form(form): Form<AnswerForm>,
 ) -> Result<Response, AppError> {
     let answer = text_validation::sanitize_long(&form.transcript, MAX_ANSWER_CHARS, "answer")?;
     let audio_path = form.audio_path.filter(|s| !s.is_empty());
 
-    let session = super::load_session(&state, &id).await?;
+    let session = super::load_session(&state, &current_user.id, &id).await?;
     if session.status != SessionStatus::Active {
         return Err(AppError::BadRequest("session has ended".into()));
     }
@@ -54,7 +56,7 @@ pub(super) async fn submit_answer(
         .clone()
         .ok_or_else(|| AppError::BadRequest("session is missing current question text".into()))?;
 
-    let company = super::load_company(&state, &session.company_id).await?;
+    let company = super::load_company(&state, &current_user.id, &session.company_id).await?;
 
     let eval_source = evaluations::PgEvalSource { pool: &state.pool };
     let (eval, attempt_n) =
@@ -62,6 +64,7 @@ pub(super) async fn submit_answer(
 
     let prior_summaries: Vec<String> = summary::recent_company_summaries(
         &state.pool,
+        &current_user.id,
         &session.company_id,
         Some(&session.id),
         summary::CARRY_FORWARD_INTO_CRITIQUE,
@@ -139,10 +142,11 @@ fn sanitize_audio_ext(ext: &str) -> String {
 
 pub(super) async fn transcribe(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
     mut form: Multipart,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let session = super::load_session(&state, &id).await?;
+    let session = super::load_session(&state, &current_user.id, &id).await?;
     if session.status != SessionStatus::Active {
         return Err(AppError::BadRequest("session has ended".into()));
     }
@@ -206,10 +210,12 @@ pub(super) async fn transcribe(
 /// the eval row's `critique_audio_path` for that attempt.
 pub(super) async fn regenerate_critique_audio(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path((id, eval_id, attempt_n)): Path<(String, String, u32)>,
 ) -> Result<Response, AppError> {
-    let session = super::load_session(&state, &id).await?;
-    let mut eval = evaluations::load_for_attempt_edit(&state.pool, &id, &eval_id).await?;
+    let session = super::load_session(&state, &current_user.id, &id).await?;
+    let mut eval =
+        evaluations::load_for_attempt_edit(&state.pool, &current_user.id, &id, &eval_id).await?;
 
     let critique = eval
         .attempts

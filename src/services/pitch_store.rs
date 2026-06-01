@@ -14,7 +14,6 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{ChatTurn, Pitch, PitchStatus};
-use crate::services::current_owner::TEMP_OWNER_ID;
 
 #[path = "pitch_store_seed.rs"]
 mod seed;
@@ -89,7 +88,7 @@ const JOIN_COLS: &str = r#"p.id, p.question_text, p.blurb, p.sort_order, p.creat
 
 // ── Reads ────────────────────────────────────────────────────────────────
 
-pub async fn get(pool: &PgPool, slug: &str) -> Result<Option<Pitch>, AppError> {
+pub async fn get(pool: &PgPool, owner_id: &str, slug: &str) -> Result<Option<Pitch>, AppError> {
     let sql = format!(
         "SELECT {JOIN_COLS} FROM pitches p \
          LEFT JOIN pitch_user_state s \
@@ -97,24 +96,21 @@ pub async fn get(pool: &PgPool, slug: &str) -> Result<Option<Pitch>, AppError> {
          WHERE p.id = $2"
     );
     let row: Option<PitchJoinRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(slug)
         .fetch_optional(pool)
         .await?;
     row.map(PitchJoinRow::try_into_pitch).transpose()
 }
 
-pub async fn list_all(pool: &PgPool) -> Result<Vec<Pitch>, AppError> {
+pub async fn list_all(pool: &PgPool, owner_id: &str) -> Result<Vec<Pitch>, AppError> {
     let sql = format!(
         "SELECT {JOIN_COLS} FROM pitches p \
          LEFT JOIN pitch_user_state s \
          ON s.pitch_id = p.id AND s.owner_id = $1 \
          ORDER BY p.sort_order"
     );
-    let rows: Vec<PitchJoinRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
-        .fetch_all(pool)
-        .await?;
+    let rows: Vec<PitchJoinRow> = sqlx::query_as(&sql).bind(owner_id).fetch_all(pool).await?;
     rows.into_iter().map(PitchJoinRow::try_into_pitch).collect()
 }
 
@@ -128,14 +124,17 @@ pub struct InProgressRow {
 
 /// In-progress pitches only, newest-touched-first. Inner-joined — only
 /// pitches the user has touched count for this feed.
-pub async fn list_in_progress(pool: &PgPool) -> Result<Vec<InProgressRow>, AppError> {
+pub async fn list_in_progress(
+    pool: &PgPool,
+    owner_id: &str,
+) -> Result<Vec<InProgressRow>, AppError> {
     let rows = sqlx::query!(
         r#"SELECT p.id AS slug, p.question_text, s.updated_at
            FROM pitch_user_state s
            JOIN pitches p ON p.id = s.pitch_id
            WHERE s.owner_id = $1 AND s.status = 'in_progress'
            ORDER BY s.updated_at DESC"#,
-        TEMP_OWNER_ID,
+        owner_id,
     )
     .fetch_all(pool)
     .await?;
@@ -159,7 +158,11 @@ pub struct SiblingRow {
 
 /// All other pitches (everything except `pitch_id`), sorted by `sort_order`,
 /// each carrying its per-user status (or `not_started` when absent).
-pub async fn list_siblings(pool: &PgPool, pitch_id: &str) -> Result<Vec<SiblingRow>, AppError> {
+pub async fn list_siblings(
+    pool: &PgPool,
+    owner_id: &str,
+    pitch_id: &str,
+) -> Result<Vec<SiblingRow>, AppError> {
     let rows = sqlx::query!(
         r#"SELECT p.id AS slug, p.question_text,
                   COALESCE(s.status, 'not_started') AS "status!"
@@ -168,7 +171,7 @@ pub async fn list_siblings(pool: &PgPool, pitch_id: &str) -> Result<Vec<SiblingR
              ON s.pitch_id = p.id AND s.owner_id = $1
            WHERE p.id <> $2
            ORDER BY p.sort_order"#,
-        TEMP_OWNER_ID,
+        owner_id,
         pitch_id,
     )
     .fetch_all(pool)
@@ -190,11 +193,15 @@ pub async fn list_siblings(pool: &PgPool, pitch_id: &str) -> Result<Vec<SiblingR
 /// flipping `status` to `in_progress` (preserves `locked` to avoid
 /// stomping a lock-in mid-refine). Refuses to grow `chat[]` past
 /// [`MAX_CHAT_TURNS`].
-pub async fn push_turn(pool: &PgPool, pitch: &mut Pitch, turn: ChatTurn) -> Result<(), AppError> {
+pub async fn push_turn(
+    pool: &PgPool,
+    owner_id: &str,
+    pitch: &mut Pitch,
+    turn: ChatTurn,
+) -> Result<(), AppError> {
     check_chat_capacity(pitch.chat.len())?;
     let now = chrono::Utc::now();
     let turn_json = serde_json::to_value(&turn).map_err(|e| AppError::Other(e.into()))?;
-    // TODO(phase-1): use request-bound owner.
     sqlx::query(
         r#"INSERT INTO pitch_user_state
                (owner_id, pitch_id, status, chat, updated_at)
@@ -205,7 +212,7 @@ pub async fn push_turn(pool: &PgPool, pitch: &mut Pitch, turn: ChatTurn) -> Resu
                                THEN 'locked' ELSE 'in_progress' END,
                  updated_at = $4"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(owner_id)
     .bind(&pitch.id)
     .bind(turn_json)
     .bind(now)
@@ -224,24 +231,32 @@ pub async fn push_turn(pool: &PgPool, pitch: &mut Pitch, turn: ChatTurn) -> Resu
 /// (defensive — `push_turn` will have created one in normal flow).
 pub async fn set_current_version(
     pool: &PgPool,
+    owner_id: &str,
     pitch_id: &str,
     version_id: &str,
 ) -> Result<(), AppError> {
-    upsert_state_status(pool, pitch_id, PitchStatus::Locked, Some(version_id)).await
+    upsert_state_status(
+        pool,
+        owner_id,
+        pitch_id,
+        PitchStatus::Locked,
+        Some(version_id),
+    )
+    .await
 }
 
 /// Reopen a locked pitch for refinement — flips status back to InProgress
 /// so the next lock-in creates vN+1. Preserves `current_version_id`.
-pub async fn reopen(pool: &PgPool, pitch_id: &str) -> Result<(), AppError> {
-    upsert_state_status(pool, pitch_id, PitchStatus::InProgress, None).await
+pub async fn reopen(pool: &PgPool, owner_id: &str, pitch_id: &str) -> Result<(), AppError> {
+    upsert_state_status(pool, owner_id, pitch_id, PitchStatus::InProgress, None).await
 }
 
 /// Wipe per-user state — DELETE returns the pitch to the implicit
 /// "not_started" view (COALESCE in the JOIN reads). Past versions stay in
 /// `pitch_versions` (immutable history) but no longer point to a current.
-pub async fn reset(pool: &PgPool, pitch_id: &str) -> Result<(), AppError> {
+pub async fn reset(pool: &PgPool, owner_id: &str, pitch_id: &str) -> Result<(), AppError> {
     sqlx::query("DELETE FROM pitch_user_state WHERE owner_id = $1 AND pitch_id = $2")
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(pitch_id)
         .execute(pool)
         .await?;
@@ -254,6 +269,7 @@ pub async fn reset(pool: &PgPool, pitch_id: &str) -> Result<(), AppError> {
 /// existing pointer is preserved on UPDATE.
 async fn upsert_state_status(
     pool: &PgPool,
+    owner_id: &str,
     pitch_id: &str,
     status: PitchStatus,
     version_id: Option<&str>,
@@ -268,7 +284,7 @@ async fn upsert_state_status(
                      COALESCE(EXCLUDED.current_version_id, pitch_user_state.current_version_id),
                  updated_at = NOW()"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(owner_id)
     .bind(pitch_id)
     .bind(status.as_str())
     .bind(version_id)

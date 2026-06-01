@@ -1,5 +1,5 @@
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
@@ -9,6 +9,7 @@ use crate::error::AppError;
 use crate::filters; // Custom Askama filters used by templates below.
 use crate::models::{Asset, AssetKind, ExtractionStatus};
 use crate::services::assets as svc;
+use crate::services::auth::CurrentUser;
 use crate::services::{asset_store, redact, text_validation};
 use crate::startup::AppState;
 
@@ -39,8 +40,11 @@ struct ListTemplate {
     has_primary_book: bool,
 }
 
-async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let assets = asset_store::list_sorted(&state.pool).await?;
+async fn list(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+) -> Result<Html<String>, AppError> {
+    let assets = asset_store::list_sorted(&state.pool, &current_user.id).await?;
     let mut books = Vec::new();
     let mut resumes = Vec::new();
     let mut others = Vec::new();
@@ -60,7 +64,11 @@ async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     })
 }
 
-async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Response, AppError> {
+async fn upload(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+    mut form: Multipart,
+) -> Result<Response, AppError> {
     let mut name: Option<String> = None;
     let mut kind = AssetKind::Book;
     let mut filename: Option<String> = None;
@@ -106,8 +114,18 @@ async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Re
 
     validate_pdf_upload(&bytes)?;
 
+    // Books are global content owned by the master account; only master may
+    // upload them. Resumes and Other rows are per-user and stay open.
+    svc::ensure_book_mutable_by(&current_user, kind)?;
+    let owner_id = if kind == AssetKind::Book {
+        crate::services::master_seed::MASTER_ID.to_string()
+    } else {
+        current_user.id.clone()
+    };
+
     let mut asset = svc::save_upload(
         &state.config.data_dir,
+        &owner_id,
         display_name,
         kind,
         original_filename,
@@ -124,7 +142,7 @@ async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Re
     // If no primary asset of this kind exists yet, mark this one primary.
     // Keeps the "one primary per kind" invariant on bootstrap without
     // requiring a separate user action.
-    if asset_store::find_primary_by_kind(&state.pool, kind)
+    if asset_store::find_primary_by_kind(&state.pool, &owner_id, kind)
         .await?
         .is_none()
     {
@@ -150,10 +168,13 @@ async fn upload(State(state): State<AppState>, mut form: Multipart) -> Result<Re
 
 async fn set_primary(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     // Load to learn the kind, so we invalidate the matching cache.
     let asset = asset_store::find_or_404(&state.pool, &id).await?;
+    ensure_visible_to(&current_user, &asset)?;
+    svc::ensure_book_mutable_by(&current_user, asset.kind)?;
     asset_store::set_primary(&state.pool, &id).await?;
     invalidate_kind_cache(&state, asset.kind).await;
     Ok(Redirect::to("/assets").into_response())
@@ -161,9 +182,12 @@ async fn set_primary(
 
 async fn reextract(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     let asset = asset_store::find_or_404(&state.pool, &id).await?;
+    ensure_visible_to(&current_user, &asset)?;
+    svc::ensure_book_mutable_by(&current_user, asset.kind)?;
     let (status, extracted_path, err) = svc::extract(&state.config.data_dir, &asset).await;
     asset_store::update_extraction(&state.pool, &id, status, extracted_path, err).await?;
     if asset.primary {
@@ -174,9 +198,12 @@ async fn reextract(
 
 async fn delete(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     let asset = asset_store::find_or_404(&state.pool, &id).await?;
+    ensure_visible_to(&current_user, &asset)?;
+    svc::ensure_book_mutable_by(&current_user, asset.kind)?;
 
     let _ = tokio::fs::remove_file(&asset.original_path).await;
     if let Some(ext) = asset.extracted_path.as_ref() {
@@ -196,6 +223,23 @@ async fn delete(
     }
 
     Ok(Redirect::to("/assets").into_response())
+}
+
+/// Per-request visibility check: any user may read a book (global content);
+/// resumes and `other` are scoped to their owner. Returns 404 to avoid
+/// disclosing the existence of someone else's asset.
+fn ensure_visible_to(user: &CurrentUser, asset: &Asset) -> Result<(), AppError> {
+    if asset.kind == AssetKind::Book || asset.owner_id == user.id {
+        return Ok(());
+    }
+    tracing::info!(
+        event = "auth.forbidden",
+        user_id = %user.id,
+        route = "asset.read",
+        asset_id = %asset.id,
+        "user attempted to read another owner's asset",
+    );
+    Err(AppError::NotFound(format!("asset {}", asset.id)))
 }
 
 /// Route-side helper: invalidate whichever in-process cache covers `kind`.
@@ -218,9 +262,11 @@ struct PreviewTemplate {
 
 async fn preview(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
     let asset = asset_store::find_or_404(&state.pool, &id).await?;
+    ensure_visible_to(&current_user, &asset)?;
 
     let mut body = svc::read_extracted(&asset).await?;
     let truncated = body.chars().count() > 80_000;

@@ -9,7 +9,6 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{ModelSnapshot, PromptSnapshot, Role, Session, SessionStatus, Settings};
-use crate::services::current_owner::TEMP_OWNER_ID;
 use crate::services::{
     curator::{self, CuratorOutput},
     openrouter::LlmClient,
@@ -30,6 +29,7 @@ pub struct StartInput {
 pub async fn start(
     pool: &PgPool,
     or: &dyn LlmClient,
+    owner_id: &str,
     input: StartInput,
 ) -> Result<Session, AppError> {
     let critique_prompt = prompt_store::get_prompt(pool, "critique")
@@ -43,6 +43,7 @@ pub async fn start(
     let curated = curator::curate(
         or,
         pool,
+        owner_id,
         &settings.lite_model,
         input.role,
         &input.selected_company_ids,
@@ -50,6 +51,7 @@ pub async fn start(
     .await?;
 
     let session = build_session(
+        owner_id,
         input,
         &settings,
         &critique_prompt.current_version_id,
@@ -70,6 +72,7 @@ pub async fn start(
 /// session's behavior), and the model fields MUST mirror the current
 /// Settings document.
 fn build_session(
+    owner_id: &str,
     input: StartInput,
     settings: &Settings,
     critique_version_id: &str,
@@ -78,8 +81,7 @@ fn build_session(
 ) -> Session {
     Session {
         id: Session::new_id(),
-        // TODO(phase-1): replace with `current_user.id`.
-        owner_id: TEMP_OWNER_ID.to_string(),
+        owner_id: owner_id.to_string(),
         company_id: input.anchor_company_id,
         role: input.role,
         selected_company_ids: input.selected_company_ids,

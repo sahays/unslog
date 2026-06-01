@@ -8,7 +8,7 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::Role;
-use crate::services::current_owner::TEMP_OWNER_ID;
+use crate::services::master_seed::MASTER_ID;
 
 /// Seven canonical intro/narrative questions. Slug = catalog id. Tuple is
 /// `(slug, question_text, blurb)`. Index drives `sort_order`, so the
@@ -78,13 +78,18 @@ pub async fn seed_defaults(pool: &PgPool) -> Result<(), AppError> {
 
 /// Mirror one pitch slug into the Postgres `questions` table as a
 /// role-only question. Idempotent via the PK conflict.
+///
+/// The seeded Question is intentionally pinned to the master user. Per
+/// migration 0003 only `questions`/`companies`/`sessions` rows carry
+/// `owner_id`, and these seeded pitch-mirrored Questions are intended as
+/// a global catalog row visible to every account that practices via
+/// `/practice` — owner_id is therefore set to MASTER_ID by design.
 async fn seed_pitch_question_row(
     pool: &PgPool,
     slug: &str,
     text: &str,
     now: DateTime<Utc>,
 ) -> Result<(), AppError> {
-    // TODO(phase-1): drop TEMP_OWNER_ID — switch to request-bound owner.
     sqlx::query(
         r#"INSERT INTO questions
            (id, owner_id, text, source, role, categories, company_id, added_at)
@@ -92,7 +97,7 @@ async fn seed_pitch_question_row(
            ON CONFLICT (id) DO NOTHING"#,
     )
     .bind(pitch_question_id(slug))
-    .bind(TEMP_OWNER_ID)
+    .bind(MASTER_ID)
     .bind(text)
     .bind(Role::SolutionsArchitect.as_str())
     .bind(now)

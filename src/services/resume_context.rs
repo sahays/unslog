@@ -17,16 +17,21 @@ use crate::services::assets::ResumeCache;
 use crate::startup::AppState;
 
 /// Convenience over [`block_from`]. Pulls the cache out of [`AppState`] and
-/// hands it the live pool.
-pub async fn block(state: &AppState) -> Result<String, AppError> {
-    block_from(&state.resume_cache, &state.pool).await
+/// hands it the live pool. `owner_id` is the logged-in user so each
+/// account sees their own resume (resumes are per-user).
+pub async fn block(state: &AppState, owner_id: &str) -> Result<String, AppError> {
+    block_from(&state.resume_cache, &state.pool, owner_id).await
 }
 
 /// Build the `<resume>…</resume>` system-prompt block. Returns an empty
 /// string when no primary resume exists; callers should skip emitting the
 /// surrounding double-newline in that case.
-pub async fn block_from(cache: &ResumeCache, pool: &PgPool) -> Result<String, AppError> {
-    let Some(text) = cache.get(pool).await? else {
+pub async fn block_from(
+    cache: &ResumeCache,
+    pool: &PgPool,
+    owner_id: &str,
+) -> Result<String, AppError> {
+    let Some(text) = cache.get(pool, owner_id).await? else {
         return Ok(String::new());
     };
     Ok(wrap(&text))

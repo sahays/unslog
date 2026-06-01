@@ -12,9 +12,8 @@
 //! * `toggle_voice` — small flip used by the voice toggle handler.
 //! * `insert` — used by `services::session::start`.
 //!
-//! Every read filters by `owner_id`; every write sets it. The owner is
-//! pinned to [`crate::services::current_owner::TEMP_OWNER_ID`] until
-//! Phase 1 lands a request-bound current user.
+//! Every read filters by `owner_id`; every write sets it. The handler
+//! layer threads `CurrentUser::id` through.
 
 use chrono::{DateTime, Utc};
 use sqlx::types::Json;
@@ -22,7 +21,6 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{ModelSnapshot, PromptSnapshot, Role, Session, SessionStatus};
-use crate::services::current_owner::TEMP_OWNER_ID;
 
 /// Columns selected by every full-row read, in the order [`SessionRow`]
 /// expects. Centralized so a schema add only edits one place.
@@ -92,31 +90,31 @@ impl SessionRow {
 
 // ── Reads ────────────────────────────────────────────────────────────────
 
-pub async fn get(pool: &PgPool, id: &str) -> Result<Option<Session>, AppError> {
+pub async fn get(pool: &PgPool, owner_id: &str, id: &str) -> Result<Option<Session>, AppError> {
     let sql = format!("SELECT {SESSION_COLS} FROM sessions WHERE owner_id = $1 AND id = $2");
     let row: Option<SessionRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(id)
         .fetch_optional(pool)
         .await?;
     row.map(SessionRow::try_into_session).transpose()
 }
 
-pub async fn find_or_404(pool: &PgPool, id: &str) -> Result<Session, AppError> {
-    get(pool, id)
+pub async fn find_or_404(pool: &PgPool, owner_id: &str, id: &str) -> Result<Session, AppError> {
+    get(pool, owner_id, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("session {id}")))
 }
 
 /// Active sessions, newest-first. Drives the `/practice` "in progress" rail.
-pub async fn list_active(pool: &PgPool) -> Result<Vec<Session>, AppError> {
+pub async fn list_active(pool: &PgPool, owner_id: &str) -> Result<Vec<Session>, AppError> {
     let sql = format!(
         "SELECT {SESSION_COLS} FROM sessions
          WHERE owner_id = $1 AND status = $2
          ORDER BY started_at DESC"
     );
     let rows: Vec<SessionRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(SessionStatus::Active.as_str())
         .fetch_all(pool)
         .await?;
@@ -124,14 +122,18 @@ pub async fn list_active(pool: &PgPool) -> Result<Vec<Session>, AppError> {
 }
 
 /// Sessions for one company, newest-first. Drives the company show page.
-pub async fn list_for_company(pool: &PgPool, company_id: &str) -> Result<Vec<Session>, AppError> {
+pub async fn list_for_company(
+    pool: &PgPool,
+    owner_id: &str,
+    company_id: &str,
+) -> Result<Vec<Session>, AppError> {
     let sql = format!(
         "SELECT {SESSION_COLS} FROM sessions
          WHERE owner_id = $1 AND company_id = $2
          ORDER BY started_at DESC"
     );
     let rows: Vec<SessionRow> = sqlx::query_as(&sql)
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(company_id)
         .fetch_all(pool)
         .await?;
@@ -139,11 +141,11 @@ pub async fn list_for_company(pool: &PgPool, company_id: &str) -> Result<Vec<Ses
 }
 
 /// Cheap count of active sessions — for the home page status card.
-pub async fn count_active(pool: &PgPool) -> Result<u64, AppError> {
+pub async fn count_active(pool: &PgPool, owner_id: &str) -> Result<u64, AppError> {
     let n: i64 = sqlx::query_scalar!(
         r#"SELECT COUNT(*) AS "count!" FROM sessions
            WHERE owner_id = $1 AND status = 'active'"#,
-        TEMP_OWNER_ID,
+        owner_id,
     )
     .fetch_one(pool)
     .await?;
@@ -189,6 +191,7 @@ pub async fn insert(pool: &PgPool, session: &Session) -> Result<(), AppError> {
 /// so a malicious id doesn't let an attacker write into another owner's row.
 pub async fn set_current_question(
     pool: &PgPool,
+    owner_id: &str,
     session_id: &str,
     qid: &str,
     qtext: &str,
@@ -201,7 +204,7 @@ pub async fn set_current_question(
                current_question_audio_path = $5
            WHERE owner_id = $1 AND id = $2"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(owner_id)
     .bind(session_id)
     .bind(qid)
     .bind(qtext)
@@ -213,7 +216,7 @@ pub async fn set_current_question(
 
 /// Flip status to `ended`, stamp `ended_at`, and clear current_question_*.
 /// Idempotent against the projection callers care about.
-pub async fn end(pool: &PgPool, session_id: &str) -> Result<(), AppError> {
+pub async fn end(pool: &PgPool, owner_id: &str, session_id: &str) -> Result<(), AppError> {
     sqlx::query(
         r#"UPDATE sessions
            SET status = $3,
@@ -222,7 +225,7 @@ pub async fn end(pool: &PgPool, session_id: &str) -> Result<(), AppError> {
                current_question_text = NULL
            WHERE owner_id = $1 AND id = $2"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(owner_id)
     .bind(session_id)
     .bind(SessionStatus::Ended.as_str())
     .execute(pool)
@@ -237,7 +240,7 @@ pub async fn toggle_voice(pool: &PgPool, session: &Session) -> Result<bool, AppE
         r#"UPDATE sessions SET voice_critique_enabled = $3
            WHERE owner_id = $1 AND id = $2"#,
     )
-    .bind(TEMP_OWNER_ID)
+    .bind(&session.owner_id)
     .bind(&session.id)
     .bind(new_value)
     .execute(pool)
@@ -248,9 +251,13 @@ pub async fn toggle_voice(pool: &PgPool, session: &Session) -> Result<bool, AppE
 /// Delete a session row. The Postgres FK CASCADEs (migration 0001) drop
 /// the dependent evaluations + summary in the same transaction. Returns
 /// the number of session rows deleted (0 or 1) so callers can log it.
-pub async fn delete_cascade(pool: &PgPool, session_id: &str) -> Result<u64, AppError> {
+pub async fn delete_cascade(
+    pool: &PgPool,
+    owner_id: &str,
+    session_id: &str,
+) -> Result<u64, AppError> {
     let res = sqlx::query("DELETE FROM sessions WHERE owner_id = $1 AND id = $2")
-        .bind(TEMP_OWNER_ID)
+        .bind(owner_id)
         .bind(session_id)
         .execute(pool)
         .await?;
