@@ -1,5 +1,6 @@
 pub mod asset_store;
 pub mod assets;
+pub mod auth;
 pub mod categorize;
 pub mod category_store;
 pub mod chat_lockin;

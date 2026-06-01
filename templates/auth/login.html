@@ -1,0 +1,42 @@
+{% import "macros/forms.html" as forms %}
+{% import "macros/ui.html" as ui %}
+{% extends "base.html" %}
+
+{% block title %}Sign in — unslog{% endblock %}
+
+{% block breadcrumbs %}<span>Sign in</span>{% endblock %}
+
+{% block content %}
+<section class="grid place-items-center min-h-[60vh]">
+  <div class="card grid gap-4 w-full max-w-sm">
+    <header>
+      <h1 class="font-heading text-2xl font-semibold m-0">Sign in</h1>
+      <p class="muted text-sm mt-1">Enter your 12-character invite code.</p>
+    </header>
+
+    {% if let Some(msg) = error.as_ref() %}
+      {% call ui::alert("Could not sign in", msg, "error") %}
+    {% endif %}
+
+    <form method="post" action="/login" class="grid gap-3" autocomplete="off">
+      {% call forms::csrf_input(csrf_token) %}
+      <div class="grid gap-1.5">
+        <label for="code">Invite code</label>
+        <input
+          type="password"
+          id="code"
+          name="code"
+          required
+          autocomplete="off"
+          autofocus
+          spellcheck="false"
+          maxlength="{{ code_max_len }}"
+          minlength="{{ code_max_len }}"
+          pattern="[A-Za-z0-9]{12}"
+          inputmode="text" />
+      </div>
+      {% call forms::submit_btn("Sign in", "log-in", "primary") %}
+    </form>
+  </div>
+</section>
+{% endblock %}

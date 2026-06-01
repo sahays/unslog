@@ -98,6 +98,21 @@ pub fn recording_url<S: AsRef<str>>(p: S) -> askama::Result<String> {
     Ok(crate::recordings::to_url(p.as_ref()))
 }
 
+/// Resolve the in-flight request's signed-in user label. Ignores its input
+/// — written as a filter so `base.html` can read the value via the standard
+/// `{{ ""|current_user_label }}` pipeline without each template having to
+/// thread the field through its own struct. Empty when no user is signed in.
+pub fn current_user_label<S: AsRef<str>>(_unused: S) -> askama::Result<String> {
+    Ok(crate::middleware::current_user_label())
+}
+
+/// Sibling of `current_user_label` for the in-flight CSRF token. Empty
+/// outside a request scope or on the login page (where no session exists
+/// yet — the login form mints its own token via the struct field).
+pub fn csrf_token<S: AsRef<str>>(_unused: S) -> askama::Result<String> {
+    Ok(crate::middleware::current_csrf_token())
+}
+
 #[cfg(test)]
 #[path = "filters_tests.rs"]
 mod tests;

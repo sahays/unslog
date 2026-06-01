@@ -39,6 +39,12 @@
 </div>
 {%- endmacro %}
 
+{# CSRF double-submit hidden input. The token also lives in the
+   `__Host-csrf` cookie; route handlers compare the two values constant-time. #}
+{% macro csrf_input(token) -%}
+<input type="hidden" name="csrf_token" value="{{ token }}" />
+{%- endmacro %}
+
 {# Submit button. variant ∈ {primary, secondary, danger}. #}
 {% macro submit_btn(text, icon, variant) -%}
 {% if variant == "danger" -%}

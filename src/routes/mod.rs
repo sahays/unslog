@@ -3,6 +3,7 @@ use axum::Router;
 use crate::startup::AppState;
 
 pub mod assets;
+pub mod auth;
 pub mod categories;
 pub mod companies;
 pub mod health;
@@ -18,6 +19,7 @@ pub mod stories;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .merge(auth::routes())
         .merge(health::routes())
         .merge(home::routes())
         .merge(journal::routes())

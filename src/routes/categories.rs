@@ -8,6 +8,7 @@ use axum::Router;
 use serde::Deserialize;
 
 use crate::error::AppError;
+use crate::filters; // base.html's sidebar footer calls custom filters.
 use crate::models::Category;
 use crate::services::category_store;
 use crate::startup::AppState;

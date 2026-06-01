@@ -38,6 +38,36 @@ pub struct PgLoginThrottle<'a> {
     pub pool: &'a PgPool,
 }
 
+/// Owned counterpart for `AppState`. Delegates to the borrowed impl so
+/// the SQL lives in one place.
+pub struct PgLoginThrottleOwned {
+    pub pool: PgPool,
+}
+
+#[async_trait]
+impl LoginThrottle for PgLoginThrottleOwned {
+    async fn check(
+        &self,
+        ip: &IpAddr,
+        max_attempts: u32,
+        window_secs: u64,
+    ) -> Result<(), AppError> {
+        PgLoginThrottle { pool: &self.pool }
+            .check(ip, max_attempts, window_secs)
+            .await
+    }
+    async fn record_failure(&self, ip: &IpAddr, code_prefix: &str) -> Result<(), AppError> {
+        PgLoginThrottle { pool: &self.pool }
+            .record_failure(ip, code_prefix)
+            .await
+    }
+    async fn record_success(&self, ip: &IpAddr, code_prefix: &str) -> Result<(), AppError> {
+        PgLoginThrottle { pool: &self.pool }
+            .record_success(ip, code_prefix)
+            .await
+    }
+}
+
 #[async_trait]
 impl<'a> LoginThrottle for PgLoginThrottle<'a> {
     async fn check(

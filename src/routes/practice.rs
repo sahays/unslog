@@ -12,6 +12,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::error::AppError;
+use crate::filters; // base.html's sidebar footer calls custom filters.
 use crate::models::{Company, Role};
 use crate::services::{company_store, evaluations, sessions};
 use crate::startup::AppState;

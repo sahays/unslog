@@ -9,6 +9,7 @@ use serde::Deserialize;
 
 use super::{active_version_number, describe, MAX_PROMPT_BODY};
 use crate::error::AppError;
+use crate::filters; // base.html's sidebar footer calls custom filters.
 use crate::models::is_valid_prompt_name;
 use crate::services::prompt_store as store;
 use crate::services::text_validation;

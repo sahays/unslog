@@ -1,5 +1,5 @@
 use axum::extract::DefaultBodyLimit;
-use axum::middleware::from_fn;
+use axum::middleware::{from_fn, from_fn_with_state};
 use axum::Router;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -27,10 +27,18 @@ pub struct AppState {
     pub settings_cache: crate::services::settings_store::SettingsCache,
     pub prompt_cache: crate::services::prompt_cache::PromptCache,
     /// HMAC-SHA256 server key. Persisted at `<data_dir>/session.key`.
-    /// Phase 1.2 will consume this in cookie middleware; carrying it on
-    /// `AppState` now so boot fails fast if the file is corrupted.
-    #[allow(dead_code)]
+    /// Consumed by the auth middleware to verify session cookies and by
+    /// `services::csrf` to mint per-request CSRF tokens.
     pub session_key: Arc<[u8; 32]>,
+    /// Cookie → user resolver. Behind a trait so route tests can stub
+    /// the DB without standing up a Postgres instance.
+    pub auth_deps: Arc<dyn crate::services::auth::AuthDeps>,
+    /// Login brute-force throttle, scoped per remote IP.
+    pub login_throttle: Arc<dyn crate::services::login_throttle::LoginThrottle>,
+    /// Shared user-store handle. Exposed so future per-user-scoped routes
+    /// can read users via the trait instead of taking a raw `PgPool`.
+    #[allow(dead_code)]
+    pub users: Arc<dyn crate::services::user_store::UserSource>,
 }
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
@@ -64,6 +72,14 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     // Load (or mint) the server-side HMAC key before any request handlers
     // come up — failing here is preferable to a 500 on the first sign-in.
     let session_key = crate::services::session_key::load_or_create(&config.data_dir).await?;
+    let users: Arc<dyn crate::services::user_store::UserSource> =
+        Arc::new(crate::services::user_store::PgUserSourceOwned { pool: pool.clone() });
+    let auth_deps: Arc<dyn crate::services::auth::AuthDeps> =
+        Arc::new(crate::services::auth::PgAuthDeps {
+            users: users.clone(),
+        });
+    let login_throttle: Arc<dyn crate::services::login_throttle::LoginThrottle> =
+        Arc::new(crate::services::login_throttle::PgLoginThrottleOwned { pool: pool.clone() });
     let state = AppState {
         config: Arc::new(config),
         pool,
@@ -75,6 +91,9 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         settings_cache: crate::services::settings_store::SettingsCache::new(),
         prompt_cache: crate::services::prompt_cache::PromptCache::new(),
         session_key: Arc::new(session_key),
+        auth_deps,
+        login_throttle,
+        users,
     };
 
     let static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
@@ -83,6 +102,14 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         .nest_service("/static", ServeDir::new(static_dir))
         .fallback(crate::error::not_found_handler)
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+        // Layers wrap inside-out: the LAST `.layer()` here is the FIRST
+        // middleware a request hits. We want request_context to set the
+        // request-id and is_htmx task-locals before auth_middleware reads
+        // them, so it's layered last.
+        .layer(from_fn_with_state(
+            state.clone(),
+            crate::middleware::auth_middleware,
+        ))
         .layer(from_fn(crate::middleware::request_context_middleware));
 
     let addr = state.config.addr();

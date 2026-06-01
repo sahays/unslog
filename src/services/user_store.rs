@@ -30,15 +30,76 @@ pub trait UserSource: Send + Sync {
     /// Active non-master users only (revoked_at IS NULL). Used by the
     /// plain-code login scan in Phase 1.2.
     async fn list_active_non_master(&self) -> Result<Vec<User>, AppError>;
+    /// Every currently-active user, master included. Used by the `/login`
+    /// scan-and-verify dance — master must be able to sign in via the same
+    /// path, otherwise the bootstrap account is unreachable. O(N) over a
+    /// preview-scale user list; the cost is dominated by argon2 verify, not
+    /// the DB fetch.
+    async fn list_active_for_login(&self) -> Result<Vec<User>, AppError>;
     async fn insert(&self, user: &User) -> Result<(), AppError>;
     async fn set_expires_at(&self, id: &str, expires_at: DateTime<Utc>) -> Result<(), AppError>;
     async fn set_revoked(&self, id: &str) -> Result<(), AppError>;
+    /// Stamp `activated_at` on first successful login (no-op if already set).
+    async fn set_activated_at(&self, id: &str, now: DateTime<Utc>) -> Result<(), AppError>;
     async fn touch_last_seen(&self, id: &str) -> Result<(), AppError>;
 }
 
-/// Production `UserSource` over a `&PgPool`.
+/// Production `UserSource` over a `&PgPool`. Used by service-internal
+/// callers that already hold a pool borrow.
 pub struct PgUserSource<'a> {
     pub pool: &'a PgPool,
+}
+
+/// Owned counterpart for `AppState`: keeps the `PgPool` (itself `Arc`-backed
+/// internally in sqlx) so the trait object can outlive any single request
+/// scope. All methods just delegate to the borrowed impl, so the SQL only
+/// lives in one place.
+pub struct PgUserSourceOwned {
+    pub pool: PgPool,
+}
+
+#[async_trait]
+impl UserSource for PgUserSourceOwned {
+    async fn find_by_id(&self, id: &str) -> Result<Option<User>, AppError> {
+        PgUserSource { pool: &self.pool }.find_by_id(id).await
+    }
+    async fn find_by_code_hash(&self, code_hash: &str) -> Result<Option<User>, AppError> {
+        PgUserSource { pool: &self.pool }
+            .find_by_code_hash(code_hash)
+            .await
+    }
+    async fn list_non_master(&self) -> Result<Vec<User>, AppError> {
+        PgUserSource { pool: &self.pool }.list_non_master().await
+    }
+    async fn list_active_non_master(&self) -> Result<Vec<User>, AppError> {
+        PgUserSource { pool: &self.pool }
+            .list_active_non_master()
+            .await
+    }
+    async fn list_active_for_login(&self) -> Result<Vec<User>, AppError> {
+        PgUserSource { pool: &self.pool }
+            .list_active_for_login()
+            .await
+    }
+    async fn insert(&self, user: &User) -> Result<(), AppError> {
+        PgUserSource { pool: &self.pool }.insert(user).await
+    }
+    async fn set_expires_at(&self, id: &str, expires_at: DateTime<Utc>) -> Result<(), AppError> {
+        PgUserSource { pool: &self.pool }
+            .set_expires_at(id, expires_at)
+            .await
+    }
+    async fn set_revoked(&self, id: &str) -> Result<(), AppError> {
+        PgUserSource { pool: &self.pool }.set_revoked(id).await
+    }
+    async fn set_activated_at(&self, id: &str, now: DateTime<Utc>) -> Result<(), AppError> {
+        PgUserSource { pool: &self.pool }
+            .set_activated_at(id, now)
+            .await
+    }
+    async fn touch_last_seen(&self, id: &str) -> Result<(), AppError> {
+        PgUserSource { pool: &self.pool }.touch_last_seen(id).await
+    }
 }
 
 #[async_trait]
@@ -65,6 +126,10 @@ impl<'a> UserSource for PgUserSource<'a> {
 
     async fn list_active_non_master(&self) -> Result<Vec<User>, AppError> {
         list_where(self.pool, SELECT_ACTIVE_NON_MASTER).await
+    }
+
+    async fn list_active_for_login(&self) -> Result<Vec<User>, AppError> {
+        list_where(self.pool, SELECT_ACTIVE_FOR_LOGIN).await
     }
 
     async fn insert(&self, user: &User) -> Result<(), AppError> {
@@ -111,6 +176,18 @@ impl<'a> UserSource for PgUserSource<'a> {
             .await?;
         Ok(())
     }
+
+    async fn set_activated_at(&self, id: &str, now: DateTime<Utc>) -> Result<(), AppError> {
+        sqlx::query(
+            "UPDATE users SET activated_at = $2 \
+             WHERE id = $1 AND revoked_at IS NULL AND activated_at IS NULL",
+        )
+        .bind(id)
+        .bind(now)
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
 }
 
 async fn list_where(pool: &PgPool, sql: &str) -> Result<Vec<User>, AppError> {
@@ -150,6 +227,14 @@ pub async fn list_non_master(pool: &PgPool) -> Result<Vec<User>, AppError> {
 
 pub async fn list_active_non_master(pool: &PgPool) -> Result<Vec<User>, AppError> {
     PgUserSource { pool }.list_active_non_master().await
+}
+
+pub async fn list_active_for_login(pool: &PgPool) -> Result<Vec<User>, AppError> {
+    PgUserSource { pool }.list_active_for_login().await
+}
+
+pub async fn set_activated_at(pool: &PgPool, id: &str, now: DateTime<Utc>) -> Result<(), AppError> {
+    PgUserSource { pool }.set_activated_at(id, now).await
 }
 
 pub async fn insert(pool: &PgPool, user: &User) -> Result<(), AppError> {
@@ -193,6 +278,11 @@ const SELECT_ACTIVE_NON_MASTER: &str = "SELECT id, code_hash, code_hint, label, 
      activated_at, expires_at, last_seen_at, revoked_at, invited_by, created_at \
      FROM users WHERE is_master = FALSE AND revoked_at IS NULL \
      ORDER BY created_at DESC";
+
+const SELECT_ACTIVE_FOR_LOGIN: &str = "SELECT id, code_hash, code_hint, label, tier, is_master, \
+     activated_at, expires_at, last_seen_at, revoked_at, invited_by, created_at \
+     FROM users WHERE revoked_at IS NULL \
+     ORDER BY is_master DESC, created_at DESC";
 
 const INSERT_USER_SQL: &str =
     "INSERT INTO users (id, code_hash, code_hint, label, tier, is_master, \

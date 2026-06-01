@@ -9,7 +9,7 @@ default-run = "unslog"
 [dependencies]
 # Web framework
 axum = { version = "0.7", features = ["macros"] }
-axum-extra = { version = "0.9", features = ["typed-header", "form", "multipart"] }
+axum-extra = { version = "0.9", features = ["typed-header", "form", "multipart", "cookie"] }
 axum-htmx = "0.6"
 tower = "0.4"
 tower-http = { version = "0.5", features = ["fs", "trace", "limit"] }

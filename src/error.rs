@@ -3,6 +3,12 @@ use axum::http::{header::HeaderName, HeaderValue, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum_htmx::HxRequest;
 
+// Brought into scope so Askama's `Template` derive on `ErrorTemplate` and
+// `NotFoundTemplate` can resolve filter calls like `{{ ""|current_user_label }}`
+// that originate from `base.html`'s sidebar footer.
+#[allow(unused_imports)]
+use crate::filters;
+
 /// Path the browser should be sent to when an unauthenticated session hits a
 /// protected resource. `/login` is wired up in Phase 1; the variant is
 /// introduced here so callers can already start returning it.
