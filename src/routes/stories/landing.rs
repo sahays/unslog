@@ -47,7 +47,7 @@ pub struct CompletedCard {
 
 pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let categories = category_store::list_all(&state.pool).await?;
-    let stories = story_store::list_for_landing(&state.db).await?;
+    let stories = story_store::list_for_landing(&state.pool).await?;
 
     let mut latest_by_comp: HashMap<String, String> = HashMap::new();
     let mut counts: HashMap<String, (usize, usize)> = HashMap::new();
@@ -72,7 +72,8 @@ pub(super) async fn index(State(state): State<AppState>) -> Result<Html<String>,
         .filter_map(|s| s.current_version_id.clone())
         .collect();
     let versions_by_id =
-        story_version_store::list_version_labels_by_ids(&state.db, &completed_version_ids).await?;
+        story_version_store::list_version_labels_by_ids(&state.pool, &completed_version_ids)
+            .await?;
 
     let category_name_by_id: HashMap<String, String> = categories
         .iter()
@@ -142,7 +143,9 @@ pub(super) async fn create(
 
     let now = chrono::Utc::now();
     let mut story = Story {
-        id: uuid::Uuid::now_v7().to_string(),
+        id: Story::new_id(),
+        // TODO(phase-1): replace with `current_user.id`.
+        owner_id: crate::services::current_owner::TEMP_OWNER_ID.to_string(),
         competency_id: cat.id.clone(),
         status: StoryStatus::InProgress,
         mode: crate::models::Difficulty::default(),
@@ -151,7 +154,7 @@ pub(super) async fn create(
         created_at: now,
         updated_at: now,
     };
-    story_store::insert(&state.db, &story).await?;
+    story_store::insert(&state.pool, &story).await?;
     tracing::info!(
         event = "story.create",
         story_id = %story.id,

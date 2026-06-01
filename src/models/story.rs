@@ -9,6 +9,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::services::id_gen::{self, Kind};
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum StoryStatus {
@@ -18,12 +20,21 @@ pub enum StoryStatus {
 
 impl StoryStatus {
     /// String form that mirrors the serde `rename_all = "snake_case"` mapping.
-    /// Use this for raw bson update docs so the literal can never drift from
-    /// the on-disk representation.
+    /// Use this for Postgres CHECK literals (`stories.status`) so the on-disk
+    /// representation can never drift from the enum.
     pub fn as_str(self) -> &'static str {
         match self {
             StoryStatus::InProgress => "in_progress",
             StoryStatus::Complete => "complete",
+        }
+    }
+
+    /// Inverse of [`as_str`]. Mirrors the CHECK in migration 0001.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "in_progress" => Some(Self::InProgress),
+            "complete" => Some(Self::Complete),
+            _ => None,
         }
     }
 }
@@ -53,6 +64,15 @@ impl Difficulty {
         match s {
             "collaborative" => Difficulty::Collaborative,
             _ => Difficulty::Strict,
+        }
+    }
+
+    /// Inverse of [`as_str`]. Mirrors the CHECK in migration 0001.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "strict" => Some(Self::Strict),
+            "collaborative" => Some(Self::Collaborative),
+            _ => None,
         }
     }
 
@@ -92,20 +112,25 @@ pub struct ChatTurn {
 pub struct Story {
     #[serde(rename = "_id")]
     pub id: String,
+    /// Owner of this story row. Master-bound for now via `TEMP_OWNER_ID`;
+    /// per-user once Phase 1 lands. Legacy Mongo docs lack this field; the
+    /// importer backfills before insert.
+    #[serde(default)]
+    pub owner_id: String,
     /// FK → `categories._id`. The competency this story is being built against.
     pub competency_id: String,
     pub status: StoryStatus,
     /// Picks the coach prompt for this story (`story_chat` or
-    /// `story_chat_easy`). Defaults to `Strict` for legacy rows that pre-date
-    /// the toggle, preserving previous behavior.
+    /// `story_chat_collaborative`). Defaults to `Strict` for legacy rows that
+    /// pre-date the toggle, preserving previous behavior.
     #[serde(default)]
     pub mode: Difficulty,
     /// FK → `story_versions._id` of the latest locked-in version. `None` until
     /// the user clicks Generate the first time.
     #[serde(default)]
     pub current_version_id: Option<String>,
-    /// Embedded chat — monotonic, append-only. Worst-case ~50 turns × ~250
-    /// chars ≈ 12 KB; comfortably under the 16 MB doc limit.
+    /// Embedded chat — monotonic, append-only. Capped at
+    /// [`crate::services::story_store::MAX_CHAT_TURNS`] turns.
     #[serde(default)]
     pub chat: Vec<ChatTurn>,
     #[serde(with = "crate::models::datetime_compat::required")]
@@ -115,7 +140,13 @@ pub struct Story {
 }
 
 impl Story {
+    /// Legacy Mongo collection name. Retained for the one-shot importer.
     pub const COLLECTION: &'static str = "stories";
+
+    /// Mint a fresh story id via the shared minter.
+    pub fn new_id() -> String {
+        id_gen::new(Kind::Story)
+    }
 }
 
 /// STAR+ bullets per section. Each list is 3–6 short bullets in the
@@ -156,7 +187,13 @@ pub struct StoryVersion {
 }
 
 impl StoryVersion {
+    /// Legacy Mongo collection name. Retained for the one-shot importer.
     pub const COLLECTION: &'static str = "story_versions";
+
+    /// Mint a fresh story-version id via the shared minter.
+    pub fn new_id() -> String {
+        id_gen::new(Kind::StoryVersion)
+    }
 }
 
 /// Two spoken-prose variants of the same StoryBody: a 3–5 minute monologue

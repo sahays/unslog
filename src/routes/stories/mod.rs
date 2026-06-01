@@ -52,12 +52,12 @@ pub fn routes() -> Router<AppState> {
 /// submodules can call `super::load_story(&state, id)` without taking a
 /// `&Database` reference everywhere.
 async fn load_story(state: &AppState, id: &str) -> Result<Story, AppError> {
-    story_store::find_or_404(&state.db, id).await
+    story_store::find_or_404(&state.pool, id).await
 }
 
 /// Wrapper around [`story_store::push_turn`] — same reasoning as above.
 async fn push_turn(state: &AppState, story: &mut Story, turn: ChatTurn) -> Result<(), AppError> {
-    story_store::push_turn(&state.db, story, turn).await
+    story_store::push_turn(&state.pool, story, turn).await
 }
 
 /// Build [system, ...history] and call the chat model. Picks the system prompt
@@ -143,7 +143,7 @@ async fn set_mode(
     Form(form): Form<ModeForm>,
 ) -> Result<Response, AppError> {
     let mode = Difficulty::from_form(&form.mode);
-    story_store::set_mode(&state.db, &id, mode).await?;
+    story_store::set_mode(&state.pool, &id, mode).await?;
     tracing::info!(
         event = "story.set_mode",
         story_id = %id,
@@ -163,7 +163,7 @@ async fn delete_story(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    story_store::delete_cascade(&state.db, &id).await?;
+    story_store::delete_cascade(&state.pool, &id).await?;
     tracing::info!(event = "story.delete", story_id = %id, "story cascade-deleted");
     Ok(Redirect::to("/stories").into_response())
 }

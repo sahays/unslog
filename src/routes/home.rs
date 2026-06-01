@@ -83,7 +83,7 @@ async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> 
 async fn load_in_progress(state: &AppState) -> Result<Vec<InProgressRow>, AppError> {
     let (active_sessions, in_progress_stories, in_progress_pitches) = futures::try_join!(
         sessions::list_active(&state.pool),
-        story_store::list_in_progress(&state.db),
+        story_store::list_in_progress(&state.pool),
         pitch_store::list_in_progress(&state.db),
     )?;
 

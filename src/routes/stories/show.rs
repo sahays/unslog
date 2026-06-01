@@ -44,7 +44,7 @@ pub(super) async fn show(
         .unwrap_or_else(|| super::unknown_competency(&story.competency_id));
 
     let current = match &story.current_version_id {
-        Some(vid) => story_version_store::get(&state.db, vid).await?,
+        Some(vid) => story_version_store::get(&state.pool, vid).await?,
         None => None,
     };
 
@@ -61,7 +61,7 @@ pub(super) async fn show(
 }
 
 async fn siblings_view(state: &AppState, story: &Story) -> Result<Vec<SiblingStory>, AppError> {
-    let rows = story_store::list_siblings(&state.db, &story.id, &story.competency_id).await?;
+    let rows = story_store::list_siblings(&state.pool, &story.id, &story.competency_id).await?;
     Ok(rows
         .into_iter()
         .map(|r| SiblingStory {
@@ -76,7 +76,7 @@ async fn picker_entries(
     state: &AppState,
     story: &Story,
 ) -> Result<Vec<VersionPickerEntry>, AppError> {
-    let rows = story_version_store::list_for_picker(&state.db, &story.id).await?;
+    let rows = story_version_store::list_for_picker(&state.pool, &story.id).await?;
     let current = story.current_version_id.as_deref();
     Ok(rows
         .into_iter()
@@ -125,8 +125,7 @@ pub(super) async fn generate_spoken(
     Path((id, vid)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
     let version = load_version(&state, &id, &vid).await?;
-    story_spoken::generate_and_save(&state.db, &state.pool, state.openrouter.as_ref(), &version)
-        .await?;
+    story_spoken::generate_and_save(&state.pool, state.openrouter.as_ref(), &version).await?;
     Ok(Redirect::to(&format!("/stories/{id}/versions/{vid}")).into_response())
 }
 
@@ -135,7 +134,7 @@ async fn load_version(
     story_id: &str,
     version_id: &str,
 ) -> Result<StoryVersion, AppError> {
-    story_version_store::find_by_story_and_id(&state.db, story_id, version_id)
+    story_version_store::find_by_story_and_id(&state.pool, story_id, version_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("story version {version_id}")))
 }

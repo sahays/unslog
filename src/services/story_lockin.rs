@@ -3,7 +3,6 @@
 //! `Story` to it. Symmetric to [`crate::services::pitch_lockin`], but with
 //! the bullets layer (`StoryBody`) instead of spoken prose.
 
-use mongodb::Database;
 use sqlx::PgPool;
 
 use crate::error::AppError;
@@ -20,7 +19,6 @@ const PROMPT_NAME: &str = "story_summarize";
 /// explicit Generate button and the `<<LOCK_IN>>`-driven flow in
 /// `post_turn`.
 pub async fn generate_and_save(
-    db: &Database,
     pool: &PgPool,
     or: &dyn LlmClient,
     story: &Story,
@@ -39,19 +37,10 @@ pub async fn generate_and_save(
     let start = std::time::Instant::now();
 
     let body = call_summarize_model(pool, or, story).await?;
-    // The unique `(story_id, version_n)` index protects against the
+    // The unique `(story_id, version_n)` constraint protects against the
     // double-submit race; the helper retries once on duplicate-key.
-    let story_id = story.id.clone();
-    let version = story_version_store::insert_with_next_n(db, &story_id, |n| StoryVersion {
-        id: uuid::Uuid::now_v7().to_string(),
-        story_id: story_id.clone(),
-        version_n: n,
-        body: body.clone(),
-        spoken: None,
-        created_at: chrono::Utc::now(),
-    })
-    .await?;
-    story_store::set_current_version(db, &story.id, &version.id).await?;
+    let version = story_version_store::insert_with_next_n(pool, &story.id, &body, None).await?;
+    story_store::set_current_version(pool, &story.id, &version.id).await?;
 
     tracing::info!(
         event = "story.generate",

@@ -3,18 +3,19 @@
 //! The candidate's `StoryBody` bullets are the source of truth; this service
 //! renders them through the `story_spoken` prompt to produce two
 //! verbatim-ready monologues (short ≈3–5 min, long ≈full rehearsal) and
-//! persists them onto the same version doc. Calling `generate_and_save`
+//! persists them onto the same version row. Calling `generate_and_save`
 //! again replaces the previous variants — there's no version history for
 //! spoken output (the bullets are the canonical artifact; spoken is a view).
 
-use mongodb::Database;
 use serde::Deserialize;
 use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::models::{SpokenStory, StoryVersion};
 use crate::services::openrouter::{ChatMessage, LlmClient};
-use crate::services::{llm_safety, prompt_store, settings_store, story_format};
+use crate::services::{
+    llm_safety, prompt_store, settings_store, story_format, story_version_store,
+};
 
 const PROMPT_NAME: &str = "story_spoken";
 
@@ -27,10 +28,9 @@ struct SpokenPayload {
 }
 
 /// Generate both spoken variants for `version` and persist them onto the
-/// version doc. Returns the freshly-built `SpokenStory`. Not idempotent: a
+/// version row. Returns the freshly-built `SpokenStory`. Not idempotent: a
 /// rerun replaces whatever was there.
 pub async fn generate_and_save(
-    db: &Database,
     pool: &PgPool,
     or: &dyn LlmClient,
     version: &StoryVersion,
@@ -66,7 +66,7 @@ pub async fn generate_and_save(
         generated_at: chrono::Utc::now(),
     };
 
-    persist(db, &version.id, &spoken).await?;
+    story_version_store::set_spoken(pool, &version.id, &spoken).await?;
 
     tracing::info!(
         event = "story.spoken.generated",
@@ -76,17 +76,6 @@ pub async fn generate_and_save(
         "spoken variants saved",
     );
     Ok(spoken)
-}
-
-async fn persist(db: &Database, version_id: &str, spoken: &SpokenStory) -> Result<(), AppError> {
-    let doc = bson::to_bson(spoken)?;
-    db.collection::<StoryVersion>(StoryVersion::COLLECTION)
-        .update_one(
-            bson::doc! { "_id": version_id },
-            bson::doc! { "$set": { "spoken": doc } },
-        )
-        .await?;
-    Ok(())
 }
 
 fn render_user_message(version: &StoryVersion) -> String {

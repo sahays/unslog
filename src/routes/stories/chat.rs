@@ -66,8 +66,7 @@ pub(super) async fn post_turn(
     }
 
     if lock_in {
-        story_lockin::generate_and_save(&state.db, &state.pool, state.openrouter.as_ref(), &story)
-            .await?;
+        story_lockin::generate_and_save(&state.pool, state.openrouter.as_ref(), &story).await?;
     }
 
     Ok(Redirect::to(&format!("/stories/{id}")).into_response())
@@ -80,8 +79,7 @@ pub(super) async fn generate(
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     let story = super::load_story(&state, &id).await?;
-    story_lockin::generate_and_save(&state.db, &state.pool, state.openrouter.as_ref(), &story)
-        .await?;
+    story_lockin::generate_and_save(&state.pool, state.openrouter.as_ref(), &story).await?;
     Ok(Redirect::to(&format!("/stories/{id}")).into_response())
 }
 
@@ -97,7 +95,7 @@ pub(super) async fn continue_chat(
             "no current version to refine — generate v1 first".into(),
         ));
     };
-    let version = story_version_store::get(&state.db, &vid)
+    let version = story_version_store::get(&state.pool, &vid)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("story version {vid}")))?;
 
@@ -113,7 +111,7 @@ pub(super) async fn continue_chat(
 
     // Reopen the chat: status returns to InProgress so the next Generate
     // creates vN+1 instead of being a no-op visually.
-    story_store::set_status(&state.db, &story.id, StoryStatus::InProgress).await?;
+    story_store::set_status(&state.pool, &story.id, StoryStatus::InProgress).await?;
     tracing::info!(
         event = "story.continue",
         story_id = %story.id,
