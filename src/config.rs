@@ -37,6 +37,25 @@ pub struct AppConfig {
     /// `None` (unset/blank) means omit the header — avoids leaking a
     /// personal repo URL in attribution headers on shared/public builds.
     pub referer: Option<String>,
+
+    // ── Multi-user (Phase 1+) ─────────────────────────────────────────────
+    /// Name of the session cookie. Defaults to `__Host-session`; the prefix
+    /// forces Secure + same-origin + path=/ at the browser layer.
+    pub session_cookie_name: String,
+    /// Name of the CSRF double-submit cookie. Defaults to `__Host-csrf`.
+    pub csrf_cookie_name: String,
+    /// Brute-force throttle: max `/login` attempts per IP within
+    /// `login_throttle_window_secs`. Defaults to 5.
+    pub login_throttle_max_attempts: u32,
+    /// Window (seconds) over which login attempts are counted. Defaults to 300.
+    pub login_throttle_window_secs: u64,
+    /// Daily request budget for Pro-tier users. Master account is exempt.
+    pub pro_request_cap_daily: u32,
+    /// Upper bound an admin may bump a single Pro user's daily cap to.
+    pub pro_max_request_cap_daily: u32,
+    /// Dev-only: drop the `Secure` cookie attribute so cookies work over
+    /// plain `http://localhost`. Must remain `false` in production.
+    pub dev_insecure: bool,
 }
 
 impl AppConfig {
@@ -59,6 +78,15 @@ impl AppConfig {
                 .ok()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
+            // Multi-user (Phase 1+) — defaults are safe-for-production except
+            // `DEV_INSECURE`, which must stay false anywhere with real TLS.
+            session_cookie_name: env_string("SESSION_COOKIE_NAME", "__Host-session"),
+            csrf_cookie_name: env_string("CSRF_COOKIE_NAME", "__Host-csrf"),
+            login_throttle_max_attempts: env_parse("LOGIN_THROTTLE_MAX_ATTEMPTS", 5),
+            login_throttle_window_secs: env_parse("LOGIN_THROTTLE_WINDOW_SECS", 300),
+            pro_request_cap_daily: env_parse("PRO_REQUEST_CAP_DAILY", 500),
+            pro_max_request_cap_daily: env_parse("PRO_MAX_REQUEST_CAP_DAILY", 2000),
+            dev_insecure: env_bool("DEV_INSECURE", false),
         })
     }
 
@@ -73,4 +101,34 @@ impl AppConfig {
     pub fn log_path(&self) -> std::path::PathBuf {
         std::path::Path::new(&self.data_dir).join(&self.log_dir)
     }
+}
+
+/// Read an env var or fall back to `default`. Blank string is treated as
+/// missing so a checked-in `.env.example` placeholder doesn't override the
+/// in-code default.
+fn env_string(key: &str, default: &str) -> String {
+    env::var(key)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| default.to_string())
+}
+
+fn env_parse<T: std::str::FromStr>(key: &str, default: T) -> T {
+    env::var(key)
+        .ok()
+        .and_then(|s| s.trim().parse::<T>().ok())
+        .unwrap_or(default)
+}
+
+fn env_bool(key: &str, default: bool) -> bool {
+    env::var(key)
+        .ok()
+        .map(|s| {
+            matches!(
+                s.trim().to_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(default)
 }

@@ -16,17 +16,29 @@ use tracing::Instrument;
 use uuid::Uuid;
 
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
+const HX_REQUEST: HeaderName = HeaderName::from_static("hx-request");
 
 tokio::task_local! {
     /// Per-request UUID, set inside `request_context_middleware` and read by
     /// the error renderer (which has no access to request extensions).
     pub static REQUEST_ID: Uuid;
+    /// Whether the in-flight request carried `hx-request: true`. Lets
+    /// `AppError::into_response` pick a fragment vs full-page reply without
+    /// threading the request through.
+    pub static IS_HTMX: bool;
 }
 
 /// Best-effort lookup. Returns the empty string outside a request scope —
 /// the error template tolerates that.
 pub fn current_request_id() -> String {
     REQUEST_ID.try_with(|id| id.to_string()).unwrap_or_default()
+}
+
+/// Best-effort lookup of the in-flight request's `hx-request` header. Returns
+/// `false` outside a request scope — safe default since a full-page render is
+/// always acceptable.
+pub fn current_is_htmx() -> bool {
+    IS_HTMX.try_with(|v| *v).unwrap_or(false)
 }
 
 /// Carried through the request lifecycle via extensions, so handlers and
@@ -44,6 +56,13 @@ pub async fn request_context_middleware(mut request: Request<Body>, next: Next) 
         .and_then(|s| s.parse::<Uuid>().ok())
         .unwrap_or_else(Uuid::now_v7);
 
+    let is_htmx = request
+        .headers()
+        .get(&HX_REQUEST)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
     let ctx = RequestContext { request_id };
     request.extensions_mut().insert(ctx);
 
@@ -59,7 +78,10 @@ pub async fn request_context_middleware(mut request: Request<Body>, next: Next) 
     );
 
     let mut response = REQUEST_ID
-        .scope(request_id, next.run(request).instrument(span))
+        .scope(
+            request_id,
+            IS_HTMX.scope(is_htmx, next.run(request).instrument(span)),
+        )
         .await;
     let duration_ms = start.elapsed().as_millis() as u64;
     let status = response.status().as_u16();
