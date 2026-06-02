@@ -60,51 +60,61 @@
         <table class="w-full text-sm">
           <thead>
             <tr class="text-left">
-              <th class="py-2 pr-3">Label</th>
-              <th class="py-2 pr-3">Tier</th>
-              <th class="py-2 pr-3">Code hint</th>
-              <th class="py-2 pr-3">Created</th>
-              <th class="py-2 pr-3">Last seen</th>
-              <th class="py-2 pr-3">Activated</th>
-              <th class="py-2 pr-3">Expires</th>
-              <th class="py-2 pr-3">Used</th>
+              <th class="py-2 pr-3">Invitee</th>
               <th class="py-2 pr-3">Status</th>
+              <th class="py-2 pr-3">Activity</th>
+              <th class="py-2 pr-3">Used</th>
               <th class="py-2 pr-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {% for inv in invitees %}
               <tr class="border-t border-[color:var(--color-border)] align-top">
-                <td class="py-2 pr-3 font-medium">{{ inv.label }}</td>
                 <td class="py-2 pr-3">
-                  {% match inv.tier %}
-                    {% when crate::models::UserTier::Pro %}
-                      {% call ui::badge("Pro", "default") %}
-                    {% when crate::models::UserTier::ProMax %}
-                      {% call ui::badge("Pro Max", "accent") %}
-                    {% when crate::models::UserTier::Master %}
-                      {% call ui::badge("Master", "warn") %}
-                  {% endmatch %}
+                  <div class="font-medium">{{ inv.label }}</div>
+                  <div class="muted-soft text-xs flex items-center gap-2 mt-0.5">
+                    {% match inv.tier %}
+                      {% when crate::models::UserTier::Pro %}
+                        {% call ui::badge("Pro", "default") %}
+                      {% when crate::models::UserTier::ProMax %}
+                        {% call ui::badge("Pro Max", "accent") %}
+                      {% when crate::models::UserTier::Master %}
+                        {% call ui::badge("Master", "warn") %}
+                    {% endmatch %}
+                    <span class="font-mono">{{ inv.code_hint }}</span>
+                  </div>
                 </td>
-                <td class="py-2 pr-3 font-mono">{{ inv.code_hint }}</td>
-                <td class="py-2 pr-3">{% call ui::time_ago(inv.created_at) %}</td>
-                <td class="py-2 pr-3">
-                  {% if let Some(ts) = inv.last_seen_at %}{% call ui::time_ago(ts) %}{% else %}—{% endif %}
-                </td>
-                <td class="py-2 pr-3">
-                  {% if let Some(ts) = inv.activated_at %}{% call ui::time_ago(ts) %}{% else %}—{% endif %}
-                </td>
-                <td class="py-2 pr-3">
-                  {% if let Some(ts) = inv.expires_at %}{% call ui::time_ago(ts) %}{% else %}never{% endif %}
-                </td>
-                <td class="py-2 pr-3 font-mono">{{ inv.used_units }}</td>
                 <td class="py-2 pr-3">
                   {% if inv.revoked_at.is_some() %}
                     {% call ui::badge("revoked", "bad") %}
                   {% else %}
                     {% call ui::badge("active", "good") %}
                   {% endif %}
+                  <div class="muted-soft text-xs mt-1">
+                    {% if let Some(ts) = inv.expires_at %}
+                      expires {% call ui::time_ago(ts) %}
+                    {% else %}
+                      never expires
+                    {% endif %}
+                  </div>
                 </td>
+                <td class="py-2 pr-3">
+                  <div>
+                    {% if let Some(ts) = inv.activated_at %}
+                      activated {% call ui::time_ago(ts) %}
+                    {% else %}
+                      <span class="muted-soft">not activated</span>
+                    {% endif %}
+                  </div>
+                  <div class="muted-soft text-xs mt-0.5">
+                    {% if let Some(ts) = inv.last_seen_at %}
+                      seen {% call ui::time_ago(ts) %}
+                    {% else %}
+                      created {% call ui::time_ago(inv.created_at) %}
+                    {% endif %}
+                  </div>
+                </td>
+                <td class="py-2 pr-3 font-mono">{{ inv.used_units }}</td>
                 <td class="py-2 pr-3">
                   {% if inv.revoked_at.is_none() %}
                     <div class="flex flex-wrap items-center gap-2">
