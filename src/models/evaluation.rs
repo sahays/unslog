@@ -74,18 +74,13 @@ pub struct Attempt {
     pub critique: Option<Critique>,
     #[serde(default)]
     pub critique_audio_path: Option<String>,
-    #[serde(with = "crate::models::datetime_compat::required")]
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Evaluation {
-    #[serde(rename = "_id")]
     pub id: String,
     /// Per-user; set by the calling handler from `CurrentUser::id`.
-    /// Legacy Mongo docs lack this column and default to empty — the
-    /// importer backfills before insert.
-    #[serde(default)]
     pub owner_id: String,
     pub session_id: String,
     pub company_id: String,
@@ -96,9 +91,6 @@ pub struct Evaluation {
 }
 
 impl Evaluation {
-    /// Legacy Mongo collection name. Retained for the one-shot importer.
-    pub const COLLECTION: &'static str = "evaluations";
-
     pub fn new(
         owner_id: String,
         session_id: String,

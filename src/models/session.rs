@@ -12,8 +12,8 @@ pub enum SessionStatus {
 
 impl SessionStatus {
     /// String form that mirrors the serde `rename_all = "snake_case"` mapping.
-    /// Use this for raw bson update docs so the literal can never drift from
-    /// the on-disk representation.
+    /// Use this for Postgres CHECK literals so the on-disk representation can
+    /// never drift from the enum.
     pub fn as_str(self) -> &'static str {
         match self {
             SessionStatus::Active => "active",
@@ -65,36 +65,29 @@ pub struct PromptSnapshot {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
-    #[serde(rename = "_id")]
     pub id: String,
     /// Owner of this session row. Set by the calling handler from
-    /// `CurrentUser::id`. Legacy Mongo docs lack this column and default to
-    /// empty — the importer backfills before insert.
-    #[serde(default)]
+    /// `CurrentUser::id`.
     pub owner_id: String,
     /// Anchor company. For single-company sessions, this is the only entry
     /// in `selected_company_ids`. For cross-company sessions, this points at
     /// the primary one (used for any "primary packet" fallback in critique).
     pub company_id: String,
     /// Canonical role this session is practising. Drives the question pool.
-    /// Defaulted for sessions started before this field existed.
-    #[serde(default = "default_role")]
     pub role: Role,
     /// Companies this session draws questions from. For single-company entry
-    /// = `[company_id]`; for cross-company `/practice` = multiple. Empty
-    /// (legacy) is interpreted as `[company_id]`.
+    /// = `[company_id]`; for cross-company `/practice` = multiple.
     #[serde(default)]
     pub selected_company_ids: Vec<String>,
-    /// Curator's pre-picked question IDs in answer order. Empty for legacy
-    /// sessions; the curator falls back to per-call random for those.
+    /// Curator's pre-picked question IDs in answer order. Empty when the
+    /// curator wasn't able to pre-pick; the per-call random pool is used then.
     #[serde(default)]
     pub curated_question_ids: Vec<String>,
     /// One-line "today's focus" message from the curator.
     #[serde(default)]
     pub focus_line: String,
-    #[serde(with = "crate::models::datetime_compat::required")]
     pub started_at: chrono::DateTime<chrono::Utc>,
-    #[serde(default, with = "crate::models::datetime_compat::optional")]
+    #[serde(default)]
     pub ended_at: Option<chrono::DateTime<chrono::Utc>>,
     pub status: SessionStatus,
     pub model_snapshot: ModelSnapshot,
@@ -109,14 +102,7 @@ pub struct Session {
     pub current_question_audio_path: Option<String>,
 }
 
-fn default_role() -> Role {
-    Role::SolutionsArchitect
-}
-
 impl Session {
-    /// Legacy Mongo collection name. Retained for the one-shot importer.
-    pub const COLLECTION: &'static str = "sessions";
-
     /// Mint a fresh session id via the shared minter.
     pub fn new_id() -> String {
         id_gen::new(Kind::Session)

@@ -4,28 +4,19 @@ use serde::{Deserialize, Serialize};
 /// experience. Deliberately minimal: title, body, timestamps. No taxonomy,
 /// no AI on this side, no coupling to stories.
 ///
-/// Backed by Postgres `journal_entries` after Phase A. `owner_id` scopes
-/// the row to a user; during this transition it is always `"usrmaster"`
-/// and Phase 1 will replace the temp constant with the request-bound user.
+/// Backed by Postgres `journal_entries`. `owner_id` scopes the row to a user.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct JournalEntry {
-    #[serde(rename = "_id")]
     pub id: String,
-    /// Set on Postgres rows; legacy Mongo docs (read by the one-shot
-    /// importer) default to empty and are filled in by the import code
-    /// before insert.
-    #[serde(default)]
     pub owner_id: String,
     pub title: String,
     pub body: String,
-    #[serde(with = "crate::models::datetime_compat::required")]
     pub created_at: chrono::DateTime<chrono::Utc>,
-    #[serde(with = "crate::models::datetime_compat::required")]
     pub updated_at: chrono::DateTime<chrono::Utc>,
     /// `Some(ts)` = archived (hidden from the list view) since `ts`. `None` =
     /// active. Archive is reversible at the data layer; v1 has no UI to
     /// unarchive.
-    #[serde(default, with = "crate::models::datetime_compat::optional")]
+    #[serde(default)]
     pub archived_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -33,9 +24,6 @@ pub struct JournalEntry {
 const EXCERPT_CHARS: usize = 240;
 
 impl JournalEntry {
-    /// Legacy Mongo collection name. Retained for symmetry / docs only.
-    pub const COLLECTION: &'static str = "journal_entries";
-
     pub fn new(owner_id: String, title: String, body: String) -> Self {
         let now = chrono::Utc::now();
         Self {
