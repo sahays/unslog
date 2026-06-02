@@ -25,7 +25,7 @@ pub fn routes() -> Router<AppState> {
 /// `HttpOnly; SameSite=Strict; Path=/; Max-Age=<window>`. `Secure` is
 /// emitted unless `dev_insecure` is true — keeps localhost http://
 /// development working without weakening the production attribute set.
-pub(super) fn session_set_cookie(
+pub(crate) fn session_set_cookie(
     name: &str,
     value: &str,
     max_age: u64,
@@ -37,13 +37,13 @@ pub(super) fn session_set_cookie(
 /// Build a `Set-Cookie` value for the CSRF token. Same attributes as the
 /// session cookie except `HttpOnly` is OFF — HTMX needs to read it for the
 /// double-submit pattern.
-pub(super) fn csrf_set_cookie(name: &str, value: &str, max_age: u64, dev_insecure: bool) -> String {
+pub(crate) fn csrf_set_cookie(name: &str, value: &str, max_age: u64, dev_insecure: bool) -> String {
     build_cookie(name, value, max_age, false, dev_insecure)
 }
 
 /// Build an expiring `Set-Cookie` value (Max-Age=0) for the named cookie.
 /// Used by `/logout` to clear both session + csrf in one response.
-pub(super) fn expired_cookie(name: &str, http_only: bool, dev_insecure: bool) -> String {
+pub(crate) fn expired_cookie(name: &str, http_only: bool, dev_insecure: bool) -> String {
     build_cookie(name, "", 0, http_only, dev_insecure)
 }
 

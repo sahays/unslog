@@ -83,6 +83,9 @@ pub async fn auth_middleware(
     let cookie_value = jar
         .get(&state.config.session_cookie_name)
         .map(|c| c.value().to_string());
+    let existing_csrf = jar
+        .get(&state.config.csrf_cookie_name)
+        .map(|c| c.value().to_string());
 
     let is_htmx = crate::middleware::current_is_htmx();
     let cookie_value = match cookie_value {
@@ -98,7 +101,7 @@ pub async fn auth_middleware(
     )
     .await
     {
-        Ok(cu) => attach_and_continue(cu, &state, request, next).await,
+        Ok(cu) => attach_and_continue(cu, &state, existing_csrf, request, next).await,
         Err(_) => unauthenticated_redirect(is_htmx),
     }
 }
@@ -114,17 +117,39 @@ fn is_allowlisted(path: &str) -> bool {
 /// Stamp the resolved user onto the request, publish label + CSRF token +
 /// is_master into task-locals, and run the rest of the chain inside that
 /// scope.
+///
+/// CSRF token comes from the existing `__Host-csrf` cookie when present —
+/// that's the source of truth for the double-submit pattern, so every form
+/// rendered during this request gets a token byte-identical to the cookie
+/// `csrf_verify_middleware` will compare against. When the cookie is
+/// missing (first authenticated page after login expired the cookie, or a
+/// browser session that lost it), we mint a fresh token and queue a
+/// `Set-Cookie` on the response so subsequent requests see them in sync.
 async fn attach_and_continue(
     cu: CurrentUser,
     state: &AppState,
+    existing_csrf: Option<String>,
     mut request: Request<Body>,
     next: Next,
 ) -> Response {
     let label = cu.label.clone();
     let is_master = cu.is_master;
-    let csrf_token = csrf::mint(&cu.id, state.session_key.as_slice());
+    let (csrf_token, refresh_cookie) = match existing_csrf {
+        Some(v) => (v, false),
+        None => (csrf::mint(&cu.id, state.session_key.as_slice()), true),
+    };
+    let cookie_to_set = if refresh_cookie {
+        Some(crate::routes::auth::csrf_set_cookie(
+            &state.config.csrf_cookie_name,
+            &csrf_token,
+            state.config.login_throttle_window_secs,
+            state.config.dev_insecure,
+        ))
+    } else {
+        None
+    };
     request.extensions_mut().insert(cu);
-    CURRENT_USER_LABEL
+    let mut response = CURRENT_USER_LABEL
         .scope(
             label,
             CURRENT_CSRF_TOKEN.scope(
@@ -132,7 +157,15 @@ async fn attach_and_continue(
                 CURRENT_USER_IS_MASTER.scope(is_master, next.run(request)),
             ),
         )
-        .await
+        .await;
+    if let Some(value) = cookie_to_set {
+        if let Ok(hv) = HeaderValue::from_str(&value) {
+            response
+                .headers_mut()
+                .append(axum::http::header::SET_COOKIE, hv);
+        }
+    }
+    response
 }
 
 fn unauthenticated_redirect(is_htmx: bool) -> Response {

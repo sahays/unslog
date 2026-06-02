@@ -178,7 +178,7 @@ pub(crate) fn extract_form_field(bytes: &[u8], field: &str) -> Option<String> {
 /// the authenticated user_id.
 fn reject(method: &Method, path: &str, user_id: &Option<String>, event: &'static str) -> Response {
     let uid = user_id.clone().unwrap_or_default();
-    tracing::info!(
+    tracing::warn!(
         event = event,
         method = %method,
         path = %path,
@@ -193,7 +193,7 @@ fn reject(method: &Method, path: &str, user_id: &Option<String>, event: &'static
 /// not "verification failed".
 fn reject_oversize(method: &Method, path: &str, user_id: &Option<String>) -> Response {
     let uid = user_id.clone().unwrap_or_default();
-    tracing::info!(
+    tracing::warn!(
         event = "csrf.body_too_large",
         method = %method,
         path = %path,
