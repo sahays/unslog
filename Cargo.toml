@@ -1,6 +1,6 @@
 [package]
 name = "unslog"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2021"
 # Adding `src/bin/eval.rs` made `cargo run` ambiguous; pin the default so
 # `cargo watch -x run` keeps starting the web server.

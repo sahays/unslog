@@ -7,6 +7,7 @@ use serde_json::json;
 use sqlx::types::Json;
 use sqlx::PgPool;
 
+use crate::models::prompt::is_valid_prompt_name;
 use crate::models::{
     Asset, JournalEntry, Pitch, PitchVersion, Prompt, PromptVersion, Settings, Story, StoryVersion,
 };
@@ -63,7 +64,7 @@ pub async fn insert_story_versions(
             r#"INSERT INTO story_versions
                (id, story_id, version_n, body, spoken, created_at, owner_id)
                VALUES ($1, $2, $3, $4, $5, $6, $7)
-               ON CONFLICT (id) DO NOTHING"#,
+               ON CONFLICT (story_id, version_n) DO NOTHING"#,
         )
         .bind(&id)
         .bind(&story_id)
@@ -112,7 +113,7 @@ pub async fn insert_pitch_versions(
             r#"INSERT INTO pitch_versions
                (id, pitch_id, version_n, short, long, created_at, owner_id)
                VALUES ($1, $2, $3, $4, $5, $6, $7)
-               ON CONFLICT (id) DO NOTHING"#,
+               ON CONFLICT (pitch_id, version_n) DO NOTHING"#,
         )
         .bind(&id)
         .bind(&v.pitch_id)
@@ -224,6 +225,14 @@ pub async fn insert_assets(
 
 pub async fn insert_prompts(pool: &PgPool, rows: &[Prompt], map: &IdMap) -> Result<()> {
     for p in rows {
+        if !is_valid_prompt_name(&p.name) {
+            tracing::warn!(
+                event = "import.prompt.skipped_legacy",
+                name = %p.name,
+                "skipping prompt with name not in current PROMPT_NAMES allowlist"
+            );
+            continue;
+        }
         let current_version_id = map
             .get(Kind::PromptVersion, &p.current_version_id)
             .ok_or_else(|| {
@@ -254,6 +263,14 @@ pub async fn insert_prompt_versions(
     map: &IdMap,
 ) -> Result<()> {
     for v in rows {
+        if !is_valid_prompt_name(&v.prompt_name) {
+            tracing::warn!(
+                event = "import.prompt_version.skipped_legacy",
+                prompt_name = %v.prompt_name,
+                "skipping prompt_version for legacy prompt name"
+            );
+            continue;
+        }
         let id = required_id(map, Kind::PromptVersion, &v.id, "prompt_versions")?;
         let restored_from = v
             .restored_from
