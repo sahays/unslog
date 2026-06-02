@@ -66,18 +66,13 @@ impl ExtractionStatus {
     }
 }
 
-/// Uploaded book / resume / other reference. Backed by Postgres `assets`
-/// after Phase A. `owner_id` scopes the row to a user; resumes are
-/// per-user, while `kind = 'book'` rows are pinned to the master user by a
-/// trigger (the critique prompt inlines the book as global content).
+/// Uploaded book / resume / other reference. Backed by Postgres `assets`.
+/// `owner_id` scopes the row to a user; resumes are per-user, while
+/// `kind = 'book'` rows are pinned to the master user by a trigger (the
+/// critique prompt inlines the book as global content).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Asset {
-    #[serde(rename = "_id")]
     pub id: String,
-    /// Set on Postgres rows; legacy Mongo docs (read by the one-shot
-    /// importer) default to empty and are filled in by the import code
-    /// before insert.
-    #[serde(default)]
     pub owner_id: String,
     pub name: String,
     pub kind: AssetKind,
@@ -89,14 +84,10 @@ pub struct Asset {
     pub extraction_status: ExtractionStatus,
     #[serde(default)]
     pub extraction_error: Option<String>,
-    #[serde(with = "crate::models::datetime_compat::required")]
     pub uploaded_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl Asset {
-    /// Retained for `import_from_mongo`; remove after one-shot import.
-    pub const COLLECTION: &'static str = "assets";
-
     pub fn new(
         owner_id: String,
         name: String,

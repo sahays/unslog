@@ -3,8 +3,7 @@ set -euo pipefail
 
 # unslog runs in the foreground (cargo run); ctrl-C is the normal "down".
 # This script is here for symmetry and to optionally stop the local
-# Postgres container. Mongo is no longer touched by the live app — stop
-# any legacy `mongo` container manually if you want it gone.
+# Postgres container.
 
 # ── Postgres ────────────────────────────────────────────────────────────
 PG_NAME="unslog-pg"

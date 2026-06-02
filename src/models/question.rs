@@ -16,23 +16,18 @@ pub enum QuestionSource {
 }
 
 /// A single behavioral-interview question. Backed by the Postgres
-/// `questions` table after Phase A Step 6; the importer still
-/// deserializes legacy Mongo docs via the `_id` rename. Optional
-/// `company_id` lets role-only questions exist alongside company-tagged
-/// ones — the curator pools across both.
+/// `questions` table. Optional `company_id` lets role-only questions exist
+/// alongside company-tagged ones — the curator pools across both.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Question {
-    #[serde(rename = "_id")]
     pub id: String,
     /// Per-user; set by the calling handler from `CurrentUser::id`.
-    #[serde(default)]
     pub owner_id: String,
     pub text: String,
     pub source: QuestionSource,
-    /// Canonical role this question belongs to. Always present.
-    #[serde(default = "default_role")]
+    /// Canonical role this question belongs to.
     pub role: Role,
-    /// Canonical category IDs (from `Category::COLLECTION`). 0–N OK.
+    /// Canonical category IDs (FK → `categories.id`). 0–N OK.
     /// JSONB on the Postgres side; a GIN index supports `@>` filters.
     #[serde(default)]
     pub categories: Vec<String>,
@@ -41,19 +36,10 @@ pub struct Question {
     /// questions in its pool.
     #[serde(default)]
     pub company_id: Option<String>,
-    #[serde(with = "crate::models::datetime_compat::required")]
     pub added_at: chrono::DateTime<chrono::Utc>,
 }
 
-fn default_role() -> Role {
-    Role::SolutionsArchitect
-}
-
 impl Question {
-    /// Legacy Mongo collection name. Still referenced by the one-shot
-    /// importer — removed in the final sub-phase that drops `mongodb`.
-    pub const COLLECTION: &'static str = "questions";
-
     pub fn new(
         owner_id: String,
         text: String,

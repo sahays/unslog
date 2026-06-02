@@ -42,9 +42,6 @@ cargo test <name_substring>      # single test (filename or fn name)
 # Pre-flight check (cargo / npm / docker / postgres / sqlx-cli / pdftotext / .env / OPENROUTER_API_KEY)
 ./scripts/check-deps.sh
 ./scripts/dev-up.sh              # runs check-deps then `cargo run`
-
-# One-shot Mongo → Postgres copy (run once after Postgres is up)
-cargo run --bin import_from_mongo -- --force
 ```
 
 The user runs `cargo watch -x run` themselves — don't spawn a parallel `cargo run`. Use `cargo check` / `cargo clippy` / `cargo test` for verification, and rely on their browser to exercise the UI.
@@ -57,8 +54,6 @@ The user runs `cargo watch -x run` themselves — don't spawn a parallel `cargo 
 - **OpenRouter API key** in `.env` as `OPENROUTER_API_KEY`. Without it, the settings page shows "missing" and any STT/TTS/chat call returns `AppError::OpenRouterNotConfigured` (503). Other features still work.
 - **`pdftotext` (poppler)** is an *optional* fallback for PDF extraction. `pdf-extract` is tried first.
 - **`npx` + `@tailwindcss/cli`** — `build.rs` shells out to `npx @tailwindcss/cli` on every cargo build to regenerate `static/css/app.css` from `static/css/input.css`. Missing npx becomes a `cargo:warning`, not a hard failure.
-
-MongoDB is required only if you intend to run `cargo run --bin import_from_mongo -- --force` once to migrate legacy data; the live app no longer connects.
 
 ## Architecture
 
@@ -74,7 +69,7 @@ Three boundary categories, kept separate:
 
 1. **`routes/*`** — HTTP handlers. Parse, validate, call services, render templates. Each top-level resource has its own file/module; `routes/mod.rs` merges them in `router()`. The `sessions` and `stories` resources are large enough to be subdirectories (`routes/sessions/{lifecycle,answer}.rs`, `routes/stories/{landing,show,chat}.rs`).
 2. **`services/*`** — business logic, no HTTP types. `openrouter.rs` is the one outbound client (chat / STT / TTS / `/models`); everything else (`critique`, `summary`, `research`, `categorize`, `curator`, `questions`, `stt`, `tts`, `assets`, `*_store`) composes it with Postgres + sqlx. `*_store` modules own a Postgres table.
-3. **`models/*`** — serde structs that map 1:1 to Postgres tables. Each model file owns any pure logic on the struct. `models/mod.rs` re-exports the public types. (A handful of legacy `_id` serde renames + `COLLECTION` consts + `datetime_compat` are retained for the one-shot `import_from_mongo` binary and are removed in a follow-up cleanup commit.)
+3. **`models/*`** — serde structs that map 1:1 to Postgres tables. Each model file owns any pure logic on the struct. `models/mod.rs` re-exports the public types.
 
 `startup::run` builds `AppState { config, pool, http, openrouter, models_cache, book_cache, … }` and wires it into a single `Router` with a 50 MB body cap (for audio uploads + the book PDF) and a request-context middleware that issues an `x-request-id`.
 

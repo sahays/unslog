@@ -1,7 +1,6 @@
 pub mod asset;
 pub mod category;
 pub mod company;
-pub mod datetime_compat;
 pub mod evaluation;
 pub mod journal_entry;
 pub mod pitch;

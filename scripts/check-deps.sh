@@ -32,13 +32,6 @@ else
   ERRORS=$((ERRORS+1))
 fi
 
-echo "MongoDB container (only needed to run import_from_mongo):"
-if docker ps --format '{{.Image}}' 2>/dev/null | grep -q '^mongo'; then
-  pass "MongoDB container is running on $(docker ps --format '{{.Ports}}' --filter ancestor=mongo | head -1)"
-else
-  warn "Mongo: not running (only needed to run import_from_mongo)"
-fi
-
 echo "Postgres (localhost:5432):"
 if command -v pg_isready &>/dev/null; then
   if pg_isready -h localhost -p 5432 -q; then

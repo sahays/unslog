@@ -1,8 +1,6 @@
 //! Shared, prefix-aware id minter used by every store that owns a
-//! prefixed-id Postgres row. Promoted out of `mongo_import::id_map` so
-//! production code paths (journal_store, asset_store, prompt_store, …)
-//! and the one-shot importer share one minter — see `CLAUDE.md`'s DRY
-//! guidance.
+//! prefixed-id Postgres row. Single canonical minter so journal_store,
+//! asset_store, prompt_store, … all agree on the id shape.
 //!
 //! IDs are 9 chars: `{3-letter prefix}{6 lowercase alphanum}`. The
 //! Postgres CHECK constraints in `migrations/0001_initial.sql` pin the
