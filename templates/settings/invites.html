@@ -64,7 +64,7 @@
               <th class="py-2 pr-3">Status</th>
               <th class="py-2 pr-3">Activity</th>
               <th class="py-2 pr-3">Used</th>
-              <th class="py-2 pr-3">Actions</th>
+              <th class="py-2 pr-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -115,14 +115,14 @@
                   </div>
                 </td>
                 <td class="py-2 pr-3 font-mono">{{ inv.used_units }}</td>
-                <td class="py-2 pr-3">
+                <td class="py-2 pr-3 text-right">
                   {% if inv.revoked_at.is_none() %}
-                    <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex flex-wrap items-center justify-end gap-2 w-full">
                       <form method="post" action="/settings/invites/{{ inv.id }}/extend"
                             class="flex items-center gap-1">
                         {% call forms::csrf_input() %}
                         <label class="sr-only" for="extend-days-{{ inv.id }}">Extend days</label>
-                        <select id="extend-days-{{ inv.id }}" name="days" class="text-xs">
+                        <select id="extend-days-{{ inv.id }}" name="days" data-n-select required>
                           <option value="30">+30d</option>
                           <option value="60">+60d</option>
                           <option value="90">+90d</option>
