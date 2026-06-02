@@ -6,7 +6,6 @@
 
 {% block breadcrumbs %}
 <a href="/settings">Settings</a>
-<span aria-hidden="true">/</span>
 <span>Invites</span>
 {% endblock %}
 
@@ -33,14 +32,14 @@
       </div>
       <div class="grid gap-1.5">
         <label for="tier">Tier</label>
-        <select id="tier" name="tier" required>
+        <select id="tier" name="tier" data-n-select required>
           <option value="pro">Pro</option>
           <option value="pro_max">Pro Max</option>
         </select>
       </div>
       <div class="grid gap-1.5">
         <label for="days">Validity</label>
-        <select id="days" name="days" required>
+        <select id="days" name="days" data-n-select required>
           <option value="30">30 days</option>
           <option value="60">60 days</option>
           <option value="90">90 days</option>
