@@ -104,23 +104,28 @@ impl ChatRole {
 pub struct ChatTurn {
     pub role: ChatRole,
     pub content: String,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub ts: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Story {
+    #[serde(rename = "_id")]
     pub id: String,
     /// Owner of this story row. Set by the calling handler from
-    /// `CurrentUser::id`.
+    /// `CurrentUser::id`. Legacy Mongo docs lack this field; the importer
+    /// backfills before insert.
+    #[serde(default)]
     pub owner_id: String,
-    /// FK → `categories.id`. The competency this story is being built against.
+    /// FK → `categories._id`. The competency this story is being built against.
     pub competency_id: String,
     pub status: StoryStatus,
     /// Picks the coach prompt for this story (`story_chat` or
-    /// `story_chat_collaborative`).
+    /// `story_chat_collaborative`). Defaults to `Strict` for legacy rows that
+    /// pre-date the toggle, preserving previous behavior.
     #[serde(default)]
     pub mode: Difficulty,
-    /// FK → `story_versions.id` of the latest locked-in version. `None` until
+    /// FK → `story_versions._id` of the latest locked-in version. `None` until
     /// the user clicks Generate the first time.
     #[serde(default)]
     pub current_version_id: Option<String>,
@@ -128,11 +133,16 @@ pub struct Story {
     /// [`crate::services::story_store::MAX_CHAT_TURNS`] turns.
     #[serde(default)]
     pub chat: Vec<ChatTurn>,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl Story {
+    /// Legacy Mongo collection name. Retained for the one-shot importer.
+    pub const COLLECTION: &'static str = "stories";
+
     /// Mint a fresh story id via the shared minter.
     pub fn new_id() -> String {
         id_gen::new(Kind::Story)
@@ -159,6 +169,7 @@ pub struct StoryBody {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoryVersion {
+    #[serde(rename = "_id")]
     pub id: String,
     pub story_id: String,
     /// Monotonic per story: 1, 2, 3, …
@@ -171,10 +182,14 @@ pub struct StoryVersion {
     /// and lifecycle.
     #[serde(default)]
     pub spoken: Option<SpokenStory>,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl StoryVersion {
+    /// Legacy Mongo collection name. Retained for the one-shot importer.
+    pub const COLLECTION: &'static str = "story_versions";
+
     /// Mint a fresh story-version id via the shared minter.
     pub fn new_id() -> String {
         id_gen::new(Kind::StoryVersion)
@@ -190,6 +205,7 @@ pub struct SpokenStory {
     pub short: String,
     /// Longer fuller version. ~900–1400 words.
     pub long: String,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub generated_at: chrono::DateTime<chrono::Utc>,
 }
 

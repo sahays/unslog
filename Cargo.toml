@@ -30,7 +30,12 @@ serde_json = "1.0"
 # body without pulling a new crate.
 serde_urlencoded = "0.7"
 
-# Database — Postgres via sqlx is the live store.
+# Database — Postgres via sqlx is the live store. The mongodb + bson
+# crates are retained only for the one-shot `import_from_mongo` binary
+# and the `mongo_import` service modules it depends on; remove them in
+# the cleanup commit after the import has been run.
+mongodb = "3"  # Retained until import_from_mongo is run and removed.
+bson = { version = "2", features = ["chrono-0_4", "uuid-1"] }  # Retained until import_from_mongo is run and removed.
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "chrono", "json", "migrate", "ipnetwork"] }
 
 # Errors

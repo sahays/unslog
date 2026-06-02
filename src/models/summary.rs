@@ -4,8 +4,12 @@ use crate::services::id_gen::{self, Kind};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Summary {
+    #[serde(rename = "_id")]
     pub id: String,
     /// Per-user; set by the calling handler from `CurrentUser::id`.
+    /// Legacy Mongo docs lack this column and default to empty — the
+    /// importer backfills before insert.
+    #[serde(default)]
     pub owner_id: String,
     pub session_id: String,
     pub company_id: String,
@@ -19,10 +23,14 @@ pub struct Summary {
     pub blind_spots: Vec<String>,
     #[serde(default)]
     pub company_fit_signal: String,
+    #[serde(with = "crate::models::datetime_compat::required")]
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl Summary {
+    /// Legacy Mongo collection name. Retained for the one-shot importer.
+    pub const COLLECTION: &'static str = "summaries";
+
     /// Mint a fresh summary id via the shared minter.
     pub fn new_id() -> String {
         id_gen::new(Kind::Summary)

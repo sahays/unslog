@@ -84,7 +84,8 @@ unslog/
 Database: `unslog` (project-scoped container `unslog-pg`). Schema lives in
 `migrations/`. The document-style summaries below describe the conceptual
 shape; the actual schema is normalized into Postgres tables with JSONB
-for the embedded sub-documents.
+for the embedded sub-documents. The legacy MongoDB shape is preserved
+only in `import_from_mongo`.
 
 ### `companies`
 ```
@@ -334,6 +335,10 @@ DATABASE_URL=postgres://unslog:unslog@localhost:5432/unslog
 SQLX_OFFLINE=true
 OPENROUTER_API_KEY=
 RUST_LOG=info,unslog=debug
+
+# Only needed if running the one-shot `import_from_mongo` binary:
+MONGO_URI=mongodb://localhost:27017
+MONGO_DB=behavioral_coach
 ```
 
 ## Build Phases

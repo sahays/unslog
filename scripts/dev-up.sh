@@ -16,6 +16,11 @@ fi
 # ── Postgres (live store) ───────────────────────────────────────────────
 # Project-scoped container name (`unslog-pg`) so it doesn't collide with
 # any other local Postgres the user might be running.
+#
+# Note: the live app no longer requires MongoDB. If you want to run
+# `cargo run --bin import_from_mongo -- --force` to copy legacy data
+# into Postgres, start your old Mongo container manually first
+# (e.g. `docker start mongo`) — this script no longer touches Mongo.
 PG_NAME="unslog-pg"
 if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${PG_NAME}$"; then
   if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${PG_NAME}$"; then
