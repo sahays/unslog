@@ -96,7 +96,7 @@ pub async fn auth_middleware(
     match auth::authenticate(
         &cookie_value,
         state.session_key.as_slice(),
-        i64::try_from(state.config.login_throttle_window_secs).unwrap_or(3600),
+        i64::try_from(state.config.session_max_age_secs).unwrap_or(30 * 24 * 60 * 60),
         &*state.auth_deps,
     )
     .await
@@ -142,7 +142,7 @@ async fn attach_and_continue(
         Some(crate::routes::auth::csrf_set_cookie(
             &state.config.csrf_cookie_name,
             &csrf_token,
-            state.config.login_throttle_window_secs,
+            state.config.session_max_age_secs,
             state.config.dev_insecure,
         ))
     } else {

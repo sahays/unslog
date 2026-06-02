@@ -37,6 +37,7 @@ fn test_config() -> AppConfig {
         csrf_cookie_name: "__Host-csrf".into(),
         login_throttle_max_attempts: 5,
         login_throttle_window_secs: 300,
+        session_max_age_secs: 2_592_000,
         pro_request_cap_daily: 100,
         pro_max_request_cap_daily: 500,
         dev_insecure: false,

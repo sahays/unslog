@@ -49,6 +49,11 @@ pub struct AppConfig {
     pub login_throttle_max_attempts: u32,
     /// Window (seconds) over which login attempts are counted. Defaults to 300.
     pub login_throttle_window_secs: u64,
+    /// Session + CSRF cookie Max-Age (seconds). Also the upper bound the
+    /// auth middleware accepts when verifying a signed session cookie's
+    /// `issued_at`. Defaults to 30 days. Unrelated to the login throttle
+    /// window above — keep these distinct.
+    pub session_max_age_secs: u64,
     /// Daily request budget for Pro-tier users. Master account is exempt.
     pub pro_request_cap_daily: u32,
     /// Upper bound an admin may bump a single Pro user's daily cap to.
@@ -90,6 +95,7 @@ impl AppConfig {
             csrf_cookie_name: env_string("CSRF_COOKIE_NAME", "__Host-csrf"),
             login_throttle_max_attempts: env_parse("LOGIN_THROTTLE_MAX_ATTEMPTS", 5),
             login_throttle_window_secs: env_parse("LOGIN_THROTTLE_WINDOW_SECS", 300),
+            session_max_age_secs: env_parse("SESSION_MAX_AGE_SECS", 30 * 24 * 60 * 60),
             pro_request_cap_daily: env_parse("PRO_REQUEST_CAP_DAILY", 500),
             pro_max_request_cap_daily: env_parse("PRO_MAX_REQUEST_CAP_DAILY", 2000),
             dev_insecure: env_bool("DEV_INSECURE", false),

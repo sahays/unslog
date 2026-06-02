@@ -167,10 +167,10 @@ async fn reject_login(state: &AppState, ip: &IpAddr, prefix: &str) -> Result<Res
 
 fn build_login_cookies(state: &AppState, session: &str, csrf: &str) -> Vec<String> {
     let dev = state.config.dev_insecure;
-    let window = state.config.login_throttle_window_secs.max(60);
+    let age = state.config.session_max_age_secs.max(60);
     vec![
-        super::session_set_cookie(&state.config.session_cookie_name, session, window, dev),
-        super::csrf_set_cookie(&state.config.csrf_cookie_name, csrf, window, dev),
+        super::session_set_cookie(&state.config.session_cookie_name, session, age, dev),
+        super::csrf_set_cookie(&state.config.csrf_cookie_name, csrf, age, dev),
     ]
 }
 
@@ -199,7 +199,7 @@ fn is_already_signed_in(state: &AppState, req: &Request<axum::body::Body>) -> bo
     let Some(cookie) = jar.get(&state.config.session_cookie_name) else {
         return false;
     };
-    let max_age = i64::try_from(state.config.login_throttle_window_secs).unwrap_or(3600);
+    let max_age = i64::try_from(state.config.session_max_age_secs).unwrap_or(30 * 24 * 60 * 60);
     cookies::verify(
         cookie.value(),
         state.session_key.as_slice(),
