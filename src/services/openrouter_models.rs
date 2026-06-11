@@ -41,10 +41,15 @@ impl ModelInfo {
             .any(|m| m == "audio")
     }
     pub fn supports_audio_out(&self) -> bool {
+        // OpenRouter tags dedicated TTS providers (the only ones the
+        // /audio/speech endpoint actually accepts) with "speech". The
+        // "audio" tag belongs to chat-style audio-output models
+        // (openai/gpt-audio*) and music models (google/lyria-*) that
+        // would 400 if dropped into the TTS slot, so keep them out.
         self.architecture
             .output_modalities
             .iter()
-            .any(|m| m == "audio")
+            .any(|m| m == "speech")
     }
     pub fn supports_text_chat(&self) -> bool {
         let im = &self.architecture.input_modalities;

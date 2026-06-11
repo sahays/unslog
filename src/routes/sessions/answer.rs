@@ -98,6 +98,7 @@ pub(super) async fn submit_answer(
         &session,
         &super::critique_audio_filename(&qid, attempt_n),
         &critique.narrative,
+        super::TtsConfig::from_snapshot(&session.model_snapshot),
     )
     .await
     {
@@ -236,11 +237,17 @@ pub(super) async fn regenerate_critique_audio(
         "regenerating critique audio",
     );
 
+    // Regenerate intentionally uses *current* settings rather than the
+    // session's frozen model_snapshot. The snapshot is what produced the
+    // failed audio in the first place — re-using it would just repeat
+    // the same upstream error after a TTS model change in /settings.
+    let settings = state.settings_cache.get(&state.pool).await?;
     let audio_path = super::tts_to(
         &state,
         &session,
         &super::critique_audio_filename(&eval.question_id, attempt_n),
         &critique.narrative,
+        super::TtsConfig::from_settings(&settings),
     )
     .await?;
 

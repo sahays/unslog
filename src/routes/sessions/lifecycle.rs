@@ -173,8 +173,15 @@ pub(crate) async fn advance_to_next(
         return Ok(None);
     };
 
-    let audio_path =
-        match super::tts_to(state, session, &format!("question_{qid}.mp3"), &qtext).await {
+    let audio_path = match super::tts_to(
+        state,
+        session,
+        &format!("question_{qid}.mp3"),
+        &qtext,
+        super::TtsConfig::from_snapshot(&session.model_snapshot),
+    )
+    .await
+    {
             Ok(p) => Some(p),
             Err(e) => {
                 tracing::warn!(

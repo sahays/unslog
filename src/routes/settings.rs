@@ -115,9 +115,13 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
                         .filter(|m| m.supports_audio_in() && is_preferred(&m.id))
                         .cloned()
                         .collect();
+                    // TTS dropdown trusts OpenRouter's speech-modality
+                    // classification (see supports_audio_out — strict to
+                    // "speech") rather than an in-source curated list.
+                    // Whatever OpenRouter exposes is what we offer.
                     let aout: Vec<_> = all
                         .iter()
-                        .filter(|m| m.supports_audio_out() && is_preferred(&m.id))
+                        .filter(|m| m.supports_audio_out())
                         .cloned()
                         .collect();
                     (chat, ain, aout, None)
@@ -143,17 +147,35 @@ async fn show(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     ensure_present(&mut audio_in_models, &settings.stt_model);
     ensure_present(&mut audio_out_models, &settings.tts_model);
 
+    // Same pattern as ensure_present for model dropdowns: if the saved
+    // voice isn't in the seed list (e.g. an Azure voice like
+    // "en-US-Harper:MAI-Voice-2" for mai-voice-2), inject it so the
+    // <select> can mark it selected on render. Without this the form
+    // silently falls back to the empty placeholder after save and the
+    // user thinks their voice didn't persist.
+    let mut tts_voices: Vec<VoiceOption> = SUGGESTED_TTS_VOICES
+        .iter()
+        .map(|s| VoiceOption {
+            id: (*s).to_string(),
+        })
+        .collect();
+    if !settings.tts_voice.is_empty()
+        && !tts_voices.iter().any(|v| v.id == settings.tts_voice)
+    {
+        tts_voices.insert(
+            0,
+            VoiceOption {
+                id: settings.tts_voice.clone(),
+            },
+        );
+    }
+
     crate::error::render_html(SettingsTemplate {
         settings,
         chat_models,
         audio_in_models,
         audio_out_models,
-        tts_voices: OPENAI_TTS_VOICES
-            .iter()
-            .map(|s| VoiceOption {
-                id: (*s).to_string(),
-            })
-            .collect(),
+        tts_voices,
         tts_languages: LANGUAGE_OPTIONS,
         models_error,
         openrouter_configured: state.openrouter.configured(),
@@ -198,12 +220,30 @@ pub struct SettingsForm {
 /// at save time; the TTS layer treats empty as "use model default".
 const ALLOWED_LANGUAGES: &[&str] = &["", "en-US", "en-GB", "en-IN", "en-AU"];
 
-/// Voices we surface in the dropdown. `data-allow-custom` lets users type any
-/// model-specific voice not on this list. These are OpenAI gpt-4o-mini-tts
-/// voices as of 2025 — neutral steering, accent controlled separately via the
-/// language setting / `instructions` field.
-pub(crate) const OPENAI_TTS_VOICES: &[&str] = &[
-    "alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer", "verse",
+/// Seed suggestions for the voice <select>. The field is `data-allow-custom`
+/// so the user can type any model-specific voice — this list is convenience
+/// only, not a filter. Currently scoped to Azure Neural British + Indian
+/// voices since `microsoft/mai-voice-2` is the primary TTS model and these
+/// are the accent options the user actually uses; other working voices
+/// (other locales, `kokoro` `bf_*`/`bm_*`/`if_*`/`im_*`, Grok `ara`/`eve`,
+/// `sesame` `alloy`/`narrator`/…) are reachable by typing.
+pub(crate) const SUGGESTED_TTS_VOICES: &[&str] = &[
+    "en-GB-SoniaNeural",
+    "en-GB-LibbyNeural",
+    "en-GB-AbbiNeural",
+    "en-GB-BellaNeural",
+    "en-GB-MaisieNeural",
+    "en-GB-OliviaNeural",
+    "en-GB-RyanNeural",
+    "en-GB-ThomasNeural",
+    "en-GB-OliverNeural",
+    "en-IN-NeerjaNeural",
+    "en-IN-AnanyaNeural",
+    "en-IN-KavyaNeural",
+    "en-IN-PrabhatNeural",
+    "en-IN-AaravNeural",
+    "en-IN-KunalNeural",
+    "en-IN-RehaanNeural",
 ];
 
 async fn save(

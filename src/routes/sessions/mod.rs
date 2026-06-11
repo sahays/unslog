@@ -16,7 +16,7 @@ use axum::routing::{get, post};
 use axum::Router;
 
 use crate::error::AppError;
-use crate::models::{Company, Session, SessionStatus};
+use crate::models::{Company, ModelSnapshot, Session, SessionStatus, Settings};
 use crate::services::auth::CurrentUser;
 use crate::services::{company_store, sessions, summary, tts};
 use crate::startup::AppState;
@@ -57,14 +57,46 @@ async fn load_company(state: &AppState, owner_id: &str, id: &str) -> Result<Comp
     company_store::find_or_404(&state.pool, owner_id, id).await
 }
 
+/// The TTS knobs (`model`, `voice`, `speed`, `language`) at the moment of a
+/// call. Resolved either from the session's frozen snapshot (default — keeps
+/// in-session audio consistent) or from current settings (regenerate path —
+/// the snapshot is what failed, so honoring it would just re-fail).
+struct TtsConfig {
+    model: String,
+    voice: String,
+    speed: Option<f32>,
+    language: String,
+}
+
+impl TtsConfig {
+    fn from_snapshot(snap: &ModelSnapshot) -> Self {
+        Self {
+            model: snap.tts.clone(),
+            voice: snap.tts_voice.clone(),
+            speed: snap.tts_speed,
+            language: snap.tts_language.clone(),
+        }
+    }
+
+    fn from_settings(s: &Settings) -> Self {
+        Self {
+            model: s.tts_model.clone(),
+            voice: s.tts_voice.clone(),
+            speed: s.tts_speed,
+            language: s.tts_language.clone(),
+        }
+    }
+}
+
 /// Synthesize `text` to MP3 in this session's recording dir at `filename`,
-/// honoring the snapshotted model + voice + speed. Returns the absolute path
-/// as a string for storage in Mongo.
+/// using `cfg` for model + voice + speed + language. Returns the absolute
+/// path as a string for storage.
 async fn tts_to(
     state: &AppState,
     session: &Session,
     filename: &str,
     text: &str,
+    cfg: TtsConfig,
 ) -> Result<String, AppError> {
     if !state.openrouter.configured() {
         return Err(AppError::OpenRouterNotConfigured);
@@ -73,18 +105,18 @@ async fn tts_to(
         crate::recordings::session_dir(&state.config.data_dir, &session.company_id, &session.id);
     crate::recordings::ensure_dir(&dir).await?;
     let path = dir.join(filename);
-    let voice = if session.model_snapshot.tts_voice.is_empty() {
+    let voice = if cfg.voice.is_empty() {
         crate::services::openrouter::DEFAULT_TTS_VOICE
     } else {
-        &session.model_snapshot.tts_voice
+        cfg.voice.as_str()
     };
-    let instructions = tts::build_accent_instructions(&session.model_snapshot.tts_language);
+    let instructions = tts::build_accent_instructions(&cfg.language);
     let path = tts::synthesize(
         &*state.openrouter,
-        &session.model_snapshot.tts,
+        &cfg.model,
         voice,
         text,
-        session.model_snapshot.tts_speed,
+        cfg.speed,
         &instructions,
         path,
     )
