@@ -1,0 +1,40 @@
+services:
+  # ── unslog web (Axum HTTP server) ───────────────────────────────
+  # Joins bharatsc's `shared` network so bharatsc-nginx can proxy
+  # https://unslogai.com → http://unslog-web:${PORT}. Postgres is
+  # reached at `postgres:5432` on the same shared network.
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: unslog:latest
+    container_name: unslog-web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${PORT:-3000}
+      DATA_DIR: /app/data
+      LOG_DIR: /app/data/logs
+      DEV_INSECURE: "false"
+    volumes:
+      - appdata:/app/data
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:$${PORT:-3000}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - internal
+      - shared
+
+volumes:
+  appdata:
+
+networks:
+  internal:
+    driver: bridge
+  shared:
+    external: true
+    name: shared

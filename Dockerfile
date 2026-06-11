@@ -28,6 +28,9 @@ COPY static ./static
 COPY migrations ./migrations
 COPY prompts ./prompts
 COPY askama.toml ./
+# sqlx compile-time macros (`query!`, `query_as!`, ...) read prepared
+# query metadata from `.sqlx/` when SQLX_OFFLINE=true — no live DB at build.
+COPY .sqlx ./.sqlx
 
 ENV SQLX_OFFLINE=true
 RUN cargo build --release --bin unslog

@@ -1,0 +1,87 @@
+# ── unslogai.com ──────────────────────────────────────────────────
+# Lives in bharatsc/nginx/conf.d/ at runtime. scripts/deploy.sh renders
+# the __PORT__ placeholder and copies this file into bharatsc's conf.d,
+# then reloads bharatsc-nginx so it can resolve `unslog-web` on the
+# `shared` Docker network.
+
+# ── HTTP → HTTPS redirect (+ ACME http-01 fallback path) ──────────
+server {
+    listen 80;
+    listen [::]:80;
+    server_name unslogai.com www.unslogai.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── HTTPS ─────────────────────────────────────────────────────────
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name unslogai.com www.unslogai.com;
+
+    # ── SSL ───────────────────────────────────────────────────────
+    ssl_certificate     /etc/letsencrypt/live/unslogai.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/unslogai.com/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/unslogai.com/chain.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    resolver 1.1.1.1 8.8.8.8 valid=300s;
+    resolver_timeout 5s;
+
+    # ── Security headers ──────────────────────────────────────────
+    include /etc/nginx/conf.d/security_headers.inc;
+
+    # ── Body cap — audio uploads + book PDFs (Axum cap is 50 MB) ──
+    client_max_body_size 50m;
+
+    # ── Timeouts — STT / TTS / critique round-trips ───────────────
+    proxy_connect_timeout 10s;
+    proxy_send_timeout    120s;
+    proxy_read_timeout    120s;
+
+    # ── HTMX uses chunked responses; don't buffer ─────────────────
+    proxy_buffering off;
+    proxy_request_buffering off;
+
+    # ── Static assets — long cache ────────────────────────────────
+    location /static/ {
+        include /etc/nginx/conf.d/proxy_params.inc;
+        proxy_pass http://unslog-web:__PORT__;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # ── Health — internal only ────────────────────────────────────
+    location /health {
+        allow 127.0.0.0/8;
+        allow 10.0.0.0/8;
+        allow 172.16.0.0/12;
+        allow 192.168.0.0/16;
+        deny all;
+        include /etc/nginx/conf.d/proxy_params.inc;
+        proxy_pass http://unslog-web:__PORT__;
+    }
+
+    # ── Default — general rate limit ──────────────────────────────
+    location / {
+        limit_req zone=general burst=20 nodelay;
+        include /etc/nginx/conf.d/proxy_params.inc;
+        proxy_pass http://unslog-web:__PORT__;
+    }
+}
